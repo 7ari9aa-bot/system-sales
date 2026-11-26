@@ -27,6 +27,7 @@ class OptionServiceMixin:
         variant_id: UUID,
         product_id: UUID,
         options: dict,
+        is_new: bool = False,
     ) -> dict[str, str]:
         """Write the relational option graph for one variant (§179, P2).
 
@@ -49,6 +50,11 @@ class OptionServiceMixin:
                 raise ValidationError("option value must be at most 127 characters")
             cleaned[name] = value
 
+        # A variant created moments ago has no link rows to delete and no options to add, and its
+        # JSONB read model was written by the INSERT: rebuilding it cost three statements a row in
+        # an import of ten thousand.
+        if is_new and not cleaned:
+            return cleaned
         await session.execute(
             delete(ProductVariantOptionValue).where(
                 ProductVariantOptionValue.tenant_id == tenant_id,

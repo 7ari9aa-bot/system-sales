@@ -191,6 +191,29 @@ class ProfitReportService:
             product_ok.append(Product.brand_id == brand_id)
         # Discount already inside the line nets (a per-line percentage) is not taken off twice:
         # only the invoice-level part, the discount beyond what the line nets already reflect.
+        # What came back, split by the STATE the garment came back in, aggregated per variant so
+        # it rides along with the rows below instead of costing its own round trip.
+        cond_units = (
+            select(
+                PosReturnLine.variant_id.label("variant_id"),
+                func.coalesce(PosReturnLine.condition, "unstated").label("cond"),
+                func.sum(PosReturnLine.quantity).label("units"),
+            )
+            .join(Order, Order.id == PosReturnLine.order_id)
+            .where(PosReturnLine.tenant_id == tenant_id, *order_ok)
+            .group_by(PosReturnLine.variant_id, PosReturnLine.condition)
+            .subquery()
+        )
+        conds = (
+            select(
+                cond_units.c.variant_id,
+                func.array_agg(cond_units.c.cond).label("conds"),
+                func.array_agg(cond_units.c.units).label("cond_units"),
+            )
+            .group_by(cond_units.c.variant_id)
+            .subquery()
+        )
+
         stmt = (
             select(
                 ProductVariant.id.label("variant_id"),
@@ -207,6 +230,11 @@ class ProfitReportService:
                 func.coalesce(func.sum(returns.c.units_returned), 0).label("units_returned"),
                 func.coalesce(func.sum(returns.c.refund), 0).label("refund"),
                 func.coalesce(func.sum(shelved.c.units_shelved), 0).label("units_shelved"),
+                # What came back, split by the state it came back in, in the SAME statement: the
+                # second round trip this used to need was a whole query for data that belongs to
+                # these rows.
+                conds.c.conds.label("conds"),
+                conds.c.cond_units.label("cond_units"),
             )
             .select_from(lines)
             .join(Order, Order.id == lines.c.order_id)
@@ -233,6 +261,7 @@ class ProfitReportService:
                     shelved.c.variant_id == lines.c.variant_id,
                 ),
             )
+            .outerjoin(conds, conds.c.variant_id == ProductVariant.id)
             .where(*product_ok)
             .group_by(
                 ProductVariant.id,
@@ -242,6 +271,10 @@ class ProfitReportService:
                 Product.brand_id,
                 size_column(ProductVariant.option_values),
                 color_column(ProductVariant.option_values),
+                # One row per variant, so these are constant within the group; Postgres needs them
+                # named here to allow the join's columns in the SELECT.
+                conds.c.conds,
+                conds.c.cond_units,
             )
         )
         result = (await session.execute(stmt)).all()
@@ -254,23 +287,11 @@ class ProfitReportService:
         # The rows are per MODEL, COLOUR and SIZE, so the split is keyed the same way: one row
         # aggregates every order that sold that size in the window.
         by_condition: dict[Any, dict[str, int]] = {}
-        cond_rows = (
-            await session.execute(
-                select(
-                    PosReturnLine.variant_id,
-                    # Grouped on the raw column (a COALESCE with a bind in GROUP BY is not the
-                    # same expression to Postgres); the NULL -> "unstated" naming happens below.
-                    PosReturnLine.condition,
-                    func.sum(PosReturnLine.quantity).label("units"),
-                )
-                .join(Order, Order.id == PosReturnLine.order_id)
-                .where(PosReturnLine.tenant_id == tenant_id, *order_ok)
-                .group_by(PosReturnLine.variant_id, PosReturnLine.condition)
-            )
-        ).all()
-        for row in cond_rows:
-            slot = by_condition.setdefault(row.variant_id, {})
-            slot[str(row.condition or "unstated")] = int(row.units or 0)
+        for r in result:
+            # Paired arrays from the joined CTE, in the order they were aggregated.
+            for state, units in zip(r.conds or [], r.cond_units or [], strict=False):
+                slot = by_condition.setdefault(r.variant_id, {})
+                slot[str(state or "unstated")] = int(units or 0)
 
         rows: list[dict[str, Any]] = []
         for r in result:

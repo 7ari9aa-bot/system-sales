@@ -45,6 +45,10 @@ _PRODUCTS_BY_SLUGS = text(
 _VARIANTS_BY_SKUS = text(
     "SELECT sku, id FROM product_variants WHERE tenant_id = :t AND sku = ANY(:skus)"
 )
+_VARIANT_COUNTS = text(
+    "SELECT product_id, count(*) FROM product_variants "
+    "WHERE tenant_id = :t AND product_id = ANY(:ids) GROUP BY product_id"
+)
 
 # خرائط الدفعة الحالية: المنتج بالـslug والصنف بالـSKU، متجمّعة مرة واحدة قبل ما الصفوف تتطبق.
 # كل صف كان بيعمل استعلامين لوحده (منتج + كود)، فدفعة 500 صف كانت بتعمل ألف استعلام زيادة.
@@ -98,6 +102,21 @@ async def _prepare_batch(session: AsyncSession, tenant_id: uuid.UUID, rows: list
             await session.execute(_VARIANTS_BY_SKUS, {"t": tenant_id, "skus": sorted(skus)})
         ).all():
             maps["variants"][sku] = variant_id
+
+    # The per-product variant cap, read once instead of per row: the limit is the shop's setting
+    # and the count only moves by the rows this batch writes.
+    from app.modules.settings.service import SettingsService
+
+    shop = SettingsService(session, tenant_id)
+    maps["max_variants"] = await shop.value("catalog.max_variants_per_product")
+    maps["auto_barcode"] = await shop.value("catalog.barcode_auto_generate")
+    maps["variant_counts"] = {}
+    product_ids = list(dict.fromkeys(maps["products"].values()))
+    if product_ids:
+        for product_id, held in (
+            await session.execute(_VARIANT_COUNTS, {"t": tenant_id, "ids": product_ids})
+        ).all():
+            maps["variant_counts"][product_id] = int(held or 0)
     _BATCH_MAPS.set(maps)
 
 
@@ -286,6 +305,7 @@ async def _upsert_variant(
                 if variant_id is not None:
                     maps["variants"][sku] = variant_id
         if variant_id is None:
+            counts = maps.setdefault("variant_counts", {})
             variant = await CatalogService.add_variant(
                 session,
                 tenant_id,
@@ -296,7 +316,13 @@ async def _upsert_variant(
                 # الدفعة أثبتت في نفس المعاملة إن المنتج موجود والكود فاضي، فمفيش استعلامين لكل صف
                 product_checked=True,
                 sku_checked=bool(sku) and sku in maps["asked_variants"],
+                # والسقف وعدد الأصناف اتقروا مرة واحدة للدفعة
+                max_variants=maps.get("max_variants"),
+                variants_now=counts.get(product_id, 0),
+                auto_barcode=maps.get("auto_barcode"),
             )
+            # The row we just wrote is on the shelf now: the next row of the same product counts it.
+            counts[product_id] = counts.get(product_id, 0) + 1
             if sku:
                 maps["variants"][sku] = variant.id
         else:

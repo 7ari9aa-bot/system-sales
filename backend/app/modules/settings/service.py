@@ -127,8 +127,14 @@ class SettingsService:
         *,
         scope: Scope | str = Scope.TENANT,
         scope_id: uuid.UUID | None = None,
+        with_history: bool = True,
     ) -> dict[str, ResolvedSetting]:
-        """Resolve several settings with one chain lookup and one override query."""
+        """Resolve several settings with one chain lookup and one override query.
+
+        ``with_history`` adds the query that loads each setting's latest history id, which only a
+        WRITE needs (optimistic concurrency). A read-only ``value()`` call was paying for it on
+        every single call — three queries where two answers the question.
+        """
         scope_enum = _scope(scope)
         defs = {k: _definition(k) for k in keys}
         chain = await resolve_chain(self._session, self._tenant_id, scope_enum, scope_id)
@@ -139,7 +145,11 @@ class SettingsService:
             out[key] = self._pick(key, defn, chain, rows)
 
         # Batch-load the latest history ids for optimistic-concurrency (§81).
-        history_ids = await self._latest_history_ids(list(defs), scope_enum.value, scope_id)
+        history_ids = (
+            await self._latest_history_ids(list(defs), scope_enum.value, scope_id)
+            if with_history
+            else {}
+        )
         out = {
             k: ResolvedSetting(
                 key=r.key,
@@ -174,7 +184,10 @@ class SettingsService:
         scope_id: uuid.UUID | None = None,
     ) -> Any:
         """The effective value only. The call operational code makes."""
-        return (await self.resolve(key, scope=scope, scope_id=scope_id)).value
+        resolved = await self.resolve_many(
+            [key], scope=scope, scope_id=scope_id, with_history=False
+        )
+        return resolved[key].value
 
     @staticmethod
     def _pick(

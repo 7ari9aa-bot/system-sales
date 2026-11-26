@@ -1989,18 +1989,25 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
     "the count sheet lists the item",
   ).toBeVisible({ timeout: 10000 });
 
-  // a customer buys one while the shop is counting
+  const row = main.locator("tr", { hasText: `ItemA ${sfx}` }).first();
+  await row.getByPlaceholder("لم يُعدّ").fill("7");
+  // The counter counts against the 10 the sheet told them they had: 3 missing.
+  await expect(row, "3 missing against the sheet's opening 10").toContainText(
+    "-3",
+  );
+
+  // The typed count is gathered for 2s before it is saved (one request per scan would fight the
+  // scanner), so the sale below must wait for the SAVE to land: a count saved after the sale would
+  // be compared against a book the sale already moved, which is a different question.
+  await page.waitForTimeout(3000);
+
+  // A customer buys one AFTER the count was taken, while the sheet is still open. Approval must
+  // keep that sale: it applies the counted difference (-3) to the balance as it stands (9), so
+  // the shelf ends at 6 — never at the counted 7, which would erase the sale.
   await api("POST", `/pos/registers/${reg.id}/sales`, {
     items: [{ variant_id: vA.id, quantity: 1 }],
   });
   expect(await onHand(), "the sale took one off the shelf").toBe(9);
-
-  const row = main.locator("tr", { hasText: `ItemA ${sfx}` }).first();
-  await row.getByPlaceholder("لم يُعدّ").fill("7");
-  // the difference is against the 10 the sheet started with, not against the 9 left after the sale
-  await expect(row, "3 missing against the sheet's opening 10").toContainText(
-    "-3",
-  );
   await main.getByRole("button", { name: /اعتماد التسوية/ }).click();
   await expect
     .poll(onHand, {
@@ -2528,13 +2535,10 @@ test("print settings on the screen are saved for real: the prefix the owner type
   await prefix.fill("LIVE");
   await main.getByRole("button", { name: "حفظ", exact: true }).click();
   await expect(main.getByText("تم حفظ")).toBeVisible({ timeout: 20_000 });
+  // /settings/effective answers a MAP keyed by setting key, each value a resolved setting.
   const stored = await api("GET", "/settings/effective?domain=print");
-  const rows = stored.items ?? stored;
-  const flat = Object.fromEntries(
-    (Array.isArray(rows) ? rows : []).map((r) => [r.key, r.value]),
-  );
   expect(
-    flat["print.invoice_prefix"],
+    stored["print.invoice_prefix"]?.value,
     "the engine hands the receipt the prefix the owner saved",
   ).toBe("LIVE");
   expect(errs).toEqual([]);
