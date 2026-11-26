@@ -163,20 +163,48 @@ test("the workspace owns the shop's name, currency and time zone — and not the
   await expect(input).toHaveValue("Fihrist Store");
 });
 
-test("the settings sidebar is grouped by who each setting belongs to", async ({ page }) => {
+test("the settings sidebar is the map's five groups, and every section is reachable", async ({
+  page,
+}) => {
   await setup(page);
   await page.goto("/settings");
 
-  // two kinds of settings: the person (My account) and the shop (Store, Operations, Plan & data)
-  await expect(sidebar(page).getByText("My account", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Store", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Operations", { exact: true })).toBeVisible();
-  await expect(sidebar(page).getByText("Plan & data", { exact: true })).toBeVisible();
+  // The Center is `docs/settings/center-map.md`'s twenty sections in five groups, generated from
+  // `settingsManifest.js`. This assertion used to pin the sidebar's own hand-written six groups
+  // ("My account", "Store", "Operations", "Plan & data"), which is how sections that existed in
+  // the router — team, customers, analytics, automation, workspace notifications, data — were
+  // never reachable from the navigation at all.
+  for (const group of [
+    "Account & administration",
+    "Business & structure",
+    "Commerce & operations",
+    "Channels & intelligence",
+    "Advanced administration",
+  ]) {
+    await expect(sidebar(page).getByText(group, { exact: true })).toBeVisible();
+  }
 
-  // every page is reachable from exactly one group
-  await sidebar(page).getByRole("link", { name: "Workspace", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\/workspace$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Workspace" })).toBeVisible();
+  // Every section that used to be router-only is now a destination a person can click.
+  for (const [label, path] of [
+    ["Team & permissions", /\/settings\/team\/members$/],
+    ["Customers & support", /\/settings\/customers\/customer-records$/],
+    ["Analytics & reports", /\/settings\/analytics\/reports$/],
+    ["Automation & workflows", /\/settings\/automation\/workflows$/],
+    ["Workspace notifications", /\/settings\/notifications\/notification-channels$/],
+    ["Data & privacy", /\/settings\/data\/data-privacy$/],
+  ]) {
+    await sidebar(page).getByRole("link", { name: label, exact: true }).click();
+    await expect(page).toHaveURL(path);
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
+    await page.goto("/settings");
+  }
+
+  // The old combined team screen is not a second front door: the address forwards to section 03.
+  await page.goto("/settings/members");
+  await expect(page).toHaveURL(/\/settings\/team\/members$/);
+  await expect(
+    sidebar(page).getByRole("link", { name: "Members & roles", exact: true })
+  ).toHaveCount(0);
 });
 
 test("Arabic: the profile and the workspace speak Arabic", async ({ page }) => {

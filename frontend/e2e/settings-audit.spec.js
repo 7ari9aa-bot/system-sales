@@ -160,8 +160,17 @@ test("the data page names itself honestly and explains why export is closed", as
   await expect(page.getByTestId("workspace-state")).toHaveText("active");
   await expect(page.getByTestId("data-export")).toBeDisabled();
   await expect(page.getByTestId("data-export-reason")).toContainText("during the offboarding window");
-  // the nav item says the same thing as the page it opens
-  await expect(page.getByRole("navigation").getByRole("link", { name: "Data & offboarding" })).toBeVisible();
+  // The screen stays reachable by address but is NOT a sidebar entry: the map gives it no
+  // section of its own (backups and restore is still a pending page in section 17, because no
+  // backup system exists in the product), so listing it would promise a place in the Center
+  // that the Center does not have. `settingsManifest.js`'s SETTINGS_UNLISTED_SCREENS records
+  // that reason beside the route, and the sidebar offers section 17 instead.
+  await expect(
+    page.getByRole("navigation").getByRole("link", { name: "Data & offboarding" })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation").getByRole("link", { name: "Data & privacy", exact: true })
+  ).toBeVisible();
 });
 
 test("during offboarding the export button actually works", async ({ page }) => {
