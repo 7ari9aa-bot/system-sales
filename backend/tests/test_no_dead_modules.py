@@ -102,19 +102,12 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # The §8 M2 turn coordinator (turn.py) and its intake/referents pair were
     # recorded here until P1-7: hooks.py now runs every customer turn through
     # run_customer_turn, so they are reachable and belong off this list.
-    # §166 / ADR-042 storm-suppression write path. Wiring it correctly is a
-    # feature, not a one-line call: NotificationService.create() returns the
-    # Notification row every caller already depends on, and the aggregator's
-    # hold side (add_to_digest) needs a matching FLUSH side — a scheduled
-    # worker that delivers a pending digest as one notification. No such
-    # worker exists, so a partial wire would silently DROP held notifications,
-    # which is worse than dead code. Retained pending that fan-out+flush work;
-    # the tables it maps (notification_digests) already exist (f9b0c1d2e3f4).
-    "app.modules.notifications.digest": (
-        "§166 digest/aggregation. Hold-side only; needs a companion digest-"
-        "flush worker before it can be wired without dropping notifications. "
-        "Imported today by nothing but tests/test_notifications_digest_import."
-    ),
+    # §166's digest module is REACHABLE as of the notification-preferences work:
+    # the router's GET /notifications/digest builds its answer with
+    # NotificationAggregator, and the dispatch gate asks it
+    # (_in_quiet_hours) whether a person is inside their quiet window. Only the
+    # HOLD side (add_to_digest) still has no flush worker, and nothing calls it,
+    # so the module is live without the drop risk this entry used to describe.
     # §161 / ADR-038 external-commerce feature (Shopify/WooCommerce/CSV). The
     # SourceOfTruthPolicy model backs a migration-created table and every half
     # is unit-tested, but no route or worker yet constructs an adapter — that

@@ -32,7 +32,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: The widest page ``GET /notifications`` will take, at the route AND in the
 #: service. A cap that lives only in the route can be walked past in-process.
@@ -127,3 +127,66 @@ class NotificationDigest(BaseModel):
 
     total_unread: int
     groups: list[DigestGroup]
+
+
+class ChannelPreference(BaseModel):
+    """One delivery channel as the person's screen shows it.
+
+    ``available`` is about THIS deployment, not about the person: a channel with no
+    configured provider is reported as unavailable rather than offered as a switch
+    that changes nothing. ``locked`` marks in-app, which is always on — the bell row
+    is the record of what happened, so it is not a preference.
+    """
+
+    channel: str
+    label_key: str
+    enabled: bool
+    available: bool
+    locked: bool = False
+
+
+class QuietHours(BaseModel):
+    """The person's quiet window, as ``HH:MM`` in their own clock, or off."""
+
+    start: str | None = None
+    end: str | None = None
+    #: Whether the window is active at this moment, computed in the person's zone.
+    active_now: bool = False
+
+
+class NotificationPreferencesOut(BaseModel):
+    """Everything the personal-notifications screen needs in one answer."""
+
+    channels: list[ChannelPreference]
+    quiet_hours: QuietHours
+    #: The zone the window is read in: the person's own, else the workspace's.
+    timezone: str
+    #: The workspace's own switches, so the screen can say why a channel is silent.
+    workspace: dict[str, bool]
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    """A partial rewrite of the person's own notification settings.
+
+    ``None`` leaves a value alone. On the quiet window, an empty string on BOTH ends
+    clears it — a window needs two ends, and the service refuses a half of one.
+    """
+
+    email_enabled: bool | None = None
+    push_enabled: bool | None = None
+    quiet_start: str | None = Field(default=None, max_length=5)
+    quiet_end: str | None = Field(default=None, max_length=5)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> NotificationPreferencesUpdate:
+        if all(
+            value is None
+            for value in (
+                self.email_enabled,
+                self.push_enabled,
+                self.quiet_start,
+                self.quiet_end,
+            )
+        ):
+            raise ValueError("nothing to update")
+        return self

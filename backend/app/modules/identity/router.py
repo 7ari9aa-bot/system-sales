@@ -51,16 +51,19 @@ from app.modules.identity.routers import (
     resend_verification,
     revoke_location_access,
     revoke_tenant_invitation,
+    roles_router,
     router,
     set_tenant_currency,
     set_tenant_timezone,
     switch_tenant,
+    teams_router,
     tenants_router,
     transition_tenant_lifecycle,
     update_location,
     update_workspace,
     users_router,
     verify_email,
+    workspaces_router,
 )
 
 __all__ = [
@@ -115,6 +118,9 @@ __all__ = [
     "transition_tenant_lifecycle",
     "update_location",
     "update_workspace",
+    "roles_router",
+    "teams_router",
     "users_router",
+    "workspaces_router",
     "verify_email",
 ]

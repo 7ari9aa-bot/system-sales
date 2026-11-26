@@ -34,6 +34,11 @@ class SettingDefOut(BaseModel):
     enforced: bool
     # Business segments this applies to; empty = every segment.
     segments: list[str] = []
+    # The Settings Center home of this key: the ONE section and page that may edit it.
+    section: str = ""
+    page: str = ""
+    # How far a wrong value reaches: low | medium | high.
+    impact_level: str = "low"
     label_ar: str
     label_en: str
     description_ar: str

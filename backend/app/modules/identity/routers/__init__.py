@@ -40,6 +40,8 @@ from app.modules.identity.routers.hierarchy import (
     update_location,
     update_workspace,
 )
+from app.modules.identity.routers.roles import roles_router
+from app.modules.identity.routers.teams import teams_router
 from app.modules.identity.routers.tenants import (
     LifecycleTransitionRequest,
     TenantCapabilityPolicyOut,
@@ -61,6 +63,12 @@ from app.modules.identity.routers.tenants import (
 from app.modules.identity.routers.users import (
     my_profile,
     users_router,
+)
+from app.modules.identity.routers.workspaces import (
+    current_workspace,
+    current_workspace_admins,
+    list_my_workspaces,
+    workspaces_router,
 )
 
 __all__ = [
@@ -116,5 +124,11 @@ __all__ = [
     "update_location",
     "update_workspace",
     "users_router",
+    "current_workspace",
+    "current_workspace_admins",
+    "list_my_workspaces",
+    "roles_router",
+    "teams_router",
+    "workspaces_router",
     "verify_email",
 ]

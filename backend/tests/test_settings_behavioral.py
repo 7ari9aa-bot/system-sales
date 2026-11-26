@@ -133,8 +133,11 @@ class TestSettingBehavioralChanges:
 class TestRegistryCount:
     """Verify the registry count matches documentation."""
 
-    def test_registry_has_127_keys(self):
-        assert len(REGISTRY) == 127
+    def test_registry_has_134_keys(self):
+        # 127 -> 134 with the seven `pricing.*` keys the pricing module reads as its policy
+        # (price lists, tiers, rounding, stacking, the below-cost floor, the order cap). A key
+        # added to the registry without this number moving is how the docs drift from the code.
+        assert len(REGISTRY) == 134
 
     def test_all_keys_are_unique(self):
         keys = [d.key for d in REGISTRY.values()]

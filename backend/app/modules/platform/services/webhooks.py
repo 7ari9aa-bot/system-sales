@@ -166,6 +166,38 @@ class WebhookService:
         return list(rows.all())
 
     @staticmethod
+    async def list_deliveries(
+        session: Any,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 25,
+        offset: int = 0,
+        status: str | None = None,
+    ) -> list[WebhookDelivery]:
+        """The tenant's outbound delivery log, newest first, bounded.
+
+        A webhook that silently stops being delivered is the failure this table exists to make
+        visible: ``status`` (queued | delivered | failed | dead), ``attempts``, the provider's
+        ``response_code`` and the stored ``last_error`` are the whole answer to "did my
+        endpoint receive it". The payload is NOT returned — it is the event body, which the
+        caller already has from its own systems, and echoing it back would put customer data
+        on a settings screen.
+        """
+        conditions = [WebhookDelivery.tenant_id == tenant_id]
+        if status is not None:
+            conditions.append(WebhookDelivery.status == status)
+        rows = (
+            await session.execute(
+                select(WebhookDelivery)
+                .where(*conditions)
+                .order_by(WebhookDelivery.created_at.desc(), WebhookDelivery.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).scalars()
+        return list(rows.all())
+
+    @staticmethod
     async def rotate_endpoint_secret(
         session: Any,
         tenant_id: uuid.UUID,

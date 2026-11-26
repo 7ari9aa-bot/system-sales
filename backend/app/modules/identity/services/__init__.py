@@ -14,6 +14,7 @@ from app.modules.identity.services._common import (
     _record_security_event,
     _revoke_family_on_reuse,
 )
+from app.modules.identity.services.account_closure import AccountClosureService
 from app.modules.identity.services.auth import AuthService, GoogleMfaRequired
 from app.modules.identity.services.hierarchy import HierarchyService
 from app.modules.identity.services.lifecycle import (
@@ -29,6 +30,10 @@ from app.modules.identity.services.lifecycle import (
     TenantCapabilityPolicy,
     TenantLifecycleService,
 )
+from app.modules.identity.services.session import (
+    SignedInDeviceService,
+    describe_device,
+)
 from app.modules.identity.services.settings import (
     TenantSettingsService,
     timezone_refusal,
@@ -38,6 +43,7 @@ from app.modules.identity.services.user import UserService
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
+    "AccountClosureService",
     "AuthService",
     "GoogleMfaRequired",
     "EmailAlreadyRegistered",
@@ -52,6 +58,7 @@ __all__ = [
     "TENANT_REQUESTABLE_LIFECYCLE_TARGETS",
     "TenantCapabilityPolicy",
     "TenantLifecycleService",
+    "SignedInDeviceService",
     "TenantService",
     "TenantSettingsService",
     "UserService",
@@ -63,5 +70,6 @@ __all__ = [
     "_record_audit",
     "_record_security_event",
     "_revoke_family_on_reuse",
+    "describe_device",
     "timezone_refusal",
 ]

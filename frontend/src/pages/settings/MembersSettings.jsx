@@ -21,12 +21,17 @@ const initials = (member) =>
     .join("")
     .toUpperCase();
 
-export default function MembersSettings() {
+export default function MembersSettings({ view = "all" }) {
   const t = useT();
   const { lang } = useI18n();
   const { user } = useAuth();
   const isAr = lang === "ar";
   const tenantId = activeTenantId(user);
+  // Two entry points, one implementation: the Team section shows the roster on its
+  // "members" page and the invite form on its "invitations" page, and /settings/members
+  // keeps showing both exactly as it did before the split.
+  const showMembers = view === "all" || view === "members";
+  const showInvitations = view === "all" || view === "invitations";
   // Who is in the workspace comes from GET /users (the same roster the cashier's grant picker
   // reads); what is still on its way comes from /invitations. The page shows both because
   // "who has access" is one question, and it used to answer half of it while claiming the API
@@ -41,6 +46,7 @@ export default function MembersSettings() {
   const [roleCode, setRoleCode] = React.useState("staff");
   const [error, setError] = React.useState("");
   const [createdInvite, setCreatedInvite] = React.useState(null);
+  const [busyMember, setBusyMember] = React.useState("");
 
   const load = React.useCallback(async () => {
     try {
@@ -85,6 +91,43 @@ export default function MembersSettings() {
     }
   }
 
+  async function changeRole(member, nextRole) {
+    if (!tenantId || busyMember) return;
+    setBusyMember(member.id);
+    setError("");
+    try {
+      await api(`/tenants/${tenantId}/members/${member.id}`, {
+        method: "PUT",
+        body: { role_code: nextRole },
+      });
+      await load();
+    } catch (err) {
+      setError(err?.message || (isAr ? "تعذر تغيير الصلاحية" : "Could not change the role"));
+    } finally {
+      setBusyMember("");
+    }
+  }
+
+  async function removeMember(member) {
+    if (!tenantId || busyMember) return;
+    const confirmed = window.confirm(
+      isAr
+        ? `إزالة ${member.full_name || member.email} من مساحة العمل؟ سيفقد الوصول فورًا.`
+        : `Remove ${member.full_name || member.email} from the workspace? They lose access immediately.`,
+    );
+    if (!confirmed) return;
+    setBusyMember(member.id);
+    setError("");
+    try {
+      await api(`/tenants/${tenantId}/members/${member.id}`, { method: "DELETE" });
+      await load();
+    } catch (err) {
+      setError(err?.message || (isAr ? "تعذر إزالة العضو" : "Could not remove the member"));
+    } finally {
+      setBusyMember("");
+    }
+  }
+
   async function revoke(invitation) {
     const confirmed = window.confirm(isAr
       ? `هل تريد إلغاء الدعوة المرسلة إلى ${invitation.email}؟`
@@ -118,14 +161,16 @@ export default function MembersSettings() {
       title={t("settings.members")}
       subtitle={t("settings.members.desc")}
       actions={
-        <Button type="button" onClick={() => { setCreatedInvite(null); setFormOpen((open) => !open); }} className="gap-1.5" data-testid="members-invite">
-          <UserPlus className="h-4 w-4" /> {t("members.invite")}
-        </Button>
+        showInvitations ? (
+          <Button type="button" onClick={() => { setCreatedInvite(null); setFormOpen((open) => !open); }} className="gap-1.5" data-testid="members-invite">
+            <UserPlus className="h-4 w-4" /> {t("members.invite")}
+          </Button>
+        ) : null
       }
     >
       {error && <div role="alert" className="mb-3 text-[12px] text-destructive">{error}</div>}
 
-      {createdInvite && (
+      {showInvitations && createdInvite && (
         <div className="mb-4 border-b border-border pb-4">
           <div className="text-[13px] font-semibold">{isAr ? `تم إنشاء دعوة لـ ${createdInvite.email}` : `Invitation created for ${createdInvite.email}`}</div>
           <p className="mt-1 text-[12px] text-muted-foreground">{isAr ? "انسخ رابط الدعوة وأرسله للعضو. سيظهر التوكن الكامل مرة واحدة فقط." : "Copy and send this invite link. The full invitation token is shown only once."}</p>
@@ -137,7 +182,7 @@ export default function MembersSettings() {
         </div>
       )}
 
-      {formOpen && (
+      {showInvitations && formOpen && (
         <SettingCard title={isAr ? "دعوة عضو" : "Invite a member"} className="mb-4">
           <form onSubmit={invite} className="grid gap-3 py-2 sm:grid-cols-[1fr_180px_auto] sm:items-end">
             <label className="grid gap-1.5 text-[12px] text-muted-foreground">
@@ -157,8 +202,9 @@ export default function MembersSettings() {
         </SettingCard>
       )}
 
-      <TeamPolicyCard />
+      {showInvitations && <TeamPolicyCard />}
 
+      {showMembers && (
       <SettingCard title={t("members.whoHasAccess")} desc={t("members.whoHasAccess.desc")}>
         <div className="overflow-x-auto">
           <table className="w-full text-start" data-testid="members-table">
@@ -197,10 +243,39 @@ export default function MembersSettings() {
                           </div>
                         </td>
                         <td className="py-3 hidden sm:table-cell">
-                          <Badge tone={ROLE_TONE[member.role_code] || "muted"}>{member.role_code ? t(`members.role.${member.role_code}`) : "—"}</Badge>
+                          {member.role_code === "owner" || isMe ? (
+                            <Badge tone={ROLE_TONE[member.role_code] || "muted"}>{member.role_code ? t(`members.role.${member.role_code}`) : "—"}</Badge>
+                          ) : (
+                            <select
+                              aria-label={isAr ? `صلاحية ${member.full_name || member.email}` : `Role for ${member.full_name || member.email}`}
+                              value={member.role_code || "staff"}
+                              disabled={busyMember === member.id}
+                              onChange={(event) => changeRole(member, event.target.value)}
+                              className="h-8 rounded-md border border-input bg-background px-2 text-[12.5px] text-foreground disabled:opacity-50"
+                              data-testid="member-role"
+                            >
+                              <option value="admin">{t("members.role.admin")}</option>
+                              <option value="manager">{t("members.role.manager")}</option>
+                              <option value="staff">{t("members.role.staff")}</option>
+                              <option value="cashier">{t("members.role.cashier")}</option>
+                            </select>
+                          )}
                         </td>
                         <td className="py-3"><span className="text-[12.5px] text-muted-foreground">{t("members.active")}</span></td>
-                        <td className="py-3"></td>
+                        <td className="py-3 text-end">
+                          {member.role_code !== "owner" && !isMe && (
+                            <button
+                              type="button"
+                              aria-label={isAr ? `إزالة ${member.full_name || member.email}` : `Remove ${member.full_name || member.email}`}
+                              disabled={busyMember === member.id}
+                              onClick={() => removeMember(member)}
+                              className="h-7 w-7 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50"
+                              data-testid="member-remove"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -228,6 +303,46 @@ export default function MembersSettings() {
           </table>
         </div>
       </SettingCard>
+      )}
+
+      {showInvitations && !showMembers && (
+        <SettingCard title={t("team.invitations.pending")} desc={t("team.invitations.pending.desc")}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-start" data-testid="invitations-table">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b border-border">
+                  <th className="py-2.5 font-medium">{t("members.name")}</th>
+                  <th className="py-2.5 font-medium hidden sm:table-cell">{t("members.role")}</th>
+                  <th className="py-2.5 font-medium">{t("members.status")}</th>
+                  <th className="py-2.5 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{t("team.loading")}</td></tr>
+                ) : (invitations || []).length === 0 ? (
+                  <tr><td colSpan="4" className="py-6 text-center text-[12.5px] text-muted-foreground">{t("team.invitations.none")}</td></tr>
+                ) : (
+                  (invitations || []).map((invitation) => (
+                    <tr key={invitation.id} className="border-b border-border last:border-0" data-testid="invitation-row">
+                      <td className="py-3 text-[13px] font-medium truncate">{invitation.email}</td>
+                      <td className="py-3 hidden sm:table-cell"><Badge tone={ROLE_TONE[invitation.role_code] || "muted"}>{invitation.role_code ? t(`members.role.${invitation.role_code}`) : "—"}</Badge></td>
+                      <td className="py-3"><Badge tone={invitation.status === "pending" ? "warning" : "muted"}>{t(`team.invitation.status.${invitation.status}`)}</Badge></td>
+                      <td className="py-3 text-end">
+                        {invitation.status === "pending" && (
+                          <button type="button" aria-label={isAr ? `إلغاء دعوة ${invitation.email}` : `Revoke invitation for ${invitation.email}`} disabled={revoking === invitation.id} onClick={() => revoke(invitation)} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-surface text-muted-foreground disabled:opacity-50">
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SettingCard>
+      )}
     </SettingsShell>
   );
 }

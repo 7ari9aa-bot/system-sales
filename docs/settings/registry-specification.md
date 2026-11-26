@@ -1,6 +1,6 @@
 # Settings Registry Specification
 
-> Source of truth: `backend/app/modules/settings/registry.py` — 127 settings.
+> Source of truth: `backend/app/modules/settings/registry.py` — 134 settings.
 > This document is **generated** from the code by `backend/scripts/dev/gen_registry_spec.py`.
 > If the code and this table disagree, the code wins; run the script to regenerate.
 
@@ -132,6 +132,18 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 | `orders.reserve_on` | enum | `create` | TENANT | normal | validated | — | — | ✅ | create, confirm | all |
 | `orders.allow_backorder` | bool | false | TENANT, CHANNEL | normal | validated | — | — | ✅ | — | retail, fnb, wholesale |
 | `orders.deduct_stock_on` | enum | `confirm` | TENANT | normal | validated | — | — | ✅ | confirm, ship, deliver | all |
+
+## Pricing (7 settings)
+
+| Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `pricing.price_lists_enabled` | bool | false | TENANT, BRANCH | normal | validated | — | — | ✅ | — | all |
+| `pricing.quantity_tiers_enabled` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
+| `pricing.round_prices_to` | enum | `none` | TENANT | normal | validated | — | — | ✅ | none, 0.25, 0.5, 1 | all |
+| `pricing.allow_price_below_cost` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
+| `pricing.auto_apply_offers` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
+| `pricing.stacked_discounts` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
+| `pricing.max_order_discount_pct` | number | 50 | TENANT | normal | validated | 0 | 100 | ✅ | — | all |
 
 ## Print & Barcode (8 settings)
 

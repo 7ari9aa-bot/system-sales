@@ -11,7 +11,7 @@ and it stays outside RLS.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
 from sqlalchemy import (
     ARRAY,
@@ -22,6 +22,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
     text,
@@ -327,12 +328,26 @@ class Notification(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
 
 
 class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, Base):
-    """§166: per-user notification channel preferences + quiet hours.
+    """§166: the person's own notification channels and quiet hours.
 
-    A row per (tenant, user, channel). `enabled` defaults True; the
-    dispatcher checks this before sending. `quiet_hours_start/end` are
-    nullable Time fields; when both are set and the current time falls
-    within the window, the channel is suppressed.
+    ONE row per (tenant, user) — not one per channel. That is the shape the table
+    was created with (``f9b0c1d2e3f4``), and the shape the dispatcher and the digest
+    aggregator were written against: ``in_app_enabled``, ``email_enabled``,
+    ``push_enabled`` and a single quiet-hours window. A later migration bolted on a
+    per-channel ``channel``/``enabled`` pair that nothing ever wrote, and the model
+    was changed to match those columns instead of the real ones — which is why
+    ``digest.NotificationAggregator`` crashed the moment a preference row existed
+    (it reads ``quiet_start``/``quiet_end``, columns the model never mapped).
+    The model now matches the table.
+
+    There is no ``timezone`` column: the clock this window is read in is the
+    person's own (``users.timezone``), falling back to the workspace's. Two stored
+    zones would eventually disagree, and a quiet hour read in the wrong zone is a
+    notification at 03:00.
+
+    ``in_app_enabled`` is modelled but deliberately not switchable: the bell row is
+    always written (the unread count is the record of what happened), and only the
+    external channels are conditional.
     """
 
     __tablename__ = "notification_preferences"
@@ -341,16 +356,23 @@ class NotificationPreference(TenantMixin, TimestampMixin, WorkspaceScopeMixin, B
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    # channel: email | sms | whatsapp | push
-    channel: Mapped[str] = mapped_column(String(15), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
-    quiet_hours_start: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    quiet_hours_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
+    #: A window in the person's own clock. Both ends are set, or neither is.
+    quiet_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    quiet_end: Mapped[time | None] = mapped_column(Time, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "user_id", "channel", name="uq_notif_prefs_user_channel"),
+        # One row per person per workspace. The older unique constraint keyed on
+        # ``channel`` cannot do this job: its channel column is NULL on these rows,
+        # and NULLs never collide.
+        Index(
+            "uq_notif_prefs_tenant_user_one",
+            "tenant_id",
+            "user_id",
+            unique=True,
+        ),
     )
 
 

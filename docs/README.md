@@ -37,8 +37,8 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | Customer commerce (deposits, orders, payments) | [COMMERCE_FIT_REPORT.md](COMMERCE_FIT_REPORT.md) — Phase 0: what the commerce spec asks for vs what the code already owns, the real gaps, and the blocking decisions. |
 | Customer AI agent | [design/](design/) (core design, M1 handoff, red team) |
 | Desktop app | [DESKTOP_ARCH_REVIEW.md](DESKTOP_ARCH_REVIEW.md), and `desktop/docs/` in the repo root |
-| Inventory & Supply Chain | Settings (configuration control plane) | [settings/domain-specification.md](settings/domain-specification.md), [settings/registry-specification.md](settings/registry-specification.md) (auto-generated), [settings/database-api-specification.md](settings/database-api-specification.md), [settings/master-specification.md](settings/master-specification.md) |
-| [INVENTORY_PROGRAM.md](INVENTORY_PROGRAM.md) |
+| Inventory & Supply Chain | [INVENTORY_PROGRAM.md](INVENTORY_PROGRAM.md) |
+| Settings (configuration control plane) | [settings/center-map.md](settings/center-map.md) (the 20-section navigation contract and its build status), [settings/master-specification.md](settings/master-specification.md), [settings/domain-specification.md](settings/domain-specification.md), [settings/registry-specification.md](settings/registry-specification.md) (auto-generated), [settings/database-api-specification.md](settings/database-api-specification.md), [settings/frontend-specification.md](settings/frontend-specification.md), [settings/runtime-testing-specification.md](settings/runtime-testing-specification.md), [settings/compliance-matrix.md](settings/compliance-matrix.md), [settings/rls-migration-proposal.md](settings/rls-migration-proposal.md) |
 
 ## 4. Operations and platform
 
@@ -60,6 +60,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [SETTINGS_MASTER_SPECIFICATION.md](SETTINGS_MASTER_SPECIFICATION.md) | Every setting in FIHRIST: keys, types, defaults, scopes, enforcement status, and the roadmap from code to UI. | live |
 | [settings/domain-specification.md](settings/domain-specification.md) | Settings domain architecture: scope hierarchy, types, sensitivity, apply modes, storage, read/write paths, change management, events. | live |
 | [settings/registry-specification.md](settings/registry-specification.md) | Settings registry: every key with type, default, scopes, sensitivity, apply mode, bounds, allowed values, segments, and storage. | live |
+| [settings/center-map.md](settings/center-map.md) | Settings Center information architecture: the 20 sections, the scope model, the page anatomy, and the build status per section. | live |
 | [settings/frontend-specification.md](settings/frontend-specification.md) | Settings frontend: screen map, navigation by P1–P3, `/settings/effective` consumption, per-screen implementation status. | live |
 | [settings/runtime-testing-specification.md](settings/runtime-testing-specification.md) | Settings runtime: workers, outbox, scheduler, settings→runtime wiring map, testing strategy, CI checks, run commands. | live |
 | [settings/rls-migration-proposal.md](settings/rls-migration-proposal.md) | RLS migration proposal for platform & visitor tables (visitor_events, platform_announcements, dismissals, plan_prices, tax_rates). | proposal |

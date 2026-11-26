@@ -21,6 +21,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -123,6 +124,26 @@ class User(TimestampMixin, Base):
     # The account's own picture as an object key ("s3://avatars/<id>/<file>"),
     # never a signed URL: those expire. Read paths sign it per response.
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional contact/display facts the person owns. Neither is an identity
+    # key: the email stays the login and the address invitations bind to, so
+    # filling these in can never move an account or reach another one.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # The person's own presentation choices (migration fe2026112610). They used to
+    # live in localStorage, which meant they followed the BROWSER rather than the
+    # account: the same person on the till and on a phone could disagree, and
+    # clearing site data reset them. NULL means "follow the default", so a fresh
+    # account behaves exactly as it did before these columns existed.
+    #   locale       'ar' | 'en'
+    #   theme        'system' | 'light' | 'dark'
+    #   timezone     an IANA name — the PERSON's clock, distinct from the tenant's
+    #   date_format  'dmy' | 'mdy' | 'ymd'
+    #   default_page a route the API whitelists, because "/" redirects to it
+    locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    date_format: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    default_page: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PasswordResetToken(TimestampMixin, Base):
@@ -372,6 +393,10 @@ class Location(TimestampMixin, IdMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str | None] = mapped_column(String(31))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # The branch's own week: {"mon": {"open": "09:00", "close": "22:00"}, ...} with
+    # "closed": true for a day it does not trade. NULL means the branch follows the
+    # store's published hours, which is what a single-branch shop should keep.
+    hours: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -405,3 +430,69 @@ class UserLocationAccess(AppendOnlyCreatedAtMixin, Base):
     )
     role_override: Mapped[str | None] = mapped_column(String(63))
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class AccountClosureRequest(TimestampMixin, Base):
+    """A person's request to close their account, or to erase their data.
+
+    A request, never a deletion: other people's shops reference this account, so
+    the platform decides (rejected / completed) after the person has handed over
+    what they own. ``mode`` says which they asked for — ``close`` stops the
+    account while keeping the rows the shops still need, ``delete`` erases the
+    personal data as well.
+
+    Global table (no ``tenant_id``), self-scoped by RLS on ``app.user_id``.
+    """
+
+    __tablename__ = "account_closure_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    mode: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), server_default="pending", nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (Index("ix_account_closure_requests_user", "user_id", "created_at"),)
+
+
+class Team(TimestampMixin, Base):
+    """A named grouping of teammates inside one tenant.
+
+    A team groups, it never grants: permissions still come from the role and the
+    location grants, so joining "فريق المخزن" changes nothing a person can do.
+    ``uq_teams_tenant_name`` keeps one name per tenant so a picker stays usable.
+    """
+
+    __tablename__ = "teams"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512))
+
+
+class TeamMember(Base):
+    """Membership of a person in a team. Carries no role: a team grants nothing."""
+
+    __tablename__ = "team_members"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Denormalised so the RLS policy is a plain tenant comparison rather than a
+    # reach-through to teams on every row.
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

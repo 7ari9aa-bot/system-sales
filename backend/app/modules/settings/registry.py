@@ -22,7 +22,7 @@ from __future__ import annotations
 import enum
 import ipaddress
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any
 
@@ -186,6 +186,22 @@ class SettingDef:
     label_en: str = ""
     description_ar: str = ""
     description_en: str = ""
+    # Where this key lives in the Settings Center (docs/settings/center-map.md). Every key has
+    # exactly ONE canonical home: a domain default from _DOMAIN_HOME, overridden here when the
+    # domain spans several pages (the business domain feeds profile, contact and legal pages).
+    # A page may LINK to a key from elsewhere; it may only EDIT it at its home.
+    section: str | None = None
+    page: str | None = None
+    # How far a wrong value reaches: "low" (a label), "medium" (a rule staff follow),
+    # "high" (money, tax, legal identity, a customer-facing policy). The page shows the
+    # warning for high, and the value is what a reviewer weighs before approving.
+    impact_level: str = "low"
+
+    @property
+    def home(self) -> tuple[str, str]:
+        """The (section, page) that owns this key — its one canonical editing place."""
+        default_section, default_page = _DOMAIN_HOME.get(self.domain, ("", ""))
+        return (self.section or default_section, self.page or default_page)
 
     @property
     def enforced(self) -> bool:
@@ -276,6 +292,16 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "business.website",  # pos/receipt_settings.py::receipt_settings
         "business.commercial_register",  # pos/receipt_settings.py::receipt_settings
         "business.address.postal_code",  # pos/receipt_settings.py::receipt_settings
+        # The pricing engine reads these seven on every resolve and every quote
+        # (modules/pricing/service.py::_KEYS): they are the policy behind a price list, a
+        # quantity tier and an offer.
+        "pricing.price_lists_enabled",  # pricing/service.py::resolve
+        "pricing.quantity_tiers_enabled",  # pricing/service.py::resolve
+        "pricing.round_prices_to",  # pricing/service.py::resolve
+        "pricing.allow_price_below_cost",  # pricing/service.py::quote
+        "pricing.auto_apply_offers",  # pricing/service.py::quote
+        "pricing.stacked_discounts",  # pricing/service.py::quote
+        "pricing.max_order_discount_pct",  # pricing/service.py::quote
         "pos.max_discount_pct",  # pos/service.py::_discount_ceiling
         "pos.cash_movement_limit",  # pos/service.py::add_cash_movement
         "inventory.reserve_ttl_minutes",  # orders/service.py::reservation_ttl
@@ -723,6 +749,7 @@ _reg(
         label_en="Prices include VAT",
         description_ar="لو مفعّل فسعر الصنف المسجّل في الكاشير يشمل الضريبة، وتُستخرج منه في الإيصال.",
         description_en="Recorded prices already include VAT; it is extracted on the receipt.",
+        impact_level="high",
     )
 )
 _reg(
@@ -775,6 +802,7 @@ _reg(
         label_en="Item VAT category",
         description_ar="خاضع للضريبة، معفى، أو غير خاضع. تُطبّق على كل أصناف المحل.",
         description_en="Taxable, exempt or non-taxable; applied to every item of the store.",
+        impact_level="high",
     )
 )
 _reg(
@@ -922,6 +950,7 @@ _reg(
             "The largest single drawer movement (pay-in or pay-out) a cashier may record. "
             "Zero means no limit."
         ),
+        impact_level="high",
     )
 )
 
@@ -940,6 +969,7 @@ _reg(
         label_en="Max Discount %",
         description_ar="أقصى خصم يمكن للكاشير تطبيقه (% من الإجمالي).",
         description_en="Maximum discount a cashier can apply (% of total).",
+        impact_level="high",
     )
 )
 _reg(
@@ -970,6 +1000,7 @@ _reg(
         label_en="Return Window (Days)",
         description_ar="أقصى عدد أيام بعد البيع يُقبل فيها المرتجع.",
         description_en="The most days after a sale that a return is still accepted.",
+        impact_level="high",
     )
 )
 _reg(
@@ -989,6 +1020,7 @@ _reg(
         label_en="Exchange Window (Days)",
         description_ar="أقصى عدد أيام بعد البيع يُقبل فيها الاستبدال. صفر يعني نفس مهلة المرتجع.",
         description_en="Most days after a sale an exchange is accepted. 0 = same as returns.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1106,6 +1138,7 @@ _reg(
             "used (card, wallet, transfer), not just cash, and stores expected vs counted vs the "
             "difference per method. When off, non-cash methods are shown but not settled."
         ),
+        impact_level="high",
     )
 )
 _reg(
@@ -1221,6 +1254,7 @@ _reg(
             "A drawer variance larger than this amount (short or over) can only close with a "
             "manager's approval, recorded with their name and time. Zero means no limit."
         ),
+        impact_level="high",
     )
 )
 # ============================== INVENTORY =================================
@@ -1305,6 +1339,7 @@ _reg(
         label_en="Enable FIFO Costing",
         description_ar="تقييم تكلفة البضاعة المباعة بالأقدم دخولاً أولاً (FIFO).",
         description_en="Value cost of goods sold oldest-first (FIFO).",
+        impact_level="high",
     )
 )
 _reg(
@@ -1406,6 +1441,7 @@ _reg(
         label_en="Stocktake Requires Approval",
         description_ar="لا يُطبَّق الجرد على الأرصدة إلا بعد اعتماد مسؤول.",
         description_en="A stocktake changes balances only after a manager approves it.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1440,6 +1476,7 @@ _reg(
         label_en="PO Requires Approval",
         description_ar="إلزام اعتماد أمر الشراء قبل إرساله للمورد.",
         description_en="Require a purchase order to be approved before it goes to the supplier.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1454,6 +1491,7 @@ _reg(
         label_en="Approval Threshold Amount",
         description_ar="المبلغ الذي يلزم اعتماد أمر الشراء إذا تجاوزه.",
         description_en="The amount above which a purchase order needs approval.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1544,6 +1582,119 @@ _reg(
 )
 
 # ======================== PRINT & DOCUMENTS ===============================
+
+# ---------------------------------------------------------------------------------------------
+# Pricing (section 07). Read by app/modules/pricing/service.py on every resolve and quote.
+# ---------------------------------------------------------------------------------------------
+_reg(
+    SettingDef(
+        key="pricing.price_lists_enabled",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT, Scope.BRANCH),
+        label_ar="تفعيل قوائم الأسعار",
+        label_en="Use price lists",
+        description_ar=(
+            "لما يتقفل، السعر بيفضل سعر المنتج نفسه والقوائم بتفضل محفوظة من غير ما تتطبق."
+        ),
+        description_en=(
+            "When off, the product's own price stands and the lists stay saved but unused."
+        ),
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.quantity_tiers_enabled",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="تفعيل شرائح الكمية",
+        label_en="Use quantity tiers",
+        description_ar="سعر مختلف لما العميل ياخد كمية أكبر.",
+        description_en="A different unit price once the customer takes a larger quantity.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.round_prices_to",
+        domain="pricing",
+        type=SettingType.ENUM,
+        default="none",
+        scopes=(Scope.TENANT,),
+        allowed_values=("none", "0.25", "0.5", "1"),
+        label_ar="تقريب السعر",
+        label_en="Round prices to",
+        description_ar="تقريب سعر الوحدة النهائي: بدون، أو لأقرب ٢٥ قرش أو ٥٠ قرش أو جنيه.",
+        description_en="Round the final unit price: none, or to the nearest 0.25, 0.5 or 1.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.allow_price_below_cost",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بالبيع تحت التكلفة",
+        label_en="Allow selling below cost",
+        description_ar=(
+            "لما يتقفل، العرض اللي بينزّل السعر تحت تكلفة الصنف بيتم رفضه بدل ما يتحسب."
+        ),
+        description_en=(
+            "When off, an offer that takes a price below the item's cost is refused, not applied."
+        ),
+        impact_level="high",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.auto_apply_offers",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=True,
+        scopes=(Scope.TENANT,),
+        label_ar="تطبيق العروض تلقائيًا",
+        label_en="Apply offers automatically",
+        description_ar=("لما يتقفل، مفيش عرض بيتطبق غير اللي العميل بيطلبه بكود."),
+        description_en="When off, only an offer the customer asks for by code applies.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.stacked_discounts",
+        domain="pricing",
+        type=SettingType.BOOL,
+        default=False,
+        scopes=(Scope.TENANT,),
+        label_ar="السماح بتراكم الخصومات",
+        label_en="Allow stacked discounts",
+        description_ar="لما يتقفل، بيتطبق أفضل عرض واحد بس على الفاتورة.",
+        description_en="When off, only the single best offer applies to a basket.",
+    )
+)
+_reg(
+    SettingDef(
+        key="pricing.max_order_discount_pct",
+        domain="pricing",
+        type=SettingType.NUMBER,
+        default=50,
+        scopes=(Scope.TENANT,),
+        min_value=0,
+        max_value=100,
+        label_ar="أقصى خصم على الفاتورة",
+        label_en="Maximum order discount",
+        description_ar=(
+            "أقصى نسبة خصم على إجمالي الفاتورة. الخصم بيتقص عندها بدل ما الفاتورة تترفض."
+        ),
+        description_en=(
+            "The largest share of a basket that offers may take off. The discount is clamped "
+            "to it rather than the sale being refused."
+        ),
+        impact_level="high",
+    )
+)
 
 _reg(
     SettingDef(
@@ -1670,6 +1821,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.low_stock_alert",
+        page="notification-rules",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
@@ -1684,6 +1836,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.order_received",
+        page="notification-rules",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
@@ -2080,6 +2233,7 @@ _reg(
         label_en="Default Tax Rate %",
         description_ar="نسبة الضريبة الافتراضية للمنتجات الجديدة (0 يعني لا ضريبة).",
         description_en="The default tax rate for new products (0 means no tax).",
+        impact_level="high",
     )
 )
 _reg(
@@ -2317,6 +2471,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.quiet_hours_start",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.STRING,
         default="",
@@ -2331,6 +2486,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.quiet_hours_end",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.STRING,
         default="",
@@ -2345,6 +2501,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.digest_mode",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.ENUM,
         default="realtime",
@@ -2359,6 +2516,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.email_enabled",
+        page="notification-channels",
         domain="notifications",
         type=SettingType.BOOL,
         default=False,
@@ -2372,6 +2530,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.push_enabled",
+        page="notification-channels",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
@@ -2385,6 +2544,163 @@ _reg(
 
 # ======================== NOTIFICATIONS (existing, continued) =============
 
+# The Settings Center map (docs/settings/center-map.md) in one table: which section and page a
+# domain's keys belong to when the key itself does not say. Section ids are the map's numbers'
+# slugs; a key overrides this only when its domain genuinely spans pages.
+_DOMAIN_HOME: dict[str, tuple[str, str]] = {
+    "business": ("store", "business-profile"),
+    "organization": ("store", "business-profile"),
+    "branch": ("locations", "branch-settings"),
+    "capability": ("catalog", "product-settings"),
+    "catalog": ("catalog", "product-settings"),
+    "pos": ("pos", "pos-settings"),
+    "print": ("pos", "invoices-and-receipts"),
+    "einvoice": ("sales", "taxes-and-fees"),
+    "inventory": ("inventory", "inventory-settings"),
+    "purchasing": ("purchasing", "purchasing-settings"),
+    "orders": ("sales", "sales-settings"),
+    # Pricing is a selling rule, so it lives in section 07 beside the sales and tax keys.
+    "pricing": ("sales", "pricing"),
+    "notifications": ("notifications", "notification-rules"),
+    "customer_agent": ("ai", "customer-agent"),
+    "analytics_agent": ("ai", "analytics-agent"),
+    "team": ("team", "roles"),
+    "security": ("security", "security-policies"),
+    "billing": ("billing", "current-plan"),
+    "imports": ("data", "import"),
+}
+
+# The business domain spans six pages in the map, but its domain default is one page. These
+# keys name the page that owns them, so each Settings Center screen edits only its own controls.
+# Kept as one table: reading it is how you see, at a glance, where the store's settings live.
+_PAGE_OVERRIDES: dict[str, str] = {
+    # Business profile — what the business IS.
+    "business.trade_name": "business-profile",
+    "business.type": "business-profile",
+    "business.vertical": "business-profile",
+    "business.setup_state": "business-profile",
+    "organization.default_language": "business-profile",
+    # Brand identity — how it looks.
+    "organization.brand_color": "brand-identity",
+    # Contact details — how a customer reaches it.
+    "business.phone": "contact-details",
+    "business.email": "contact-details",
+    "business.website": "contact-details",
+    "business.address.line1": "contact-details",
+    "business.address.city": "contact-details",
+    "business.address.postal_code": "contact-details",
+    # Legal data — what it may be held to.
+    "business.legal_name": "legal-data",
+    "business.tax_id": "legal-data",
+    "business.commercial_register": "legal-data",
+    "business.terms_accepted_at": "legal-data",
+    # Who may see profit is a permission, not a business fact: it belongs on the matrix.
+    "reports.managers_see_profit": "team/matrix",
+    # The return and exchange windows are a promise the shop makes to its customers, so they are
+    # edited on the business policies page next to the wording of that promise — not buried in the
+    # till settings. Section 07 links here rather than offering a second editor for the same rule.
+    "pos.return_max_days": "store/business-policies",
+    "pos.exchange_max_days": "store/business-policies",
+    # The catalogue domain has five keys but the map gives it seven pages: the ones that are not
+    # about "what a new product defaults to" go to the page that owns them, so product-settings is
+    # not a drawer everything falls into.
+    "catalog.max_variants_per_product": "variants-and-options",
+    "catalog.sku_format": "sku-and-barcode",
+    "catalog.barcode_auto_generate": "sku-and-barcode",
+    "catalog.show_out_of_stock": "product-states",
+    # The till domain is fourteen keys over five pages. What a new product defaults to is not the
+    # same question as who may take money, so the payment, variance and cash keys name their pages.
+    "pos.take_payments": "collection-methods",
+    "pos.settle_payment_methods": "collection-methods",
+    "pos.allow_sale_on_account": "collection-methods",
+    "pos.reference_required_methods": "collection-methods",
+    "pos.variance_reason_required": "shifts",
+    "pos.variance_approval_threshold": "shifts",
+    "pos.cash_movement_limit": "cash-movement",
+    # Purchasing: five keys over three pages. What a receipt may do is not the same decision as
+    # who may approve an order, so neither lives on the general purchasing page.
+    "purchasing.allow_partial_receipt": "receiving-and-inspection",
+    "purchasing.allow_over_receipt": "receiving-and-inspection",
+    "purchasing.approval_required": "approval-limits",
+    "purchasing.approval_threshold": "approval-limits",
+    # Section 07's three pricing pages were empty because nothing was behind them. The pricing
+    # module now is, and these seven keys are what it reads: a price list is a document, but
+    # whether lists are used at all, whether tiers stack, and what an offer may take off the
+    # whole order are policy.
+    "pricing.price_lists_enabled": "price-lists",
+    "pricing.quantity_tiers_enabled": "pricing",
+    "pricing.round_prices_to": "pricing",
+    "pricing.allow_price_below_cost": "pricing",
+    "pricing.auto_apply_offers": "discounts-and-offers",
+    "pricing.stacked_discounts": "discounts-and-offers",
+    "pricing.max_order_discount_pct": "discounts-and-offers",
+    # The inventory domain is twelve keys over six pages. "How stock is classified" is not the
+    # same question as "how it is costed", so each key names the page that owns it.
+    "inventory.auto_reserve": "stock-states",
+    "inventory.reserve_ttl_minutes": "stock-states",
+    "inventory.expiry_alert_days": "stock-states",
+    "inventory.dead_stock_days": "stock-states",
+    "inventory.safety_stock_default": "stock-limits",
+    "inventory.stocktake_approval_required": "counts-and-adjustments",
+    "inventory.show_warehouse_transfers": "transfers",
+    "inventory.quality_check_on_receipt": "transfers",
+    "inventory.fifo_enabled": "inventory-cost",
+    # Structure, not identity: the branch limits belong with the branches themselves.
+    "organization.multi_branch": "locations/all-branches",
+    "organization.max_branches": "locations/all-branches",
+}
+
+
+def _with_home(d: SettingDef) -> SettingDef:
+    """Apply the home override. One place decides where a key is edited.
+
+    A bare page name keeps the section its domain already owns; ``"section/page"`` moves the key
+    to another section, which is what a key registered under one module but owned by another page
+    needs (the branch limits live in "organization" but they describe the branches).
+    """
+    target = _PAGE_OVERRIDES.get(d.key)
+    if not target:
+        return d
+    section, _, page = target.rpartition("/")
+    return replace(d, page=page, section=section or d.section)
+
+
+_DEFINITIONS = [_with_home(d) for d in _DEFINITIONS]
+
+# Keys whose domain spans several pages, so the domain default above is not where they belong.
+# The business domain is the clearest case: contact facts, brand facts and legal facts are three
+# different pages with three different audiences, and the map keeps them apart on purpose.
+_PAGE_OVERRIDES: dict[str, str] = {
+    # Brand identity: what the customer meets as the shop's face.
+    "business.trade_name": "brand-identity",
+    "organization.brand_color": "brand-identity",
+    # Contact details: how to reach the shop.
+    "business.phone": "contact-details",
+    "business.email": "contact-details",
+    "business.website": "contact-details",
+    "business.address.line1": "contact-details",
+    "business.address.city": "contact-details",
+    "business.address.postal_code": "contact-details",
+    # Legal data: what a tax inspector or a court reads.
+    "business.legal_name": "legal-data",
+    "business.tax_id": "legal-data",
+    "business.commercial_register": "legal-data",
+    "business.terms_accepted_at": "legal-data",
+    # The structure of the business belongs with the branches, not the profile.
+    "organization.multi_branch": "all-branches",
+    "organization.max_branches": "all-branches",
+    # The financial year is a rule of selling.
+    "organization.fiscal_year_start_month": "sales-settings",
+}
+_DEFINITIONS = [
+    replace(d, page=_PAGE_OVERRIDES[d.key]) if d.key in _PAGE_OVERRIDES else d for d in _DEFINITIONS
+]
+# A page override must name a key that exists: a typo here would silently leave the key at its
+# domain default and the page it was meant to fill would render empty.
+_missing_overrides = sorted(set(_PAGE_OVERRIDES) - {d.key for d in _DEFINITIONS})
+if _missing_overrides:
+    raise RuntimeError(f"_PAGE_OVERRIDES names unregistered keys: {_missing_overrides}")
+
 REGISTRY: dict[str, SettingDef] = {d.key: d for d in _DEFINITIONS}
 
 
@@ -2396,16 +2712,28 @@ def get_definition(key: str) -> SettingDef:
         raise KeyError(f"Unknown setting key: {key!r}") from None
 
 
-def list_definitions(*, domain: str | None = None, segment: str | None = None) -> list[SettingDef]:
-    """Return all definitions, optionally for one domain and/or one business segment.
+def list_definitions(
+    *,
+    domain: str | None = None,
+    segment: str | None = None,
+    section: str | None = None,
+    page: str | None = None,
+) -> list[SettingDef]:
+    """Return all definitions, optionally narrowed by domain, segment, section and/or page.
 
     A segment keeps the keys that name it AND every key that names none (those apply to everyone).
+    ``section``/``page`` filter on each key's canonical home, so a Settings Center page asks for
+    its own controls and gets exactly the keys it owns — nothing borrowed from a neighbour.
     """
     result = list(_DEFINITIONS)
     if domain is not None:
         result = [d for d in result if d.domain == domain]
     if segment is not None:
         result = [d for d in result if not d.segments or segment in d.segments]
+    if section is not None:
+        result = [d for d in result if d.home[0] == section]
+    if page is not None:
+        result = [d for d in result if d.home[1] == page]
     return result
 
 

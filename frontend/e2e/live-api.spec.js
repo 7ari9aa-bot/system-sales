@@ -45,8 +45,8 @@ async function posTab(root, re) {
  * says a page is missing but not WHICH page the browser was on. This fails with the URL and the
  * first line of what was actually on screen, so the next red run diagnoses itself.
  */
-async function openPosSettings(page) {
-  await page.goto("/settings/pos", { waitUntil: "networkidle" });
+async function openPosSettings(page, path = "/settings/pos") {
+  await page.goto(path, { waitUntil: "networkidle" });
   const root = page.locator(".cashier-root");
   if ((await root.count()) === 0) {
     const body = (
@@ -56,7 +56,7 @@ async function openPosSettings(page) {
         .catch(() => "")
     ).replace(/\s+/g, " ");
     throw new Error(
-      `/settings/pos rendered no POS settings page. url=${page.url()} body=${body.slice(0, 300)}`,
+      `${path} rendered no POS settings page. url=${page.url()} body=${body.slice(0, 300)}`,
     );
   }
   return root;
@@ -2426,8 +2426,9 @@ test("backup export on the screen: the downloaded file holds the real expense an
     payment_method: "cash",
   });
 
-  const main = await openPosSettings(page);
-  await (await posTab(main, /النسخ|الاحتياطي|backup/i)).click();
+  // Backup is a tool screen, not a setting, so the old wrapper still owns it — at its own
+  // address. /settings/pos itself now forwards to the settings center, which has no export.
+  const main = await openPosSettings(page, "/settings/pos/tools/backup");
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     main.getByRole("button", { name: /تصدير الآن/ }).click(),
@@ -2545,23 +2546,28 @@ test("print settings on the screen are saved for real: the prefix the owner type
     })
   ).session;
 
-  const main = await openPosSettings(page);
-  // Name the print tab itself. The old alternation included "receipt", which matches
-  // "Receipt tracking" — the first tab, so the click opened the receipt list and the prefix field
-  // was never on screen (run 45752402206: the snapshot showed Receipt tracking selected).
-  await (await posTab(main, /Print & barcode|الطباعة والباركود/i)).click();
+  // print.invoice_prefix has ONE canonical home now — the center's invoices-and-receipts page —
+  // and the old POS tab is a redirect to it. The test drives that page, because a field the
+  // receipt reads must be tested where an owner actually edits it.
+  const main = page.locator("main");
+  await page.goto("/settings/pos/invoices-and-receipts", { waitUntil: "networkidle" });
 
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
   // receipt actually reads are offered now (print.invoice_prefix, print.barcode_format), so the
   // honest test is no longer "it refuses to pretend" but "what the owner types is what is stored".
-  const prefix = main.getByLabel("بادئة رقم الفاتورة", { exact: true });
+  // The center's fields take their accessible name from the registry label, and the label follows
+  // the UI language — this suite's tenant renders English, where the wrapper it replaced showed
+  // Arabic. Accept both, and never a bare "prefix" (it would also match a neighbouring key).
+  const prefix = main.getByLabel(/بادئة رقم الفاتورة|Invoice Number Prefix/);
   await expect(
     prefix,
     "the prefix the receipt prints is on the screen",
   ).toHaveValue("INV");
   await prefix.fill("LIVE");
-  await main.getByRole("button", { name: "حفظ", exact: true }).click();
-  await expect(main.getByText("تم حفظ")).toBeVisible({ timeout: 20_000 });
+  // The whole center follows the tenant's UI language, and this suite's tenant renders English:
+  // the button is "Save" and the notice "Saved", where the wrapper it replaced said Arabic.
+  await main.getByRole("button", { name: /^(حفظ|Save)$/ }).click();
+  await expect(main.getByText(/تم الحفظ|تم حفظ|^Saved$/)).toBeVisible({ timeout: 20_000 });
   // /settings/effective answers a MAP keyed by setting key, each value a resolved setting.
   const stored = await api("GET", "/settings/effective?domain=print");
   expect(

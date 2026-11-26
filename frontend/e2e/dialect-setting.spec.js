@@ -122,7 +122,7 @@ test("if the setting cannot be loaded, the screen cannot write over it", async (
 test("saving the regional settings never touches the assistant's dialect", async ({ page }) => {
   // they used to share a page; they no longer do, and this still has to hold: the regional save
   // writes currency and timezone only, so changing the shop's country cannot rewrite the dialect.
-  const state = await setup(page, { stored: "msa", currency: "EGP" }, "/settings/workspace");
+  const state = await setup(page, { stored: "msa", currency: "EGP" }, "/settings/workspace/data");
   const regional = card(page, "Regional settings");
   await regional.getByRole("button", { name: "Save changes" }).click();
   // wait for the WHOLE regional save to finish (its own confirmation), not just its first request:

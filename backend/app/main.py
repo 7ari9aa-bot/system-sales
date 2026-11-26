@@ -49,7 +49,7 @@ from app.core.observability import (
 )
 from app.core.profit_report import router as profit_report_router
 from app.core.redis import close_redis, get_redis
-from app.core.routing import CommitBeforeResponseRoute
+from app.core.routing import CommitBeforeResponseMiddleware, CommitBeforeResponseRoute
 from app.core.season_markdown import router as season_markdown_router
 from app.core.sell_through_report import router as sell_through_router
 from app.core.shop_type import router as shop_type_router
@@ -88,9 +88,12 @@ from app.modules.evidence.router import router as evidence_router
 from app.modules.expenses.router import router as expenses_router
 from app.modules.financial.router import router as financial_router
 from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
+from app.modules.identity.router import roles_router as identity_roles_router
 from app.modules.identity.router import router as identity_router
+from app.modules.identity.router import teams_router as identity_teams_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
 from app.modules.identity.router import users_router as identity_users_router
+from app.modules.identity.router import workspaces_router as identity_workspaces_router
 from app.modules.identity.routers.google import router as google_auth_router
 from app.modules.imports.router import router as imports_router
 from app.modules.inventory.router import router as inventory_router
@@ -100,6 +103,7 @@ from app.modules.marketing.router import (
 from app.modules.marketing.router import (
     router as marketing_router,
 )
+from app.modules.notifications.router import me_router as notifications_me_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.operations.router import (
     router as operations_router,
@@ -119,6 +123,7 @@ from app.modules.platform.routers.owner import router as owner_console_router
 from app.modules.platform.routers.sites_platform import router as sites_platform_router
 from app.modules.platform.routers.telemetry import router as public_telemetry_router
 from app.modules.pos.router import router as pos_router
+from app.modules.pricing.router import router as pricing_router
 from app.modules.privacy.router import public_router as privacy_public_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.purchasing.router import router as purchasing_router
@@ -461,6 +466,10 @@ def create_app() -> FastAPI:
     # must short-circuit before they consume the rate budget (P6). RequestID
     # sits OUTSIDE the body cap so its 413 (emitted before any route runs) still
     # carries the request id the unified error contract promises.
+    # INNERMOST, closest to the router: it must see the session ``get_db`` published and commit
+    # before the first byte of the body leaves the process. See the class docstring for why the
+    # route-class form alone reached no endpoint.
+    app.add_middleware(CommitBeforeResponseMiddleware)
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
@@ -485,7 +494,10 @@ def create_app() -> FastAPI:
         google_auth_router,
         identity_users_router,
         identity_tenants_router,
+        identity_workspaces_router,
         identity_hierarchy_router,
+        identity_roles_router,
+        identity_teams_router,
         conversations_router,
         conversations_templates_router,
         conversations_public_router,
@@ -509,6 +521,7 @@ def create_app() -> FastAPI:
         operations_sla_router,
         realtime_router,
         notifications_router,
+        notifications_me_router,
         privacy_router,
         privacy_public_router,
         platform_module_router,
@@ -531,6 +544,7 @@ def create_app() -> FastAPI:
         expenses_router,
         imports_router,
         purchasing_router,
+        pricing_router,
         settings_router,
         taxation_router,
         customer_accounts_router,

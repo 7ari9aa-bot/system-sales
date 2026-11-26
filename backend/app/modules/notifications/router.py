@@ -128,3 +128,116 @@ async def mark_all_read(ctx: TenantCtxDep) -> schemas.MarkReadResult:
 
     count = await NotificationService.mark_all_read(ctx.session, ctx.tenant_id, ctx.user.id)
     return schemas.MarkReadResult(marked=count)
+
+
+# --------------------------------------------------------------------------
+# The person's own notification settings.
+#
+# They live on a /users/me prefix because that is who owns them: no workspace-admin
+# permission is needed to decide whether YOU want email, and a route under
+# /notifications would read as workspace configuration. The workspace's own rules
+# (section 16 of the settings map) are a different surface and a different
+# permission.
+# --------------------------------------------------------------------------
+
+me_router = APIRouter(prefix="/users/me", tags=["notifications"])
+
+
+def _hhmm(value) -> str | None:
+    return value.strftime("%H:%M") if value is not None else None
+
+
+@me_router.get(
+    "/notification-preferences",
+    summary="Read the caller's own notification channels and quiet hours",
+    response_model=schemas.NotificationPreferencesOut,
+)
+async def my_notification_preferences(ctx: TenantCtxDep) -> schemas.NotificationPreferencesOut:
+    """What this person's notifications actually do, and why.
+
+    Reading creates the row when it is missing, because "no row" and "email is on"
+    are the same state: a screen that shows neither cannot be reasoned about.
+    """
+    from app.modules.notifications.digest import NotificationAggregator
+    from app.modules.notifications.service import (
+        NotificationPreferencesService,
+        person_local_time,
+        person_timezone,
+    )
+
+    pref = await NotificationPreferencesService.get_or_create(
+        ctx.session, ctx.tenant_id, ctx.user.id
+    )
+    zone = await person_timezone(ctx.session, ctx.tenant_id, ctx.user.id)
+    local_now = await person_local_time(ctx.session, ctx.tenant_id, ctx.user.id)
+    quiet_on = pref.quiet_start is not None and pref.quiet_end is not None
+
+    from app.core.settings_read import resolve_settings
+
+    workspace = await resolve_settings(
+        ctx.session,
+        ctx.tenant_id,
+        ["notifications.email_enabled", "notifications.push_enabled"],
+    )
+
+    return schemas.NotificationPreferencesOut(
+        channels=[
+            schemas.ChannelPreference(
+                channel="in_app",
+                label_key="notif.channel.inApp",
+                enabled=True,
+                available=True,
+                locked=True,
+            ),
+            schemas.ChannelPreference(
+                channel="email",
+                label_key="notif.channel.email",
+                enabled=pref.email_enabled,
+                available=True,
+            ),
+            schemas.ChannelPreference(
+                channel="push",
+                label_key="notif.channel.push",
+                enabled=pref.push_enabled,
+                available=True,
+            ),
+        ],
+        quiet_hours=schemas.QuietHours(
+            start=_hhmm(pref.quiet_start),
+            end=_hhmm(pref.quiet_end),
+            active_now=quiet_on
+            and NotificationAggregator._in_quiet_hours(pref, now_time=local_now),
+        ),
+        timezone=zone,
+        workspace={
+            "email": bool(workspace["notifications.email_enabled"]),
+            "push": bool(workspace["notifications.push_enabled"]),
+        },
+    )
+
+
+@me_router.put(
+    "/notification-preferences",
+    summary="Change the caller's own notification channels or quiet hours",
+    response_model=schemas.NotificationPreferencesOut,
+)
+async def update_my_notification_preferences(
+    body: schemas.NotificationPreferencesUpdate, ctx: TenantCtxDep
+) -> schemas.NotificationPreferencesOut:
+    """Save one switch or the window, then answer with the whole state.
+
+    The response is the same shape the GET returns, so the screen renders what the
+    server now holds instead of echoing the request back to itself.
+    """
+    from app.modules.notifications.service import NotificationPreferencesService
+
+    await NotificationPreferencesService.update(
+        ctx.session,
+        ctx.tenant_id,
+        ctx.user.id,
+        email_enabled=body.email_enabled,
+        push_enabled=body.push_enabled,
+        quiet_start=body.quiet_start,
+        quiet_end=body.quiet_end,
+    )
+    return await my_notification_preferences(ctx)

@@ -6,7 +6,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 # Same shape the telemetry ingest accepts (platform/services/telemetry.py). Always
 # used with fullmatch: a "$" anchor would let a trailing newline through.
@@ -82,6 +82,38 @@ class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=16, max_length=128)
 
 
+class ChangePasswordRequest(BaseModel):
+    """Body for POST /auth/password/change — a signed-in account, proven twice.
+
+    `current_password` is what makes this safe to expose without a token: an
+    unlocked laptop is not enough to change the credential. `new_password` is
+    checked against the tenant's strength policy in the service, not here, so the
+    rule has exactly one home.
+    """
+
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class SignedInDeviceOut(BaseModel):
+    """One live refresh-token chain, as the account's own screen shows it."""
+
+    id: uuid.UUID
+    device: str
+    user_agent: str | None = None
+    ip: str | None = None
+    signed_in_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+class RevokedSessionsOut(BaseModel):
+    """How many chains a revoke call closed — never who they were."""
+
+    revoked: int
+
+
 class ResendVerificationRequest(BaseModel):
     """Body for POST /auth/resend-verification — an address, nothing else.
 
@@ -147,21 +179,90 @@ class CurrentUser(BaseModel):
     # The security screen used to apologise that it could not read this; it is one
     # flag on the row the account already loads, so it is answered with the account.
     mfa_enabled: bool = False
+    # Proven-inbox flag. The profile screen shows it beside the address instead of
+    # implying an unverified account is verified.
+    email_verified: bool = False
+    # Optional contact/display facts the person fills in themselves.
+    phone: str | None = None
+    job_title: str | None = None
     tenants: list[CurrentTenant] = []
+
+
+class UserPreferences(BaseModel):
+    """What the person's own screen reads: their choices, and what applies now.
+
+    A NULL field means "follow the default", which is why the response also carries
+    the resolved values. Without them the screen would have to guess what a NULL
+    timezone means, and a guess in a clock is a wrong time, not a blank one.
+    """
+
+    locale: str | None = None
+    theme: str | None = None
+    timezone: str | None = None
+    date_format: str | None = None
+    default_page: str | None = None
+    #: The zone the account actually counts in: the person's own, or the shop's.
+    effective_timezone: str
+    #: The shop's zone, so the screen can say "following the shop" honestly.
+    tenant_timezone: str | None = None
+
+
+class PreferencesUpdate(BaseModel):
+    """A partial rewrite of the caller's preferences.
+
+    ``None`` leaves a field alone; an empty string clears it back to the default.
+    That is the same contract ``PATCH /users/me`` uses for the phone and the job
+    title, so one screen can save one control at a time without resending the rest.
+    """
+
+    locale: str | None = Field(default=None, max_length=8)
+    theme: str | None = Field(default=None, max_length=16)
+    timezone: str | None = Field(default=None, max_length=64)
+    date_format: str | None = Field(default=None, max_length=8)
+    default_page: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> PreferencesUpdate:
+        if all(
+            value is None
+            for value in (
+                self.locale,
+                self.theme,
+                self.timezone,
+                self.date_format,
+                self.default_page,
+            )
+        ):
+            raise ValueError("nothing to update")
+        return self
 
 
 class ProfileUpdate(BaseModel):
     """The parts of an account its owner may rewrite about themselves.
 
-    Deliberately narrow: the full name is the one personal fact the API owns.
-    Email is not here — changing it is a verified-identity operation (prove the
-    inbox, then move the login), not a field edit, and the address is the key
-    invitations bind to. The workspace name is not here either: it belongs to
-    the shop (``PUT /tenants/{id}/name``), not to the person.
+    Deliberately narrow: the display name, the phone and the job title are the
+    personal facts the API owns. Email is not here — changing it is a
+    verified-identity operation (prove the inbox, then move the login), not a
+    field edit, and the address is the key invitations bind to. The workspace
+    name is not here either: it belongs to the shop (``PUT /tenants/{id}/name``),
+    not to the person.
+
+    Every field is optional so the screen can save one row at a time; an empty
+    body is refused rather than answered with a no-op 200.
     """
 
     # Trimmed and collapsed by the service; the bound only stops an absurd payload.
-    full_name: str = Field(min_length=1, max_length=255)
+    full_name: str | None = Field(default=None, max_length=255)
+    # Free-form as people write numbers ("+20 100 123 4567"). The service keeps
+    # the digits and the leading + and refuses anything that is not a phone.
+    phone: str | None = Field(default=None, max_length=32)
+    job_title: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> ProfileUpdate:
+        if self.full_name is None and self.phone is None and self.job_title is None:
+            raise ValueError("nothing to update")
+        return self
 
 
 class InviteRequest(BaseModel):
@@ -180,6 +281,73 @@ class InvitationOut(BaseModel):
     status: str
     expires_at: datetime
     token: str  # shown once to the inviting admin
+
+
+class MemberRoleUpdate(BaseModel):
+    """A role change on an existing membership.
+
+    One field, because that is the whole operation: the person, the workspace and
+    the caller's rank are all server-side facts.
+    """
+
+    role_code: str = Field(min_length=1, max_length=63)
+
+
+class RolePermissionOut(BaseModel):
+    code: str
+    resource: str
+    action: str
+
+
+class RoleOut(BaseModel):
+    """A role and the permission codes it carries, read from role_permissions."""
+
+    code: str
+    name: str
+    description: str | None = None
+    permissions: list[str]
+
+
+class PermissionMatrixOut(BaseModel):
+    """The whole matrix: the roles, every permission, and who holds what.
+
+    Sent as one payload because a matrix split across requests is a matrix that
+    renders half-decided: a column arriving late looks like "no permissions".
+    """
+
+    roles: list[RoleOut]
+    permissions: list[RolePermissionOut]
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class TeamOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    member_count: int = 0
+
+
+class TeamListOut(BaseModel):
+    items: list[TeamOut]
+
+
+class TeamMemberOut(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
+
+
+class TeamMemberListOut(BaseModel):
+    items: list[TeamMemberOut]
 
 
 class AcceptInvitationRequest(BaseModel):
@@ -220,10 +388,32 @@ class LocationCreate(BaseModel):
     code: str | None = Field(default=None, min_length=1, max_length=31)
 
 
+DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+class BranchDayHours(BaseModel):
+    """One day of a branch's week. `closed` wins over any open/close it carries."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    closed: bool = False
+    open: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    close: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+    @model_validator(mode="after")
+    def _open_needs_close(self):
+        if not self.closed and bool(self.open) != bool(self.close):
+            raise ValueError("a trading day needs both open and close")
+        return self
+
+
 class LocationUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     code: str | None = Field(default=None, min_length=1, max_length=31)
     is_active: bool | None = None
+    # None leaves the hours untouched; an empty object clears them back to
+    # "follows the store", which is a real choice and must stay reachable.
+    hours: dict[str, BranchDayHours] | None = None
 
 
 class LocationOut(BaseModel):
@@ -235,6 +425,7 @@ class LocationOut(BaseModel):
     name: str
     code: str | None
     is_active: bool
+    hours: dict | None = None
 
 
 class LocationListOut(BaseModel):
@@ -258,3 +449,84 @@ class LocationAccessOut(BaseModel):
 
 class LocationAccessListOut(BaseModel):
     items: list[LocationAccessOut]
+
+
+class AccountClosureRequestIn(BaseModel):
+    """Ask to close the account, or to erase the personal data as well."""
+
+    # close: stop using the account, keep the rows the shops still need.
+    # delete: erase the personal data too.
+    mode: str = Field(pattern="^(close|delete)$")
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class AccountClosureBlocker(BaseModel):
+    """One membership that stops the request: the person owns this shop alone."""
+
+    tenant_id: uuid.UUID
+    tenant_name: str
+    role_code: str | None = None
+
+
+class AccountClosureRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mode: str
+    reason: str | None = None
+    status: str
+    created_at: datetime
+    decided_at: datetime | None = None
+
+
+class AccountClosureState(BaseModel):
+    """What the profile screen needs to draw the "close my account" card.
+
+    ``blockers`` is not decoration: a sole owner cannot walk away from a shop
+    that would be left without one, so the screen disables the request and names
+    the shop instead of letting the person submit something that must fail.
+    """
+
+    request: AccountClosureRequestOut | None = None
+    blockers: list[AccountClosureBlocker] = []
+    memberships: int = 0
+
+
+class WorkspaceMembershipOut(BaseModel):
+    """One workspace the person belongs to, as the switcher lists it."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    role_code: str | None = None
+    lifecycle_state: str
+    is_active: bool
+
+
+class WorkspaceOverviewOut(BaseModel):
+    """The account workspace: the container, its region, its size, and your role.
+
+    ``role_code`` is the caller's own role, not the workspace's: the same container
+    looks different to its owner and to its cashier.
+    """
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    role_code: str | None = None
+    lifecycle_state: str
+    is_active: bool
+    status_reason: str | None = None
+    currency: str
+    timezone: str | None = None
+    country_code: str
+    dialect: str | None = None
+    member_count: int
+    created_at: datetime
+
+
+class WorkspaceAdminsOut(BaseModel):
+    """Who runs the workspace. Empty for a caller without ``settings:read``."""
+
+    owner_user_id: uuid.UUID | None = None
+    admin_user_ids: list[uuid.UUID] = Field(default_factory=list)

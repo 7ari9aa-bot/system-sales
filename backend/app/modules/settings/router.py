@@ -138,6 +138,9 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
         rollback_supported=d.rollback_supported,
         enforced=d.enforced,
         segments=list(d.segments),
+        section=d.home[0],
+        page=d.home[1],
+        impact_level=d.impact_level,
         label_ar=d.label_ar,
         label_en=d.label_en,
         description_ar=d.description_ar,
@@ -168,11 +171,17 @@ async def list_setting_definitions(
     ctx: SettingsReadCtx,
     domain: str | None = None,
     segment: str | None = None,
+    section: str | None = None,
+    page: str | None = None,
 ) -> list[SettingDefOut]:
-    """List setting metadata, optionally for one domain and/or one business segment."""
+    """List setting metadata, narrowed by domain, segment, section and/or page.
+
+    ``section``/``page`` are the Settings Center home (docs/settings/center-map.md), so a page
+    asks for the keys it owns and receives exactly those.
+    """
     if segment is not None and segment not in SEGMENTS:
         raise ValidationError(f"unknown segment {segment!r}; expected one of {list(SEGMENTS)}")
-    defs = list_definitions(domain=domain, segment=segment)
+    defs = list_definitions(domain=domain, segment=segment, section=section, page=page)
     return [_def_to_out(d) for d in defs]
 
 
@@ -478,6 +487,51 @@ async def get_settings_slo(ctx: SettingsReadCtx) -> dict[str, object]:
     from app.modules.settings.slo import get_slo_status
 
     return await get_slo_status()
+
+
+# ---------------------------------------------------------------------------
+# Security posture (§18 session control)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/security-posture")
+async def get_security_posture(ctx: SettingsReadCtx) -> dict[str, object]:
+    """What this deployment actually enforces today, in one read model.
+
+    Section 18's "session control" page cannot offer a session-policy editor: the token
+    lifetimes are deployment configuration (``ACCESS_TOKEN_TTL_SECONDS`` and
+    ``REFRESH_TOKEN_TTL_SECONDS``) and no registry key owns them, so an editor there would
+    write rows nothing reads. What the page CAN do honestly is show the values the running
+    process enforces beside the security keys that ARE editable, so a reader sees the whole
+    posture and knows which half to change where.
+
+    Every field is read, never assumed: the four ``security.*`` keys through the resolver
+    (the same values the password policy, the rotation sweep, the audit sweep and the IP
+    gate read), and the two token lifetimes from the loaded configuration. The allowlist
+    is reported as a count, never as its entries: the value is SENSITIVE and this route is
+    not the place that hands it out.
+    """
+    from app.core.config import get_settings as _load_config
+
+    service = SettingsService(ctx.session, ctx.tenant_id)
+    strong_passwords = await service.value("security.require_strong_passwords")
+    rotation_days = await service.value("security.api_key_rotation_days")
+    retention_days = await service.value("security.audit_retention_days")
+    allowlist = await service.value("security.ip_allowlist")
+    config = _load_config()
+    return {
+        "password_policy": {"require_strong_passwords": bool(strong_passwords)},
+        "sessions": {
+            "access_token_ttl_seconds": int(config.access_token_ttl_seconds),
+            "refresh_token_ttl_seconds": int(config.refresh_token_ttl_seconds),
+        },
+        "ip_allowlist": {
+            "configured": bool(allowlist),
+            "entries": len(allowlist or []),
+        },
+        "audit": {"retention_days": retention_days},
+        "api_keys": {"rotation_days": rotation_days},
+    }
 
 
 # ---------------------------------------------------------------------------

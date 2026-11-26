@@ -673,6 +673,76 @@ class AuthService:
         )
         await session.flush()
 
+    # -- changing the password while signed in ------------------------------
+
+    @staticmethod
+    async def change_password(
+        session,
+        *,
+        user_id: uuid.UUID,
+        current_password: str,
+        new_password: str,
+        keep_token_hash: str | None = None,
+        ip: str | None = None,
+    ) -> int:
+        """Replace the password of a SIGNED-IN account, keeping this device signed in.
+
+        The recovery email stays the way back in for someone who has lost the
+        password; this is the path for someone who still has it and does not want
+        to wait for a link. Three guards, in order: the current password must
+        prove the request, the new one must differ, and the tenant's strength
+        policy must accept it.
+
+        Every other refresh chain is revoked, so a password change is also a
+        sign-out-everywhere-else — the reason someone changes it. The caller's own
+        chain survives (`keep_token_hash`), and `auth_version` moves so access
+        tokens minted before this moment stop working.
+
+        Returns how many other sessions were revoked.
+        """
+        now = _now()
+        user = (
+            await session.execute(select(User).where(User.id == user_id).with_for_update())
+        ).scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise PermissionDeniedError("account not available")
+        if not await verify_password_async(current_password, user.password_hash):
+            raise ValidationError("current password is incorrect")
+        if current_password == new_password:
+            raise ValidationError("the new password must be different from the current one")
+
+        user_tenant_id = (
+            await session.execute(
+                select(TenantUser.tenant_id)
+                .where(TenantUser.user_id == user.id, TenantUser.is_default.is_(True))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        _validate_password_strength(
+            new_password,
+            required=await _tenant_strong_passwords_required(session, user_tenant_id),
+        )
+
+        user.password_hash = await hash_password_async(new_password)
+        user.auth_version = int(user.auth_version or 0) + 1
+
+        conditions = [RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)]
+        if keep_token_hash:
+            conditions.append(RefreshToken.token_hash != keep_token_hash)
+        result = await session.execute(
+            sa.update(RefreshToken).where(*conditions).values(revoked_at=now)
+        )
+        await session.flush()
+
+        await _record_security_event(
+            "password_changed",
+            details={"sessions_revoked": int(result.rowcount or 0)},
+            ip=ip,
+            tenant_id=user_tenant_id,
+            actor_user_id=user.id,
+        )
+        return int(result.rowcount or 0)
+
     # -- email verification (audit finding 3: account pre-hijack) -----------
 
     @staticmethod

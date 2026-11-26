@@ -97,6 +97,7 @@ async def update_location(
         name=body.name,
         code=body.code,
         is_active=body.is_active,
+        hours=body.hours,
     )
 
 

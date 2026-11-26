@@ -51,16 +51,23 @@ const Usage = lazy(() => import('@/pages/Usage'));
 // «My Website» — a pointer to the standalone Fihrist Sites platform (Fihrist no longer builds sites).
 const Websites = lazy(() => import('@/pages/Websites'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
+import DeveloperSectionGate from '@/components/settings/DeveloperSectionGate';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const WorkspaceSettings = lazy(() => import('@/pages/settings/WorkspaceSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
+const TeamSettings = lazy(() => import('@/pages/settings/TeamSettings'));
 const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
 const PosSettings = lazy(() => import('@/pages/settings/PosSettings'));
-const PoliciesSettings = lazy(() => import('@/pages/settings/PoliciesSettings'));
 const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'));
+const LoginSettings = lazy(() => import('@/pages/settings/LoginSettings'));
+const PreferencesSettings = lazy(() => import('@/pages/settings/PreferencesSettings'));
+const NotificationPreferences = lazy(() => import('@/pages/settings/NotificationPreferences'));
+const SettingsSection = lazy(() => import('@/pages/settings/SettingsSection'));
 const UnifiedSettings = lazy(() => import('@/pages/settings/UnifiedSettings'));
-const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
 const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
+// Section 12's four channel pages share one component; the routes below name it directly,
+// so a missing import here is not a lazy-load miss — it is a ReferenceError on every route.
+const ChannelSectionPage = lazy(() => import('@/pages/settings/ChannelSectionPage'));
 
 /** الموقع العام (الماركتنج) — عام للزوار، بدون مصادقة.
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */
@@ -178,18 +185,80 @@ const DashboardRoutes = () => (
         <Route element={<SettingsLayout />}>
           <Route path="/settings" element={<ProfileSettings />} />
           <Route path="/settings/workspace" element={<WorkspaceSettings />} />
+          <Route path="/settings/workspace/:section" element={<WorkspaceSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
+          {/* Section 12's cross-channel pages must be registered BEFORE :channel, or the
+              parameter route swallows them and reports "no channel with this name". */}
+          <Route path="/settings/channels/data-sync" element={<ChannelSectionPage page="data-sync" />} />
+          <Route path="/settings/channels/external-integrations" element={<ChannelSectionPage page="external-integrations" />} />
+          <Route path="/settings/channels/connection-health" element={<ChannelSectionPage page="connection-health" />} />
           <Route path="/settings/channels/:channel" element={<ChannelsSettings />} />
           <Route path="/settings/ai" element={<AI />} />
+          <Route path="/settings/ai/:page" element={<SettingsSection section="ai" />} />
+          <Route path="/settings/analytics/:page" element={<SettingsSection section="analytics" />} />
+          <Route path="/settings/automation/:page" element={<SettingsSection section="automation" />} />
           <Route path="/settings/usage" element={<Usage />} />
-          <Route path="/settings/pos" element={<PosSettings />} />
-          <Route path="/settings/pos/:section" element={<PosSettings />} />
-          <Route path="/settings/policies" element={<PoliciesSettings />} />
-          <Route path="/settings/billing" element={<BillingSettings />} />
+          {/* Section 08 owns /settings/pos. The old wrapper's slugs that now have a canonical
+              home forward to it, so an old bookmark lands on the single place that edits the
+              setting instead of a second editor. The tool screens that are not settings (receipts
+              tracking, team access, backup) stay reachable under /settings/pos/tools. */}
+          <Route path="/settings/pos" element={<Navigate to="/settings/pos/pos-settings" replace />} />
+          <Route path="/settings/pos/legacy/:section" element={<PosSettings />} />
+          <Route path="/settings/pos/shop" element={<Navigate to="/settings/store/business-profile" replace />} />
+          <Route path="/settings/pos/policy" element={<Navigate to="/settings/store/business-policies" replace />} />
+          <Route path="/settings/pos/einvoice" element={<Navigate to="/settings/sales/taxes-and-fees" replace />} />
+          <Route path="/settings/pos/print" element={<Navigate to="/settings/pos/invoices-and-receipts" replace />} />
+          <Route path="/settings/pos/lists" element={<Navigate to="/settings/catalog/categories" replace />} />
+          <Route path="/settings/pos/devices" element={<Navigate to="/settings/pos/registers-and-devices" replace />} />
+          <Route path="/settings/pos/tools/:section" element={<PosSettings />} />
+          <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
+          <Route path="/settings/purchasing" element={<Navigate to="/settings/purchasing/suppliers" replace />} />
+          <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
+          <Route path="/settings/customers" element={<Navigate to="/settings/customers/customer-records" replace />} />
+          <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
+          <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
+          {/* Section 19 owns the plan. The old single billing screen read the same two
+              endpoints in a different layout, so it now lands on the section instead of
+              answering "what am I paying" in a second place. */}
+          <Route path="/settings/billing" element={<Navigate to="/settings/billing/current-plan" replace />} />
+          <Route path="/settings/billing/:page" element={<SettingsSection section="billing" />} />
+          {/* Section 20 is role-gated on the ROUTE, not only in the sidebar: the address is
+              guessable and a cashier must not land on the webhook delivery log. */}
+          <Route
+            path="/settings/developers/:page"
+            element={
+              <DeveloperSectionGate>
+                <SettingsSection section="developers" />
+              </DeveloperSectionGate>
+            }
+          />
           <Route path="/settings/members" element={<MembersSettings />} />
+          <Route path="/settings/team" element={<TeamSettings />} />
+          <Route path="/settings/team/:section" element={<TeamSettings />} />
           <Route path="/settings/all" element={<UnifiedSettings />} />
           <Route path="/settings/security" element={<SecuritySettings />} />
+          {/* Section 18. The path is longer than the personal-security screen above on purpose:
+              "my password and my devices" and "the shop's security policies" are two different
+              screens, and merging them would put a workspace control on a personal page. */}
+          <Route path="/settings/security/:page" element={<SettingsSection section="security" />} />
+          <Route path="/settings/login" element={<LoginSettings />} />
+          <Route path="/settings/preferences" element={<PreferencesSettings />} />
+          <Route path="/settings/notifications" element={<NotificationPreferences />} />
+          <Route path="/settings/notifications/:page" element={<SettingsSection section="notifications" />} />
+          <Route path="/settings/data/:page" element={<SettingsSection section="data" />} />
           <Route path="/settings/danger" element={<DataSettings />} />
+          {/* The Settings Center map: a section is a navigation group with its own pages, and
+              each page renders only the keys whose registry home is that section+page. */}
+          <Route path="/settings/store" element={<Navigate to="/settings/store/business-profile" replace />} />
+          <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
+          <Route path="/settings/locations" element={<Navigate to="/settings/locations/all-branches" replace />} />
+          <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
+          <Route path="/settings/catalog" element={<Navigate to="/settings/catalog/product-settings" replace />} />
+          <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
+          <Route path="/settings/sales" element={<Navigate to="/settings/sales/sales-settings" replace />} />
+          <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
+          <Route path="/settings/inventory" element={<Navigate to="/settings/inventory/inventory-settings" replace />} />
+          <Route path="/settings/inventory/:page" element={<SettingsSection section="inventory" />} />
         </Route>
       </Route>
     </Route>
