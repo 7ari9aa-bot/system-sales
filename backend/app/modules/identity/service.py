@@ -32,6 +32,7 @@ from app.modules.identity.services import (
     TENANT_LIFECYCLE_STATES,
     TENANT_OPERATIONAL_STATES,
     TENANT_REQUESTABLE_LIFECYCLE_TARGETS,
+    AccountClosureService,
     AuthService,
     EmailAlreadyRegistered,
     GoogleMfaRequired,
@@ -53,6 +54,7 @@ from app.modules.identity.services import (
 )
 
 __all__ = [
+    "AccountClosureService",
     "ALLOWED_TRANSITIONS",
     "AuthService",
     "SignedInDeviceService",

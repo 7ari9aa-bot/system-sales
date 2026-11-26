@@ -4,13 +4,17 @@ The service's database work is thin (select the live list, select the tier, sele
 the arithmetic and the policy are not: which list wins a tie, when a tier applies, what a cap does
 to a discount that exceeds it, and whether an offer that needs a code runs without one. Those are
 pure functions over rows, so they are tested directly rather than through a session.
+
+The module used to be loaded through ``importlib`` with stand-ins pushed into ``sys.modules`` for
+``sqlalchemy``, ``app.core.errors`` and the pricing models, because the author's sandbox had no
+dependencies installed. Those stand-ins were never removed: any test module collected AFTER this
+one in the same process then imported the stand-in ``sqlalchemy`` and failed with
+``cannot import name 'text' from 'sqlalchemy' (unknown location)``. Six of the eight backend CI
+shards were red for it. The app is an installed package in CI, so the real imports are used now.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import pathlib
-import sys
 import types
 import uuid
 from datetime import date
@@ -18,61 +22,7 @@ from decimal import Decimal
 
 import pytest
 
-
-def _load_service():
-    """Load the service module without importing the app package (which needs Python 3.12)."""
-    root = pathlib.Path(__file__).resolve().parents[1]
-    for name, path in (
-        ("app", root / "app"),
-        ("app.modules", root / "app" / "modules"),
-        ("app.modules.pricing", root / "app" / "modules" / "pricing"),
-    ):
-        if name not in sys.modules:
-            mod = types.ModuleType(name)
-            mod.__path__ = [str(path)]
-            sys.modules[name] = mod
-    # The service imports sqlalchemy, its own models and the shared error at module scope. None of
-    # the three is needed to test the arithmetic, and this sandbox has no sqlalchemy, so each is
-    # replaced with the smallest stand-in that lets the module load.
-    errors = types.ModuleType("app.core.errors")
-
-    class ValidationError(Exception):
-        pass
-
-    errors.ValidationError = ValidationError
-    sys.modules["app.core.errors"] = errors
-    core = sys.modules.get("app.core") or types.ModuleType("app.core")
-    core.errors = errors
-    sys.modules["app.core"] = core
-
-    sqlalchemy = types.ModuleType("sqlalchemy")
-    sqlalchemy.select = lambda *a, **k: None  # the tests never reach a query
-    sys.modules["sqlalchemy"] = sqlalchemy
-    asyncio_mod = types.ModuleType("sqlalchemy.ext.asyncio")
-    asyncio_mod.AsyncSession = object
-    ext = types.ModuleType("sqlalchemy.ext")
-    ext.asyncio = asyncio_mod
-    sys.modules["sqlalchemy.ext"] = ext
-    sys.modules["sqlalchemy.ext.asyncio"] = asyncio_mod
-
-    models = types.ModuleType("app.modules.pricing.models")
-    models.DISCOUNT_KINDS = ("percent", "amount")
-    models.DISCOUNT_SCOPES = ("order", "category", "variant")
-    models.DiscountRule = object
-    models.PriceList = object
-    models.PriceListItem = object
-    sys.modules["app.modules.pricing.models"] = models
-
-    spec = importlib.util.spec_from_file_location(
-        "pricing_service_under_test", root / "app" / "modules" / "pricing" / "service.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-svc_mod = _load_service()
-PricingService = svc_mod.PricingService
+from app.modules.pricing.service import PricingService, _round_to
 
 
 class _Rule:
@@ -259,7 +209,7 @@ def test_the_discount_can_never_exceed_the_basket() -> None:
     ],
 )
 def test_rounding_is_applied_to_the_final_unit_price(step: str, value: str, expected: str) -> None:
-    assert svc_mod._round_to(Decimal(value), step) == Decimal(expected)
+    assert _round_to(Decimal(value), step) == Decimal(expected)
 
 
 def test_the_quote_reports_whether_below_cost_selling_is_allowed() -> None:
