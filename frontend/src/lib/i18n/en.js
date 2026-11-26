@@ -1715,5 +1715,4 @@ export default {
   "settings.pos.pages.peripherals.desc": "The printer, cash drawer and scanner.",
   "settings.pos.pages.offline-mode.title": "Offline mode",
   "settings.pos.pages.offline-mode.desc": "Selling while the internet is down.",
-  "settings.nav.pos": "POS & registers",
 };

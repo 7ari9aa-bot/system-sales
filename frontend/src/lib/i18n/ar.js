@@ -1715,5 +1715,4 @@ export default {
   "settings.pos.pages.peripherals.desc": "الطابعة ودرج النقدية والقارئ.",
   "settings.pos.pages.offline-mode.title": "وضع عدم الاتصال",
   "settings.pos.pages.offline-mode.desc": "شغل الكاشير والإنترنت مقطوع.",
-  "settings.nav.pos": "نقاط البيع والماكينات",
 };
