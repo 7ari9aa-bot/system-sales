@@ -1,46 +1,56 @@
 """RLS for the five platform & visitor tables (docs/settings/rls-migration-proposal.md).
 
-All five tables already exist (created by earlier migrations).  This migration
-adds RLS policies to them.  None of the tables have a ``tenant_id`` column —
-they are platform-level, not tenant-scoped — so all policies are GUC-gated
-(readable when the tenant GUC is set) or per-user (via ``app.user_id``).
+All five tables already exist (created by earlier migrations) and none of them
+carry a ``tenant_id`` column — they are platform-level, not tenant-scoped — so
+the standard ``tenant_isolation`` policy (which keys on ``tenant_id``) does not
+apply.  Each gets a hand-written policy below.
 
-Tables and policies:
+Tables and policies (final design):
 
 1. ``visitor_events`` (existing, no ``tenant_id``)
-   — GUC-gated SELECT policy: readable only when the tenant GUC is set.
-   The table owner (platform admin) bypasses RLS.
+   — ENABLE RLS (NOT forced: the table owner / platform admin bypasses RLS
+     and reads the cross-tenant telemetry analytics).
+   — SELECT: readable by the app role only when a tenant GUC is bound
+     (``NULLIF(...) IS NOT NULL`` — the plain ``IS NOT NULL`` test is weak:
+     ``SET LOCAL`` leaves an empty string, not NULL, so the gate never closed).
+   — INSERT: the public telemetry endpoint (``POST /public/telemetry``) writes
+     without binding a tenant, and the table has no ``tenant_id`` to check, so
+     the INSERT policy is ``WITH CHECK (true)``.  The GRANT (SELECT, INSERT
+     from fe2026103001) is the first gate; RLS is the second.
 
 2. ``platform_announcements`` (existing, no ``tenant_id``)
-   — read for every tenant session; write only by the platform admin (owner
-   bypasses RLS because the table is **not** FORCE'd; the app role has no
-   INSERT/UPDATE/DELETE policy and therefore cannot write at all).
+   — ENABLE RLS (NOT forced: the platform owner writes via the management API
+     and bypasses RLS as the table owner).
+   — SELECT for every session (``USING (true)``): announcements are global and
+     every tenant reads the resolved subset.
+   — No INSERT/UPDATE/DELETE policy: the app role (sales_app) cannot write.
+     Platform writes go through the owner (RLS-exempt).
 
 3. ``platform_announcement_dismissals`` (existing, no ``tenant_id``, has ``user_id``)
-   — per-user isolation via ``app.user_id`` GUC; FORCE'd so even the owner must
-   bind the user GUC to read or write.
+   — ENABLE + FORCE RLS: even the owner must bind the user GUC to read or write.
+   — Per-user isolation via ``app.user_id`` GUC (``NULLIF`` guard): a user may
+     only SELECT, INSERT (and DELETE where granted) their own dismissals.
 
 4. ``plan_prices`` (existing, no ``tenant_id``)
-   — FORCE RLS with a GUC-gated SELECT policy (read when the tenant GUC is set,
-   no writes from the app role).  Provision's ``sales_app_read`` is dropped;
-   provision.py should stop re-creating it in a follow-up.
+   — ENABLE + FORCE RLS.
+   — SELECT ``USING (true)``: a global catalog read by the public marketing
+     page (``GET /public/markets/{country}``) with NO tenant GUC bound, so a
+     GUC gate here would return zero rows and break the page.  Writes are
+     blocked: no INSERT/UPDATE/DELETE policy, and provision.py REVOKEs
+     INSERT/UPDATE/DELETE from sales_app (PRIVILEGE_REFREEZE).
+   — The legacy ``sales_app_read`` policy (from provision.py's
+     REFERENCE_PLANE_READ_POLICIES) is dropped here and NOT re-created by
+     provision.py — ``plan_prices_read`` is the working replacement.
 
 5. ``tax_rates`` (existing, no ``tenant_id``)
-   — same shape as ``plan_prices``.
+   — Same shape as ``plan_prices``.
 
 Idempotency: every statement is safe to run multiple times —
 ``ALTER TABLE … ENABLE/FORCE`` (no-ops if already set), and
 ``DROP POLICY IF EXISTS`` before each ``CREATE POLICY``.
 
-NOTE: ``provision.py`` still re-creates ``sales_app_read`` on ``plan_prices``
-and ``tax_rates`` on every provision run.  Coexistence is harmless (both are
-SELECT policies and OR together), but the GUC gate only bites once provision.py
-is updated to stop re-creating the legacy policy.  That is a follow-up, not
-part of this migration.
-
-Revision ID: fe2026112602
-Revises: fe2026112601
-Create Date: 2026-11-26 01:00:00.000000
+NOTE: ``provision.py`` no longer re-creates ``sales_app_read`` on
+``plan_prices`` and ``tax_rates`` — this migration's policies supersede it.
 """
 
 from collections.abc import Sequence
@@ -52,22 +62,31 @@ down_revision: str | None = "fe2026112601"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+_TENANT_GUARD = "NULLIF(current_setting('app.tenant_id', true), '') IS NOT NULL"
 _USER_GUARD = "NULLIF(current_setting('app.user_id', true), '')::uuid"
 
 
 def upgrade() -> None:
-    # --- 1. visitor_events: platform-level telemetry, no tenant_id ------------
-    #       The table already exists (created by an earlier migration) with no
-    #       tenant_id column — it is platform-level, not tenant-scoped.  RLS is
-    #       GUC-gated: readable only when a tenant GUC is set (the app role never
-    #       sees raw rows); the table owner (platform admin) bypasses RLS.
+    # --- 1. visitor_events: platform telemetry, no tenant_id -----------------
+    #       ENABLE (NOT forced): the owner / platform admin bypasses RLS to
+    #       read cross-tenant analytics.  The app role (sales_app) gets:
+    #         SELECT — only when a tenant GUC is bound (owner console, which
+    #                  bind_tenant()s before reading).
+    #         INSERT — always (the public telemetry endpoint has no tenant to
+    #                  bind and the table has no tenant_id to check).
     op.execute("ALTER TABLE public.visitor_events ENABLE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS tenant_isolation ON public.visitor_events")
     op.execute("DROP POLICY IF EXISTS visitor_events_read ON public.visitor_events")
+    op.execute("DROP POLICY IF EXISTS visitor_events_insert ON public.visitor_events")
     op.execute(
-        """CREATE POLICY visitor_events_read ON public.visitor_events
+        f"""CREATE POLICY visitor_events_read ON public.visitor_events
             FOR SELECT
-            USING (current_setting('app.tenant_id', true) IS NOT NULL)"""
+            USING ({_TENANT_GUARD})"""
+    )
+    op.execute(
+        """CREATE POLICY visitor_events_insert ON public.visitor_events
+            FOR INSERT
+            WITH CHECK (true)"""
     )
 
     # --- 2. platform_announcements: read for all, write for platform only -----
@@ -93,7 +112,11 @@ def upgrade() -> None:
               WITH CHECK (user_id = {_USER_GUARD})"""
     )
 
-    # --- 4. plan_prices: FORCE RLS, GUC-gated read ---------------------------
+    # --- 4. plan_prices: FORCE RLS, read for all, no writes ------------------
+    #       USING (true) — NOT GUC-gated: the public marketing page reads
+    #       plan_prices with no tenant GUC bound, so a GUC gate would break it.
+    #       Writes are blocked by the absence of a write policy + the privilege
+    #       REVOKE in provision.py.
     op.execute("ALTER TABLE public.plan_prices ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.plan_prices FORCE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS sales_app_read ON public.plan_prices")
@@ -101,10 +124,10 @@ def upgrade() -> None:
     op.execute(
         """CREATE POLICY plan_prices_read ON public.plan_prices
             FOR SELECT
-            USING (current_setting('app.tenant_id', true) IS NOT NULL)"""
+            USING (true)"""
     )
 
-    # --- 5. tax_rates: FORCE RLS, GUC-gated read -----------------------------
+    # --- 5. tax_rates: FORCE RLS, read for all, no writes --------------------
     op.execute("ALTER TABLE public.tax_rates ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.tax_rates FORCE ROW LEVEL SECURITY")
     op.execute("DROP POLICY IF EXISTS sales_app_read ON public.tax_rates")
@@ -112,7 +135,7 @@ def upgrade() -> None:
     op.execute(
         """CREATE POLICY tax_rates_read ON public.tax_rates
             FOR SELECT
-            USING (current_setting('app.tenant_id', true) IS NOT NULL)"""
+            USING (true)"""
     )
 
 
@@ -127,8 +150,6 @@ def downgrade() -> None:
         # RLS stays ENABLED: a table with RLS on and no policy denies all
         # non-owner reads, which is the safe direction for a rollback.
 
-    # Reverse policies on the tables (keep the tables themselves — they were
-    # created by earlier migrations and have data/models we must not drop).
     op.execute(
         "DROP POLICY IF EXISTS dismissal_user_isolation ON public.platform_announcement_dismissals"
     )
@@ -136,4 +157,5 @@ def downgrade() -> None:
 
     op.execute("DROP POLICY IF EXISTS announcements_read ON public.platform_announcements")
 
+    op.execute("DROP POLICY IF EXISTS visitor_events_insert ON public.visitor_events")
     op.execute("DROP POLICY IF EXISTS visitor_events_read ON public.visitor_events")

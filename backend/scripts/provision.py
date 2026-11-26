@@ -443,26 +443,6 @@ REFERENCE_PLANE_READ_POLICIES: tuple[str, ...] = (
         "FOR SELECT TO sales_app USING (true); "
         "END IF; END $$;"
     ),
-    (
-        "DO $$ BEGIN "
-        "IF EXISTS (SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'plan_prices') "
-        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
-        "AND tablename = 'plan_prices' AND policyname = 'sales_app_read') "
-        "THEN CREATE POLICY sales_app_read ON public.plan_prices "
-        "FOR SELECT TO sales_app USING (true); "
-        "END IF; END $$;"
-    ),
-    (
-        "DO $$ BEGIN "
-        "IF EXISTS (SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'tax_rates') "
-        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
-        "AND tablename = 'tax_rates' AND policyname = 'sales_app_read') "
-        "THEN CREATE POLICY sales_app_read ON public.tax_rates "
-        "FOR SELECT TO sales_app USING (true); "
-        "END IF; END $$;"
-    ),
 )
 
 
