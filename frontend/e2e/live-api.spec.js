@@ -2000,10 +2000,11 @@ test("a stocktake on the screen: counted 7 of the 10 it started with is 3 missin
   // A typed count is committed when the line is finished, not on every keystroke: leaving the box
   // queues it, and Save sends it. (Pressing Enter does not reach the commit in this browser, and
   // the trace of run 45757190334 shows no save request at all — hence the explicit blur.)
+  // Leaving the box is enough: the screen promises "العدّ بيتحفظ تلقائيًا", and a cashier who
+  // walks to the next shelf never presses Save. No Save click here, so the debounced queue itself
+  // has to reach the server (a bare setTimeout called as a method throws Illegal invocation and
+  // the save silently never fires — run 45758325243).
   await countBox.blur();
-  const saveCounts = main.getByRole("button", { name: /^حفظ$/ });
-  // The debounced queue may already have sent it; then there is nothing left to save.
-  if (await saveCounts.isEnabled()) await saveCounts.click();
   // The counter counts against the 10 the sheet told them they had: 3 missing.
   await expect(row, "3 missing against the sheet's opening 10").toContainText(
     "-3",

@@ -25,7 +25,14 @@ export function createCountQueue({
   onSave,
   delay = 2000,
   retryDelay = 1000,
-  timers = { set: setTimeout, clear: clearTimeout },
+  // Called as `timers.set(...)`, so a bare `setTimeout` would receive the timers object as `this`
+  // and the browser throws "Illegal invocation" — the debounced save then never fires and a typed
+  // count is only saved if the cashier presses Save. Node does not care, so no unit test saw it;
+  // the live stack did (run 45758325243). Wrappers keep the timer detached from any receiver.
+  timers = {
+    set: (fn, ms) => setTimeout(fn, ms),
+    clear: (id) => clearTimeout(id),
+  },
   onError = () => {},
 }) {
   let queued = {};
