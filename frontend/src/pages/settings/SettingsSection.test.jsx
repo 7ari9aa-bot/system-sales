@@ -144,6 +144,7 @@ vi.mock("@/pages/settings/pos/DevicesSection", () => ({
   default: (props) => devicesSectionMock(props),
 }));
 
+
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
   BranchHoursPanel: (props) => branchHoursMock(props),
@@ -183,6 +184,7 @@ function renderAt(path) {
           <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
           <Route path="/settings/inventory/:page" element={<SettingsSection section="inventory" />} />
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
+          <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -371,6 +373,32 @@ describe("SettingsSection", () => {
 
   test("a page with no records panel does not grow one", () => {
     renderAt("/settings/inventory/inventory-cost");
+    expect(inventoryRecordsMock).not.toHaveBeenCalled();
+  });
+
+  test("the purchasing section owns the approval limits", () => {
+    renderAt("/settings/purchasing/approval-limits");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("purchasing");
+    expect(opts.page).toBe("approval-limits");
+  });
+
+  test("suppliers reads the real supplier list, not a setting", () => {
+    renderAt("/settings/purchasing/suppliers");
+    expect(inventoryRecordsMock).toHaveBeenCalled();
+    expect(inventoryRecordsMock.mock.calls.at(-1)[0].endpoint).toBe("/purchasing/suppliers");
+  });
+
+  test("orders and returns read their own documents", () => {
+    renderAt("/settings/purchasing/purchase-orders");
+    expect(inventoryRecordsMock.mock.calls.at(-1)[0].endpoint).toBe("/purchasing/purchase-orders");
+    inventoryRecordsMock.mockClear();
+    renderAt("/settings/purchasing/supplier-returns");
+    expect(inventoryRecordsMock.mock.calls.at(-1)[0].endpoint).toBe("/purchasing/supplier-returns");
+  });
+
+  test("a page with keys does not also pull a document list", () => {
+    renderAt("/settings/purchasing/approval-limits");
     expect(inventoryRecordsMock).not.toHaveBeenCalled();
   });
 });

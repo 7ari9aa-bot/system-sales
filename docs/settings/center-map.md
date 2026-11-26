@@ -207,7 +207,13 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 09 Counts and adjustments | done | `/settings/inventory/counts-and-adjustments` — `inventory.stocktake_approval_required` (high impact) over the real stocktake list from `GET /inventory/stocktakes` |
 | 09 Transfers | done | `/settings/inventory/transfers` — `show_warehouse_transfers`, `quality_check_on_receipt` over the real transfer list from `GET /inventory/transfers` |
 | 09 Inventory cost | done | `/settings/inventory/inventory-cost` — `inventory.fifo_enabled` (high impact: it decides how the cost of goods sold is worked out) |
-| 10–20 | pending | see the tables above |
+| 10 Suppliers | done | `/settings/purchasing/suppliers` — reads `GET /purchasing/suppliers` (the real list) and says where a supplier is created |
+| 10 Purchasing settings | done | `/settings/purchasing/purchasing-settings` — `purchasing.centralized` |
+| 10 Purchase orders | done | `/settings/purchasing/purchase-orders` — reads `GET /purchasing/purchase-orders` with number, date, total, status and the DERIVED payment state |
+| 10 Receiving and inspection | done | `/settings/purchasing/receiving-and-inspection` — `allow_partial_receipt`, `allow_over_receipt` |
+| 10 Supplier returns | done | `/settings/purchasing/supplier-returns` — reads `GET /purchasing/supplier-returns` with number, date, total and status |
+| 10 Approval limits | done | `/settings/purchasing/approval-limits` — `approval_required` and `approval_threshold`, both high impact: one removes approval entirely, the other sets the amount above which it applies |
+| 11–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

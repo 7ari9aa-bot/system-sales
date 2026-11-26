@@ -214,3 +214,20 @@ def test_costing_and_stocktake_sign_off_are_high_impact() -> None:
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["inventory.fifo_enabled"].impact_level == "high"
     assert by_key["inventory.stocktake_approval_required"].impact_level == "high"
+
+
+def test_the_purchasing_keys_are_split_by_decision() -> None:
+    """What a receipt may do is not the same decision as who may approve an order."""
+    homes = {d.key: d.home[1] for d in list_definitions(section="purchasing")}
+    assert homes["purchasing.allow_partial_receipt"] == "receiving-and-inspection"
+    assert homes["purchasing.allow_over_receipt"] == "receiving-and-inspection"
+    assert homes["purchasing.approval_required"] == "approval-limits"
+    assert homes["purchasing.approval_threshold"] == "approval-limits"
+    assert homes["purchasing.centralized"] == "purchasing-settings"
+
+
+def test_turning_approval_off_is_as_high_impact_as_the_threshold() -> None:
+    """A switch that removes approval entirely is not a quiet preference."""
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["purchasing.approval_required"].impact_level == "high"
+    assert by_key["purchasing.approval_threshold"].impact_level == "high"

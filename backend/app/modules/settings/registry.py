@@ -1466,6 +1466,7 @@ _reg(
         label_en="PO Requires Approval",
         description_ar="إلزام اعتماد أمر الشراء قبل إرساله للمورد.",
         description_en="Require a purchase order to be approved before it goes to the supplier.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1480,6 +1481,7 @@ _reg(
         label_en="Approval Threshold Amount",
         description_ar="المبلغ الذي يلزم اعتماد أمر الشراء إذا تجاوزه.",
         description_en="The amount above which a purchase order needs approval.",
+        impact_level="high",
     )
 )
 _reg(
@@ -2483,6 +2485,12 @@ _PAGE_OVERRIDES: dict[str, str] = {
     "pos.variance_reason_required": "shifts",
     "pos.variance_approval_threshold": "shifts",
     "pos.cash_movement_limit": "cash-movement",
+    # Purchasing: five keys over three pages. What a receipt may do is not the same decision as
+    # who may approve an order, so neither lives on the general purchasing page.
+    "purchasing.allow_partial_receipt": "receiving-and-inspection",
+    "purchasing.allow_over_receipt": "receiving-and-inspection",
+    "purchasing.approval_required": "approval-limits",
+    "purchasing.approval_threshold": "approval-limits",
     # The inventory domain is twelve keys over six pages. "How stock is classified" is not the
     # same question as "how it is costed", so each key names the page that owns it.
     "inventory.auto_reserve": "stock-states",

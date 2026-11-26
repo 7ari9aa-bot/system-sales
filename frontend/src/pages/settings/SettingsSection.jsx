@@ -370,6 +370,63 @@ export default function SettingsSection({ section }) {
       {/* The till's devices screen is the real implementation; this page reuses it rather than
           growing a second register editor beside it. */}
       {`${section}/${page}` === "pos/registers-and-devices" && <DevicesSection />}
+
+      {/* Suppliers, orders and returns are documents, not settings. Each page shows the rows the
+          purchasing module already reports and leaves the rules to the registry. */}
+      {`${section}/${page}` === "purchasing/suppliers" && (
+        <InventoryRecordsPanel
+          endpoint="/purchasing/suppliers"
+          titleKey="settings.purchasing.suppliers.title"
+          descKey="settings.purchasing.suppliers.desc"
+          emptyKey="settings.purchasing.suppliers.empty"
+          loadingKey="settings.purchasing.suppliers.loading"
+          loadErrorKey="settings.purchasing.suppliers.loadError"
+          footerKey="settings.purchasing.suppliers.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "phone", kind: "num" },
+            { key: "city", kind: "num" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "purchasing/purchase-orders" && (
+        <InventoryRecordsPanel
+          endpoint="/purchasing/purchase-orders"
+          titleKey="settings.purchasing.orders.title"
+          descKey="settings.purchasing.orders.desc"
+          emptyKey="settings.purchasing.orders.empty"
+          loadingKey="settings.purchasing.orders.loading"
+          loadErrorKey="settings.purchasing.orders.loadError"
+          footerKey="settings.purchasing.orders.whereToEdit"
+          columns={[
+            { key: "number" },
+            { key: "order_date", kind: "num" },
+            { key: "total", kind: "num" },
+            { key: "status", kind: "badge" },
+            { key: "payment_status", kind: "badge" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "purchasing/supplier-returns" && (
+        <InventoryRecordsPanel
+          endpoint="/purchasing/supplier-returns"
+          titleKey="settings.purchasing.returns.title"
+          descKey="settings.purchasing.returns.desc"
+          emptyKey="settings.purchasing.returns.empty"
+          loadingKey="settings.purchasing.returns.loading"
+          loadErrorKey="settings.purchasing.returns.loadError"
+          footerKey="settings.purchasing.returns.whereToEdit"
+          columns={[
+            { key: "number" },
+            { key: "return_date", kind: "num" },
+            { key: "total", kind: "num" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
       {`${section}/${page}` === "locations/branch-data" && <BranchDataPanel />}
       {`${section}/${page}` === "locations/branch-hours" && <BranchHoursPanel />}
       {`${section}/${page}` === "locations/branch-staff" && <BranchStaffPanel />}
