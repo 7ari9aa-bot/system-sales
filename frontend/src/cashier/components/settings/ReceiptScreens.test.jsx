@@ -32,8 +32,19 @@ describe("the shop profile screen", () => {
 describe("the printed invoice screen", () => {
   const defs = shown("print", PRINT_KEYS);
   const by = Object.fromEntries(defs.map((d) => [d.key, d]));
-  it("offers all six receipt settings", () => {
+  it("offers every receipt setting the engine enforces, in the order the screen declares", () => {
     expect(defs.map((d) => d.key)).toEqual(PRINT_KEYS);
+    // paper, copies, logo, header, footer, tax detail + the barcode format and invoice prefix the
+    // receipt reads (they had no field anywhere, so an owner could not change either).
+    expect(defs).toHaveLength(8);
+  });
+  it("the barcode format is a dropdown of the formats the engine allows", () => {
+    const html = draw(by["print.barcode_format"], "code128");
+    expect(html).toContain("<select");
+    expect(html).toContain('value="qr"');
+  });
+  it("the invoice prefix is a text box that keeps what was typed", () => {
+    expect(draw(by["print.invoice_prefix"], "FIH")).toContain('value="FIH"');
   });
   it("lists paper first, then copies, so the owner meets the roll before the extras", () => {
     expect(defs.slice(0, 2).map((d) => d.key)).toEqual(["print.paper_width", "print.copies"]);
@@ -55,9 +66,16 @@ describe("the printed invoice screen", () => {
     expect(draw(by["print.header_text"], "أهلاً")).toContain('value="أهلاً"');
     expect(draw(by["print.footer_text"], "شكراً")).toContain('value="شكراً"');
   });
-  it("does not offer settings nothing reads yet", () => {
-    const all = policyDefinitions(definitions, { domain: "print" }).map((d) => d.key);
-    expect(all).not.toContain("print.invoice_prefix");
-    expect(all).not.toContain("print.barcode_format");
+  it("offers no print setting the engine does not enforce", () => {
+    // A field whose value nothing reads is a switch wired to nothing. The barcode format and the
+    // invoice prefix used to be exactly that — read by the receipt, offered nowhere — so they are
+    // enforced now and this guards the next one instead.
+    const unenforced = definitions
+      .filter((d) => d.domain === "print" && !d.enforced)
+      .map((d) => d.key);
+    const offered = policyDefinitions(definitions, { domain: "print", keys: PRINT_KEYS }).map(
+      (d) => d.key,
+    );
+    expect(offered.filter((k) => unenforced.includes(k))).toEqual([]);
   });
 });
