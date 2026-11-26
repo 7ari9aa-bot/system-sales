@@ -27,6 +27,7 @@ import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import { MetricsPanel, OverviewPanel, ReportsPanel } from "@/components/settings/AnalyticsPanels";
 import ExecutionsPanel from "@/components/settings/AutomationPanels";
+import ChannelLinkCard from "@/components/settings/NotificationPanels";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
@@ -147,6 +148,13 @@ const SECTION_PAGES = {
     "transfers",
     "inventory-cost",
   ],
+  notifications: [
+    "notification-channels",
+    "notification-rules",
+    "recipients",
+    "alerts-and-escalation",
+    "message-templates",
+  ],
   purchasing: [
     "suppliers",
     "purchasing-settings",
@@ -208,6 +216,11 @@ const PANEL_PAGES = new Set([
   "automation/workflows",
   "automation/triggers-and-events",
   "automation/execution-attempts",
+  // Section 16: recipients and templates are not this section's to edit. A person's own
+  // preferences live in section 01 and the templates in section 11, so both pages say so and
+  // link there rather than growing a second editor.
+  "notifications/recipients",
+  "notifications/message-templates",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -509,6 +522,25 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "customers/support-hours" && <SupportHoursLink />}
 
       {`${section}/${page}` === "customers/escalation-to-human" && <EscalationSection />}
+      {/* Section 16: recipients and templates belong to pages that already own them. A person's
+          own notification preferences are section 01 and the reply templates are section 11, so
+          these two say where the editor is instead of opening a second one. */}
+      {`${section}/${page}` === "notifications/recipients" && (
+        <ChannelLinkCard
+          titleKey="settings.notifications.recipients.title"
+          descKey="settings.notifications.recipients.desc"
+          to="/settings/my-account/notifications"
+          linkKey="settings.notifications.recipients.link"
+        />
+      )}
+      {`${section}/${page}` === "notifications/message-templates" && (
+        <ChannelLinkCard
+          titleKey="settings.notifications.templates.title"
+          descKey="settings.notifications.templates.desc"
+          to="/settings/customers/reply-templates"
+          linkKey="settings.notifications.templates.link"
+        />
+      )}
       {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row
           below is the AI module's own record — an agent, a knowledge item, a provider policy, an
           evaluation — so no page here offers a control the runtime does not read. Editing happens

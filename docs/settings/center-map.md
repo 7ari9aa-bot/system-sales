@@ -87,6 +87,11 @@ warehouse and several registers; they are not the same entity and must not share
 | 15 Approvals | pending | The automation engine has no approval step: a workflow's definition is steps and conditions, with no gate that waits for a person. The approvals that DO exist are the settings change workflow's, and they belong to section 18 |
 | 15 Execution attempts | done | `/settings/automation/execution-attempts` — `GET /automation/{id}/executions` per workflow: state, version, start time and the stored `error`, because "it failed" without the reason is not an attempt record |
 | 15 | **Automation & workflows** | Rules · Workflows · Triggers and events · Schedules · Approvals · Execution attempts |
+| 16 Notification channels | done | `/settings/notifications/notification-channels` — `notifications.email_enabled` and `notifications.push_enabled`, the two switches `notifications/service.py::dispatch` and the delivery worker actually read |
+| 16 Notification rules | done | `/settings/notifications/notification-rules` — `notifications.order_received` (orders/service.py) and `notifications.low_stock_alert` (the scheduler worker), the two rules that fire without a person asking |
+| 16 Message templates | done | `/settings/notifications/message-templates` — links to the single template editor in section 11. The wording is the shop's voice, not workspace notification policy, so this page refuses to open a second editor |
+| 16 Recipients | done | `/settings/notifications/recipients` — links to each person's own notification preferences in section 01. Who receives what is that person's choice, and the dispatcher already honours it, so a workspace-level recipient list would override a person with a setting |
+| 16 Alerts and escalation | done | `/settings/notifications/alerts-and-escalation` — `quiet_hours_start`, `quiet_hours_end` and `digest_mode`, the three terms `notifications/digest.py::should_send_immediately` reads |
 | 16 | **Notifications** — workspace rules, where 01 holds the person's preferences | Notification channels · Notification rules · Message templates · Recipients · Alerts and escalation |
 
 Agent boundaries are part of the design, not a prompt detail:

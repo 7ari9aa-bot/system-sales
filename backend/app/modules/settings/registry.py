@@ -1821,6 +1821,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.low_stock_alert",
+        page="notification-rules",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
@@ -1835,6 +1836,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.order_received",
+        page="notification-rules",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
@@ -2469,6 +2471,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.quiet_hours_start",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.STRING,
         default="",
@@ -2483,6 +2486,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.quiet_hours_end",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.STRING,
         default="",
@@ -2497,6 +2501,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.digest_mode",
+        page="alerts-and-escalation",
         domain="notifications",
         type=SettingType.ENUM,
         default="realtime",
@@ -2511,6 +2516,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.email_enabled",
+        page="notification-channels",
         domain="notifications",
         type=SettingType.BOOL,
         default=False,
@@ -2524,6 +2530,7 @@ _reg(
 _reg(
     SettingDef(
         key="notifications.push_enabled",
+        page="notification-channels",
         domain="notifications",
         type=SettingType.BOOL,
         default=True,
