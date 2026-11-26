@@ -171,12 +171,18 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 04 Brand identity | done | `/settings/store/brand-identity` — the brand colour (`organization.brand_color`) |
 | 04 Contact details | done | `/settings/store/contact-details` — phone, email, website and address lines, tenant and branch scoped |
 | 04 Legal data | done | `/settings/store/legal-data` — legal name, tax ID, commercial register, terms acceptance; all four already reach the receipt read model |
-| 04 Working hours | pending | no key exists yet: opening/closing time and closed days need a consumer before they can be offered |
-| 04 Business policies | pending | no key exists yet: exchange, return and warranty policy need the orders/returns path to read them first |
+| 04 Working hours | done | `/settings/store/working-hours` — publishes the `hours` store policy, the text the customer agent answers "when are you open" from. Not a registry key: the promise is prose the agent quotes, and it lives in one row of `knowledge_items` |
+| 04 Business policies | done | `/settings/store/business-policies` — the enforced windows (`pos.return_max_days`, `pos.exchange_max_days`, both high impact) plus the published exchange, return, warranty, cancellation, shipping and ordering policies and the deposit rules |
 | 05–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).
+
+**Where the return promise lives.** A return is two objects, not one: the *window* the system
+enforces (`pos.return_max_days`, read by `pos/service.py::return_policy` and printed on the receipt)
+and the *wording* the customer agent quotes (the `return` policy row). Both are owned by
+`04 Business policies` so the promise is read and written in one place. Section 07's
+`exchange-and-returns` page links here; it must not offer a second editor for either.
 
 **How a page is produced.** Every key declares its home in the registry (`section` + `page`, with
 a domain default in `_DOMAIN_HOME` and per-key overrides where a domain spans pages). A Settings

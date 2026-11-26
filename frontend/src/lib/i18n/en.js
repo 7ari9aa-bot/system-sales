@@ -1539,4 +1539,13 @@ export default {
   "settings.store.pages.contact-details.desc": "The phone, email, address and website the business uses.",
   "settings.store.pages.legal-data.title": "Legal data",
   "settings.store.pages.legal-data.desc": "The legal and tax identity shown on invoices and official documents.",
+
+  "policies.title.warranty": "Warranty policy",
+  "policies.placeholder.warranty": "e.g. the warranty period, what it covers and what it does not.",
+  "settings.store.pages.working-hours.title": "Working hours",
+  "settings.store.pages.working-hours.desc": "What the customer agent tells a customer about opening times — written here, and nowhere else.",
+  "settings.store.pages.business-policies.title": "Business policies",
+  "settings.store.pages.business-policies.desc": "The promises the shop is held to: exchange, returns and warranty — the wording the customer reads, and the windows the system enforces.",
+  "settings.store.policies.title": "Published promises",
+  "settings.store.policies.desc": "These are the texts the customer agent answers from. What is not written, the agent tells the customer is not available.",
 };

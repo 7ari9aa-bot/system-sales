@@ -986,6 +986,7 @@ _reg(
         label_en="Return Window (Days)",
         description_ar="أقصى عدد أيام بعد البيع يُقبل فيها المرتجع.",
         description_en="The most days after a sale that a return is still accepted.",
+        impact_level="high",
     )
 )
 _reg(
@@ -1005,6 +1006,7 @@ _reg(
         label_en="Exchange Window (Days)",
         description_ar="أقصى عدد أيام بعد البيع يُقبل فيها الاستبدال. صفر يعني نفس مهلة المرتجع.",
         description_en="Most days after a sale an exchange is accepted. 0 = same as returns.",
+        impact_level="high",
     )
 )
 _reg(
@@ -2450,30 +2452,30 @@ _PAGE_OVERRIDES: dict[str, str] = {
     "business.commercial_register": "legal-data",
     "business.terms_accepted_at": "legal-data",
     # Who may see profit is a permission, not a business fact: it belongs on the matrix.
-    "reports.managers_see_profit": "matrix",
+    "reports.managers_see_profit": "team/matrix",
+    # The return and exchange windows are a promise the shop makes to its customers, so they are
+    # edited on the business policies page next to the wording of that promise — not buried in the
+    # till settings. Section 07 links here rather than offering a second editor for the same rule.
+    "pos.return_max_days": "store/business-policies",
+    "pos.exchange_max_days": "store/business-policies",
     # Structure, not identity: the branch limits belong with the branches themselves.
-    "organization.multi_branch": "all-branches",
-    "organization.max_branches": "all-branches",
-}
-
-# Keys whose domain default lands them in the wrong section entirely (the branch limits live in
-# "organization" but they describe the branches, and who may see profit is a team right).
-_SECTION_OVERRIDES: dict[str, str] = {
-    "organization.multi_branch": "locations",
-    "organization.max_branches": "locations",
-    "reports.managers_see_profit": "team",
+    "organization.multi_branch": "locations/all-branches",
+    "organization.max_branches": "locations/all-branches",
 }
 
 
 def _with_home(d: SettingDef) -> SettingDef:
-    """Apply the page and section overrides. One place decides where a key is edited."""
-    if d.key in _PAGE_OVERRIDES or d.key in _SECTION_OVERRIDES:
-        return replace(
-            d,
-            page=_PAGE_OVERRIDES.get(d.key, d.page),
-            section=_SECTION_OVERRIDES.get(d.key, d.section),
-        )
-    return d
+    """Apply the home override. One place decides where a key is edited.
+
+    A bare page name keeps the section its domain already owns; ``"section/page"`` moves the key
+    to another section, which is what a key registered under one module but owned by another page
+    needs (the branch limits live in "organization" but they describe the branches).
+    """
+    target = _PAGE_OVERRIDES.get(d.key)
+    if not target:
+        return d
+    section, _, page = target.rpartition("/")
+    return replace(d, page=page, section=section or d.section)
 
 
 _DEFINITIONS = [_with_home(d) for d in _DEFINITIONS]

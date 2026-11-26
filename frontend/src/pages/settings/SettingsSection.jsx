@@ -20,6 +20,8 @@ import { AlertTriangle, RotateCcw, Save, ShieldAlert } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import { SettingField } from "@/components/settings/SettingField";
+import StorePolicyEditor from "@/components/settings/StorePolicyEditor";
+import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
 import { useSettings } from "@/components/settings/useSettings";
 import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
@@ -73,7 +75,25 @@ const DOMAIN_LABELS_EN = {
  * with its own pages, not one long screen: the tab strip below is how a merchant moves inside
  * it without the sidebar growing to twenty siblings. */
 const SECTION_PAGES = {
-  store: ["business-profile", "brand-identity", "contact-details", "legal-data"],
+  store: [
+    "business-profile",
+    "brand-identity",
+    "contact-details",
+    "working-hours",
+    "business-policies",
+    "legal-data",
+  ],
+};
+
+/** Pages that also publish store policies — the promises the customer agent answers from.
+ *
+ * A policy is not a registry key: it is a knowledge item the agent quotes. It still has exactly
+ * one home, and that home is here. `business-policies` also carries the deposit rules, which are
+ * the same kind of promise (what the shop asks for before it will hold an order).
+ */
+const POLICY_KEYS_BY_PAGE = {
+  "store/working-hours": ["hours"],
+  "store/business-policies": ["exchange", "return", "warranty", "cancellation", "shipping", "ordering"],
 };
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -236,7 +256,7 @@ export default function SettingsSection({ section }) {
         <PreviewPanel changedEntries={s.changedEntries} scope={scope} isAr={isAr} />
       )}
 
-      {domains.length === 0 && (
+      {domains.length === 0 && !POLICY_KEYS_BY_PAGE[`${section}/${page}`] && (
         <div className="py-8 text-center text-[13px] text-muted-foreground">
           {t("settings.store.empty")}
         </div>
@@ -255,6 +275,22 @@ export default function SettingsSection({ section }) {
           ))}
         </SettingCard>
       ))}
+
+      {POLICY_KEYS_BY_PAGE[`${section}/${page}`] && (
+        <div className="space-y-2 pt-2">
+          <div className="border-b border-border pb-2">
+            <h2 className="font-display text-[14px] font-semibold leading-5">
+              {t("settings.store.policies.title")}
+            </h2>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              {t("settings.store.policies.desc")}
+            </p>
+          </div>
+          <StorePolicyEditor keys={POLICY_KEYS_BY_PAGE[`${section}/${page}`]} />
+        </div>
+      )}
+
+      {`${section}/${page}` === "store/business-policies" && <DepositPolicySettings />}
 
       {s.defs && s.defs.length > 0 && (
         <div className="flex items-center gap-2 pt-2">

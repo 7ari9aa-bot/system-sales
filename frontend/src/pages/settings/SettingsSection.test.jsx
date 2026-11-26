@@ -41,6 +41,27 @@ const PHONE = {
   description_en: "The number the customer sees.",
 };
 
+const POLICY_DEF = {
+  ...PHONE,
+  key: "pos.return_max_days",
+  domain: "pos",
+  type: "number",
+  default: 30,
+  min_value: 0,
+  max_value: 365,
+  page: "business-policies",
+  impact_level: "high",
+  label_ar: "مهلة المرتجع",
+  label_en: "Return window (days)",
+};
+
+/** One page's definitions, as the server would return them for that section+page. */
+const DEFS_BY_PAGE = {
+  "contact-details": [PHONE],
+  "business-policies": [POLICY_DEF],
+  "working-hours": [],
+};
+
 const useSettingsMock = vi.fn(() => ({
   defs: [PHONE],
   defMap: { [PHONE.key]: PHONE },
@@ -69,8 +90,28 @@ const useSettingsMock = vi.fn(() => ({
   rejectChangeRequest: vi.fn(),
 }));
 
+const policyEditorMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/StorePolicyEditor", () => ({
+  default: (props) => policyEditorMock(props),
+}));
+
+vi.mock("@/components/settings/DepositPolicySettings", () => ({
+  default: () => null,
+}));
+
 vi.mock("@/components/settings/useSettings", () => ({
-  useSettings: (opts) => useSettingsMock(opts),
+  useSettings: (opts) => {
+    const defs = DEFS_BY_PAGE[opts.page] ?? [];
+    const grouped = {};
+    for (const d of defs) (grouped[d.domain] ||= []).push(d);
+    return {
+      ...useSettingsMock(opts),
+      defs,
+      grouped,
+      defMap: Object.fromEntries(defs.map((d) => [d.key, d])),
+    };
+  },
 }));
 
 vi.mock("@/components/settings/ScopeSelector", () => ({
@@ -95,6 +136,7 @@ function renderAt(path) {
 describe("SettingsSection", () => {
   beforeEach(() => {
     useSettingsMock.mockClear();
+    policyEditorMock.mockClear();
   });
 
   test("asks the settings hook for its own section and page", () => {
@@ -122,6 +164,33 @@ describe("SettingsSection", () => {
     // The tab strip names every page, so the heading is what must name only this one.
     expect(html).toContain(">Contact details</h1>");
     expect(html).not.toContain(">Legal data</h1>");
+  });
+
+  test("working hours publishes only the opening-times policy", () => {
+    renderAt("/settings/store/working-hours");
+    expect(policyEditorMock).toHaveBeenCalled();
+    expect(policyEditorMock.mock.calls[0][0].keys).toEqual(["hours"]);
+  });
+
+  test("business policies publishes the promise texts and the windows the system enforces", () => {
+    const html = renderAt("/settings/store/business-policies");
+    expect(policyEditorMock.mock.calls[0][0].keys).toEqual([
+      "exchange",
+      "return",
+      "warranty",
+      "cancellation",
+      "shipping",
+      "ordering",
+    ]);
+    // The window is a high-impact key, so the page warns before anything is changed.
+    expect(html).toContain("Return window (days)");
+    expect(html).toContain("high impact");
+  });
+
+  test("a page with no registry keys still shows its policy block, not an empty notice", () => {
+    const html = renderAt("/settings/store/working-hours");
+    expect(html).not.toContain("No settings on this page yet");
+    expect(html).toContain("Published promises");
   });
 
   test("a different page of the same section asks for that page instead", () => {

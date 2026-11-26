@@ -99,3 +99,25 @@ def test_branch_limits_live_with_the_branches_not_the_business_profile() -> None
     assert "organization.multi_branch" in locations
     assert "organization.max_branches" in locations
     assert "organization.multi_branch" not in {d.key for d in list_definitions(section="store")}
+
+
+def test_the_return_promise_is_edited_with_the_rest_of_the_policy() -> None:
+    """A key's home follows the page that owns the promise, not the module that reads it.
+
+    ``pos.return_max_days`` is read by the till and printed on the receipt, but the owner sets it
+    as a promise to customers — so it lives with the policy, and section 07 links here instead of
+    offering a second editor for the same rule.
+    """
+    policies = {d.key for d in list_definitions(section="store", page="business-policies")}
+    assert "pos.return_max_days" in policies
+    assert "pos.exchange_max_days" in policies
+    # It is not also sitting in the till settings.
+    till = {d.key for d in list_definitions(section="pos", page="pos-settings")}
+    assert "pos.return_max_days" not in till
+
+
+def test_the_high_impact_keys_say_so() -> None:
+    """The page can only warn about what the registry declares."""
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["pos.return_max_days"].impact_level == "high"
+    assert by_key["pos.exchange_max_days"].impact_level == "high"

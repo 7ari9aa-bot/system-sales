@@ -1539,4 +1539,13 @@ export default {
   "settings.store.pages.contact-details.desc": "الهاتف والبريد والعنوان والموقع التي يستخدمها النشاط.",
   "settings.store.pages.legal-data.title": "البيانات القانونية",
   "settings.store.pages.legal-data.desc": "البيانات القانونية والضريبية التي تظهر على الفواتير والمستندات الرسمية.",
+
+  "policies.title.warranty": "سياسة الضمان",
+  "policies.placeholder.warranty": "مثال: مدة الضمان، وإيه اللي بيغطيه وإيه اللي مش بيغطيه.",
+  "settings.store.pages.working-hours.title": "مواعيد العمل",
+  "settings.store.pages.working-hours.desc": "المواعيد اللي بيقولها وكيل العملاء للعميل — من هنا، ومن غير أي مكان تاني.",
+  "settings.store.pages.business-policies.title": "سياسات النشاط",
+  "settings.store.pages.business-policies.desc": "الوعود اللي المتجر بيلتزم بيها: الاستبدال والاسترجاع والضمان — النص اللي العميل بيقراه، والمدد اللي النظام بيفرضها.",
+  "settings.store.policies.title": "الوعود المنشورة",
+  "settings.store.policies.desc": "دي النصوص اللي وكيل العملاء بيجاوب منها. اللي مش مكتوب، الوكيل بيقول للعميل إنه مش متاح.",
 };

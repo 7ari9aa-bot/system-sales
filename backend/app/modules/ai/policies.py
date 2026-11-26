@@ -31,6 +31,7 @@ POLICY_TITLES: dict[str, str] = {
     "hours": "مواعيد العمل",
     "ordering": "طريقة الطلب",
     "cancellation": "سياسة الإلغاء",
+    "warranty": "سياسة الضمان",
 }
 
 # Each policy is bounded; get_store_info's shared budget may truncate an all-topic pull.

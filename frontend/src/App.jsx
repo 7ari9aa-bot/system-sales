@@ -57,7 +57,6 @@ const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
 const TeamSettings = lazy(() => import('@/pages/settings/TeamSettings'));
 const ChannelsSettings = lazy(() => import('@/pages/settings/ChannelsSettings'));
 const PosSettings = lazy(() => import('@/pages/settings/PosSettings'));
-const PoliciesSettings = lazy(() => import('@/pages/settings/PoliciesSettings'));
 const SecuritySettings = lazy(() => import('@/pages/settings/SecuritySettings'));
 const LoginSettings = lazy(() => import('@/pages/settings/LoginSettings'));
 const PreferencesSettings = lazy(() => import('@/pages/settings/PreferencesSettings'));
@@ -190,7 +189,7 @@ const DashboardRoutes = () => (
           <Route path="/settings/usage" element={<Usage />} />
           <Route path="/settings/pos" element={<PosSettings />} />
           <Route path="/settings/pos/:section" element={<PosSettings />} />
-          <Route path="/settings/policies" element={<PoliciesSettings />} />
+          <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
           <Route path="/settings/billing" element={<BillingSettings />} />
           <Route path="/settings/members" element={<MembersSettings />} />
           <Route path="/settings/team" element={<TeamSettings />} />
