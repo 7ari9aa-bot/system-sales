@@ -204,6 +204,11 @@ async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, te
         new_lines=[{"variant_id": str(new_variant.id), "quantity": 1}],
     )
     assert Decimal(result["net"]) == Decimal("15.00")
+    # The gap is real even though no money moved: it sits on the new invoice. Saying
+    # "exchange_only" here told the cashier there was no difference while the customer owed 15.
+    assert result["settlement"] == "record_only"
+    assert Decimal(result["settled_amount"]) == Decimal("0.00")
+    assert Decimal(result["uncollected"]) == Decimal("15.00")
     detail = await PosService.get_session(db, tenant_ctx.tenant_id, pos_session.id)
     assert detail["inflow"] == Decimal("0.00")  # nothing was paid or put in a drawer
 

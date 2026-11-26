@@ -128,7 +128,11 @@ def _graph_handler(
                 "id": PAGE_ID,
                 "name": "Fihrist Page",
                 "access_token": PAGE_TOKEN,
-                "tasks": ["MESSAGING", "ANALYTICS"],
+                # What /me/accounts really returns for a Page the caller administers. The flow
+                # refuses a Page it cannot manage (facebook needs MANAGE, messenger needs
+                # MESSAGING or MANAGE), so a fixture without MANAGE models a Page nobody here can
+                # run — the refusal is right and the fixture was wrong.
+                "tasks": ["MANAGE", "MESSAGING", "ANALYTICS"],
             }
             if instagram:
                 page["instagram_business_account"] = {"id": IG_ID, "username": "fihrist"}
