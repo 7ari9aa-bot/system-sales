@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Save, RotateCcw, ShieldAlert, RefreshCw } from "lucide-react";
+import { Save, RotateCcw, ShieldAlert, RefreshCw, Lock } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
 import { useSettings } from "@/components/settings/useSettings";
@@ -66,11 +66,44 @@ const DOMAIN_LABELS_EN = {
   capability: "Capabilities",
 };
 
-function SettingField({ defn, value, onChange, isAr }) {
+/** What the server sends instead of a value the caller may not read (router MASKED_VALUE). */
+export const MASKED_VALUE = "******";
+
+/**
+ * Whether this value is a redaction rather than a real one.
+ *
+ * The mask is the string "******", and a string is truthy: rendered into a switch it showed
+ * a sensitive setting as ON, and into a number box it was an invalid number the user could
+ * "edit". A masked value must never reach a control, so every field checks this first.
+ */
+export function isProtectedValue(value) {
+  return value === MASKED_VALUE;
+}
+
+export function SettingField({ defn, value, onChange, isAr }) {
   const label = isAr ? defn.label_ar || defn.key : defn.label_en || defn.key;
   const desc = isAr ? defn.description_ar : defn.description_en;
 
   const renderControl = () => {
+    if (isProtectedValue(value)) {
+      return (
+        <div className="flex items-center gap-2" data-testid="setting-protected">
+          <Input
+            disabled
+            readOnly
+            value="••••••"
+            className="w-[160px] text-muted-foreground"
+            aria-label={isAr ? "قيمة محمية" : "Protected value"}
+            title={isAr ? "محتاج صلاحية قراءة القيم الحساسة" : "Needs the sensitive-read permission"}
+          />
+          <Badge tone="muted" className="shrink-0">
+            <Lock className="mr-1 h-3 w-3" />
+            {isAr ? "محمي" : "Protected"}
+          </Badge>
+        </div>
+      );
+    }
+
     if (defn.type === "bool") {
       return (
         <Switch

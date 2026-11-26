@@ -29,6 +29,13 @@ export const SCOPE_OPTIONS = [
   { value: "user", labelAr: "مستخدم", labelEn: "User" },
 ];
 
+/** The server's redaction marker (router MASKED_VALUE) — never a value to save. */
+export const MASKED_VALUE = "******";
+
+export function isMaskedValue(value) {
+  return value === MASKED_VALUE;
+}
+
 export function useSettings(opts = {}) {
   const { domain, keys, segment, scope = "tenant", scopeId = null } = opts;
 
@@ -207,6 +214,9 @@ export function useSettings(opts = {}) {
     try {
       const changes = {};
       for (const [k, v] of Object.entries(values)) {
+        // A redacted value is not a value: writing "******" back would overwrite the real
+        // setting with the mask itself.
+        if (isMaskedValue(v)) continue;
         if (v !== original[k]) changes[k] = v;
       }
       if (Object.keys(changes).length > 0) {
@@ -251,6 +261,7 @@ export function useSettings(opts = {}) {
     try {
       const changes = {};
       for (const k of approvalRequiredKeys) {
+        if (isMaskedValue(values[k])) continue;
         changes[k] = values[k];
       }
       if (Object.keys(changes).length === 0) return;
