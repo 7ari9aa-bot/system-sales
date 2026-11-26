@@ -203,7 +203,7 @@ async def _refreshable_after_link(
                             "id": PAGE_ID,
                             "name": "P",
                             "access_token": PAGE_TOKEN,
-                            "tasks": ["MESSAGING"],
+                            "tasks": ["MANAGE", "MESSAGING"],
                             "instagram_business_account": {"id": "17841400000000001"},
                         }
                     ]
