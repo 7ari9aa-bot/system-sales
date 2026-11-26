@@ -31,7 +31,6 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-
 from starlette.requests import Request
 
 from app.core.events.schemas import build_envelope, serialize
