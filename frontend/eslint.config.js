@@ -37,6 +37,10 @@ export default [
     rules: {
       "no-unused-vars": "off",
       "react/jsx-uses-vars": "error",
+      // A JSX name that was never imported is not `no-undef` (that rule skips JSX), so a
+      // missing import shipped and crashed the whole shell at render: `ChannelSectionPage is
+      // not defined` took 51 live specs down while lint stayed green. This is that gate.
+      "react/jsx-no-undef": "error",
       "react/jsx-uses-react": "error",
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [

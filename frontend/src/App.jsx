@@ -65,6 +65,9 @@ const NotificationPreferences = lazy(() => import('@/pages/settings/Notification
 const SettingsSection = lazy(() => import('@/pages/settings/SettingsSection'));
 const UnifiedSettings = lazy(() => import('@/pages/settings/UnifiedSettings'));
 const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
+// Section 12's four channel pages share one component; the routes below name it directly,
+// so a missing import here is not a lazy-load miss — it is a ReferenceError on every route.
+const ChannelSectionPage = lazy(() => import('@/pages/settings/ChannelSectionPage'));
 
 /** الموقع العام (الماركتنج) — عام للزوار، بدون مصادقة.
  *  Fihrist بيقرأ المسار بنفسه ويرسم الصفحة المناسبة داخل Layout الموحد. */

@@ -9,6 +9,10 @@ import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
 import ChangeRequestList from "@/components/settings/ChangeRequestList";
 import { Button } from "@/components/ui/button";
+// The change-request reason field is the only text input on the screen, and it renders
+// only when approval-required changes exist — so a missing import here crashed exactly the
+// one flow that needs it (found by the live suite, not by lint: JSX names are not `no-undef`).
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
