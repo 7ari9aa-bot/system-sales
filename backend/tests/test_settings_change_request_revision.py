@@ -10,6 +10,7 @@ two reviewers could both pass the pending_approval check.
 from __future__ import annotations
 
 import inspect
+import pathlib
 
 from app.modules.settings import service as service_module
 from app.modules.settings.models import CHANGE_REQUEST_STATES
@@ -32,8 +33,13 @@ def test_approval_refuses_when_the_value_moved():
     src = inspect.getsource(SettingsService.approve_change_request)
     assert "_keys_changed_since" in src
     assert 'request.status = "stale"' in src
-    # and it says which keys moved, so the reviewer knows what happened
-    assert "changed after it was submitted" in src
+    # and it says which keys moved, so the reviewer knows what happened. The decision
+    # returns instead of raising (a raise rolled it back), so the message is composed in
+    # the router, from the keys the service attached to the returned request.
+    assert "stale_keys" in src
+    router = (pathlib.Path(__file__).resolve().parents[1] / "app/modules/settings/router.py")
+    body = router.read_text(encoding="utf-8")
+    assert "changed after it was submitted" in body
 
 
 def test_approve_and_reject_lock_the_row():

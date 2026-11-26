@@ -79,7 +79,7 @@ class BulkSetSettingsRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=255)
     # Optimistic concurrency (§81): per-key history ids the caller last saw.
     # If another write landed in between for any key, the server returns 409.
-    expected_history_ids: dict[str, uuid.UUID] | None = None
+    expected_history_ids: dict[str, uuid.UUID | None] | None = None
 
 
 class ResetSettingRequest(BaseModel):

@@ -11,6 +11,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from app.core.audit import write_audit_row
@@ -621,6 +622,23 @@ async def approve_change_request(
         review_note=body.review_note,
         permissions=ctx.permission_codes,
     )
+    if req.status == "stale":
+        # A stale decision is a state change, so it leaves as a normal Response (the
+        # transaction commits) instead of an exception that rolled it back and left the
+        # request `pending_approval` forever.
+        stale_keys = list(getattr(req, "stale_keys", []) or [])
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "change request is stale: "
+                + ", ".join(stale_keys)
+                + " changed after it was submitted",
+                "conflicting_keys": stale_keys,
+                "change_request": _change_request_to_out(
+                    req, can_read_sensitive=_can_read_sensitive(ctx)
+                ).model_dump(mode="json"),
+            },
+        )
     return _change_request_to_out(req, can_read_sensitive=_can_read_sensitive(ctx))
 
 

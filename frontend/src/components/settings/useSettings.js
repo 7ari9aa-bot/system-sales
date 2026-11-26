@@ -244,9 +244,13 @@ export function useSettings(opts = {}) {
 
       if (Object.keys(direct).length > 0) {
         // Pass expected_history_ids for optimistic-concurrency checks (§81).
+        // Every key names the revision it was read at — null for a setting that has never
+        // been written. Sending only the keys that already had a revision left the first
+        // write of a fresh setting unprotected: another user's first write was overwritten
+        // without a 409.
         const expectedIds = {};
         for (const k of Object.keys(direct)) {
-          if (historyIds[k]) expectedIds[k] = historyIds[k];
+          expectedIds[k] = historyIds[k] ?? null;
         }
         await api("/settings/bulk", {
           method: "POST",
@@ -360,6 +364,14 @@ export function useSettings(opts = {}) {
       setNotice("change_request_approved");
     } catch (err) {
       setError(err?.message || "Could not approve change request");
+      // A stale refusal is a decision the server recorded, so the row is no longer
+      // pending. Re-read the list instead of leaving a request on screen that keeps
+      // failing every time someone clicks approve.
+      if (String(err?.message || "").includes("stale")) {
+        api("/settings/change-requests")
+          .then((reqs) => setChangeRequests(Array.isArray(reqs) ? reqs : []))
+          .catch(() => {});
+      }
     }
   }, []);
 

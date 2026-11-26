@@ -251,8 +251,10 @@ class SettingsService:
         reason: str | None = None,
         permissions: Collection[str] | None = None,
         expected_history_id: uuid.UUID | None = None,
+        expect_no_history: bool = False,
         bypass_approval: bool = False,
         source: str = "api",
+        trusted_apply: bool = False,
     ) -> TenantSetting:
         """Set one setting at the given scope. Creates or updates the override.
 
@@ -263,6 +265,17 @@ class SettingsService:
         passes the history id it last saw. If another write landed in between,
         the history no longer matches and a ``ConflictError`` is raised instead of
         silently overwriting the newer value.
+
+        ``expect_no_history``: the caller asserts the setting has never been written at
+        this scope. A revision (or a row) that exists anyway means another writer won the
+        first write, so this one is a ``ConflictError`` instead of an overwrite — the
+        "I expect no revision" state that ``expected_history_id=None`` could not express.
+
+        ``trusted_apply``: skip the per-key write check. Only the change-request apply
+        path passes it, and only because the submitter's write permission was checked on
+        submission and the reviewer's ``settings:approve`` was checked on approval — a
+        manager approves a proposal without holding ``settings:write``. Value validation,
+        history and audit are untouched.
 
         ``bypass_approval``: when ``False`` (the default for API callers) and the
         setting's ``apply_mode`` is ``APPROVAL_REQUIRED``, the write is refused —
@@ -291,7 +304,8 @@ class SettingsService:
                 f"(allowed: {[s.value for s in defn.scopes]})"
             )
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
-        self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+        if not trusted_apply:
+            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
 
         validated = _validate(defn, value)
         new_value = {"v": validated}
@@ -307,6 +321,13 @@ class SettingsService:
         if expected_history_id is not None:
             latest = await self._latest_history_id(key, scope_enum.value, scope_id)
             if latest is not None and latest != expected_history_id:
+                raise ConflictError(
+                    f"{key}: settings changed by another user; reload and try again",
+                    details={"conflicting_keys": [key]},
+                )
+        elif expect_no_history:
+            latest = await self._latest_history_id(key, scope_enum.value, scope_id)
+            if latest is not None or existing is not None:
                 raise ConflictError(
                     f"{key}: settings changed by another user; reload and try again",
                     details={"conflicting_keys": [key]},
@@ -349,9 +370,9 @@ class SettingsService:
                         f"{key}: the setting row disappeared while writing; retry",
                         details={"conflicting_keys": [key]},
                     )
-                if expected_history_id is not None:
+                if expected_history_id is not None or expect_no_history:
                     latest = await self._latest_history_id(key, scope_enum.value, scope_id)
-                    if latest is not None and latest != expected_history_id:
+                    if expect_no_history or (latest is not None and latest != expected_history_id):
                         raise ConflictError(
                             f"{key}: settings changed by another user; reload and try again",
                             details={"conflicting_keys": [key]},
@@ -444,7 +465,8 @@ class SettingsService:
         permissions: Collection[str] | None = None,
         bypass_approval: bool = False,
         source: str = "api",
-        expected_history_ids: dict[str, uuid.UUID] | None = None,
+        expected_history_ids: dict[str, uuid.UUID | None] | None = None,
+        trusted_apply: bool = False,
     ) -> list[TenantSetting]:
         """Set several settings. All-or-nothing: every key is checked before any write.
 
@@ -452,7 +474,11 @@ class SettingsService:
         validating first means the error names the bad key without touching the database.
 
         ``expected_history_ids`` maps each key to the history id the caller last saw;
-        if any key has been changed since, a ``ConflictError`` is raised (§81).
+        if any key has been changed since, a ``ConflictError`` is raised (§81). A key
+        mapped to ``None`` means "I expect this setting was never written" — a revision
+        that appeared since is a conflict, not a free overwrite.
+
+        ``trusted_apply`` skips the per-key write check; see ``set``.
         """
         scope_enum = _scope(scope)
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
@@ -464,7 +490,8 @@ class SettingsService:
                     f"{key}: scope {scope_enum.value!r} not allowed "
                     f"(allowed: {[s.value for s in defn.scopes]})"
                 )
-            self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+            if not trusted_apply:
+                self._authorize(defn, scope_enum, scope_id, user_id, permissions)
             _validate(defn, value)
             checked[key] = defn
 
@@ -472,10 +499,17 @@ class SettingsService:
         # owner fix one, reload and hit a second 409 for the next. One read of the batch names
         # every key that moved, and the per-key check inside `set` stays as the race guard.
         if expected_history_ids:
-            expected = {k: expected_history_ids[k] for k in checked if expected_history_ids.get(k)}
+            # Every key the caller named is honoured, including the ones pinned to None
+            # ("never written"): filtering out None made a first write silently take over
+            # the row another user had just created.
+            expected = {
+                k: expected_history_ids.get(k) for k in checked if k in expected_history_ids
+            }
             if expected:
                 latest = await self._latest_history_ids(list(expected), scope_enum.value, scope_id)
-                stale = sorted(k for k, h in expected.items() if latest.get(k) not in (None, h))
+                stale = sorted(
+                    k for k, h in expected.items() if (latest.get(k) or None) != h
+                )
                 if stale:
                     raise ConflictError(
                         "settings changed by another user: " + ", ".join(stale),
@@ -498,6 +532,12 @@ class SettingsService:
                     expected_history_id=(
                         expected_history_ids.get(key) if expected_history_ids else None
                     ),
+                    expect_no_history=bool(
+                        expected_history_ids
+                        and key in expected_history_ids
+                        and expected_history_ids.get(key) is None
+                    ),
+                    trusted_apply=trusted_apply,
                 )
             )
         return results
@@ -672,7 +712,11 @@ class SettingsService:
         request = SettingChangeRequest(
             tenant_id=self._tenant_id,
             changes=changes,
-            base_history_ids={k: (str(v) if v else None) for k, v in base_ids.items()},
+            # Every key is pinned, including the ones with no history yet (None). Keeping
+            # only the keys that already had a revision left a never-written setting
+            # unprotected: someone could change it while the request waited and the old
+            # proposal would still apply over it.
+            base_history_ids={k: (str(base_ids[k]) if base_ids.get(k) else None) for k in changes},
             status="pending_approval" if needs_approval else "approved",
             scope=scope_enum.value,
             scope_id=scope_id,
@@ -723,16 +767,28 @@ class SettingsService:
         # would undo the newer change, so the request is closed as stale instead.
         moved = await self._keys_changed_since(request)
         if moved:
+            # The decision to refuse is a real state change, so it is returned instead of
+            # raised: an exception rolls the request's transaction back and the row stayed
+            # `pending_approval` while the reviewer kept being told it was stale. The router
+            # turns this into a 409 whose body carries the conflicting keys, and the commit
+            # before the response persists `stale`.
             request.status = "stale"
             request.reviewed_by = reviewer_id
             request.review_note = review_note
             request.reviewed_at = func.now()
             await self._session.flush()
-            raise ValidationError(
-                "change request is stale: "
-                + ", ".join(sorted(moved))
-                + " changed after it was submitted"
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                reviewer_id,
+                "settings.change_request_stale",
+                "setting_change_requests",
+                str(request.id),
+                before={"status": "pending_approval"},
+                after={"status": "stale", "conflicting_keys": sorted(moved)},
             )
+            request.stale_keys = sorted(moved)  # transient, read by the router
+            return request
 
         request.status = "approved"
         request.reviewed_by = reviewer_id
@@ -836,6 +892,11 @@ class SettingsService:
                 permissions=permissions,
                 bypass_approval=True,
                 source="change_request",
+                # The submitter's write permission was checked when the request was created
+                # and the reviewer's settings:approve was checked on approval. Requiring
+                # settings:write here too meant a manager could reject a proposal but never
+                # approve one — the whole transaction rolled back as `failed`.
+                trusted_apply=True,
             )
             request.applied_changes = {
                 r.key: r.value.get("v") if isinstance(r.value, dict) else r.value for r in rows
