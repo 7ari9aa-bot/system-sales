@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -13,7 +13,7 @@ from sqlalchemy.orm import load_only
 
 from app.core.errors import NotFoundError, ValidationError
 from app.modules.notifications import schemas
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import Notification, NotificationPreference
 
 #: The columns a row is read back with. ``updated_at`` is deliberately NOT one
 #: of them (see ``mark_read``): a full-entity SELECT lists it, and a guard that
@@ -65,6 +65,168 @@ def _checked_page(*, limit: int, offset: int) -> tuple[int, int]:
             details={"offset": offset, "min": 0, "max": schemas.OFFSET_MAX},
         )
     return min(limit, schemas.PAGE_MAX), offset
+
+
+async def person_timezone(session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    """The zone this person reads a clock in: their own, else the workspace's.
+
+    It is the same resolution ``GET /users/me/preferences`` reports as
+    ``effective_timezone``, and it exists so a quiet-hours window is compared
+    against the clock the person is actually living in. A stored zone Python
+    cannot resolve falls back to UTC rather than raising: a notification is not
+    worth failing a checkout over.
+    """
+    from sqlalchemy import text as _text
+
+    zone = (
+        await session.execute(
+            _text(
+                "SELECT COALESCE(u.timezone, t.timezone) FROM users u "
+                "JOIN tenants t ON t.id = :tenant_id WHERE u.id = :user_id"
+            ),
+            {"tenant_id": tenant_id, "user_id": user_id},
+        )
+    ).scalar_one_or_none()
+    return zone or "UTC"
+
+
+async def person_local_time(
+    session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID
+) -> time:
+    """The person's current local time of day, for quiet-hours comparison."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    zone = await person_timezone(session, tenant_id, user_id)
+    try:
+        moment = datetime.now(ZoneInfo(zone))
+    except (ZoneInfoNotFoundError, ValueError):
+        moment = datetime.now(UTC)
+    return moment.time().replace(tzinfo=None)
+
+
+class NotificationPreferencesService:
+    """The person's own notification settings: which channels, and when to be quiet.
+
+    One row per person (migration fe2026112607). Reading CREATES the row when it is
+    missing, because the screen has to show real state — "no row yet" and "email is
+    on" are the same thing, and a screen that renders neither is a screen the person
+    cannot reason about. The defaults are the model's: email on, push off, no quiet
+    hours.
+    """
+
+    @staticmethod
+    async def get_or_create(
+        session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID
+    ) -> NotificationPreference:
+        pref = (
+            await session.execute(
+                select(NotificationPreference).where(
+                    NotificationPreference.tenant_id == tenant_id,
+                    NotificationPreference.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if pref is not None:
+            return pref
+        pref = NotificationPreference(tenant_id=tenant_id, user_id=user_id)
+        session.add(pref)
+        try:
+            await session.flush()
+        except IntegrityError:
+            # Two tabs opened the screen at once: the other one created the row.
+            await session.rollback()
+            pref = (
+                await session.execute(
+                    select(NotificationPreference).where(
+                        NotificationPreference.tenant_id == tenant_id,
+                        NotificationPreference.user_id == user_id,
+                    )
+                )
+            ).scalar_one()
+        return pref
+
+    @staticmethod
+    async def read(
+        session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID
+    ) -> NotificationPreference | None:
+        """The person's row, or None when they have never opened the screen.
+
+        Deliberately does not create one: ``dispatch`` runs inside the caller's
+        transaction, and a preference write there could roll back the notification
+        it was called to deliver. No row means the model's defaults, which the
+        caller applies itself.
+        """
+        return (
+            await session.execute(
+                select(NotificationPreference).where(
+                    NotificationPreference.tenant_id == tenant_id,
+                    NotificationPreference.user_id == user_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def update(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        *,
+        email_enabled: bool | None = None,
+        push_enabled: bool | None = None,
+        quiet_start: str | None = None,
+        quiet_end: str | None = None,
+    ) -> NotificationPreference:
+        """Rewrite the person's channels and quiet window.
+
+        ``None`` leaves a value alone, so one switch saves without resending the
+        rest. An empty string on either end of the window CLEARS the window — a
+        half-open window is not a thing, and silently keeping yesterday's end time
+        would be a screen that lies about when it goes quiet.
+        """
+        pref = await NotificationPreferencesService.get_or_create(session, tenant_id, user_id)
+
+        if email_enabled is not None and email_enabled != pref.email_enabled:
+            pref.email_enabled = email_enabled
+        if push_enabled is not None and push_enabled != pref.push_enabled:
+            pref.push_enabled = push_enabled
+
+        if quiet_start is not None or quiet_end is not None:
+            raw_start = quiet_start if quiet_start is not None else ""
+            raw_end = quiet_end if quiet_end is not None else ""
+            if not raw_start.strip() and not raw_end.strip():
+                pref.quiet_start = None
+                pref.quiet_end = None
+            else:
+                pref.quiet_start = NotificationPreferencesService._parse_time(
+                    raw_start, "quiet hours start"
+                )
+                pref.quiet_end = NotificationPreferencesService._parse_time(
+                    raw_end, "quiet hours end"
+                )
+                if pref.quiet_start == pref.quiet_end:
+                    raise ValidationError(
+                        "a quiet window needs two different times",
+                        details={"quiet_start": raw_start, "quiet_end": raw_end},
+                    )
+
+        await session.flush()
+        return pref
+
+    @staticmethod
+    def _parse_time(value: str, label: str) -> time:
+        """``HH:MM`` (24h) is the only shape the screen sends. Anything else is a 400."""
+        raw = (value or "").strip()
+        try:
+            hour, minute = raw.split(":")
+            parsed = time(hour=int(hour), minute=int(minute))
+        except (ValueError, TypeError) as exc:
+            raise ValidationError(
+                f"{label} must be a time of day as HH:MM, got '{raw}'",
+                details={"value": raw},
+            ) from exc
+        if not (0 <= parsed.hour <= 23 and 0 <= parsed.minute <= 59):
+            raise ValidationError(f"{label} must be a time of day as HH:MM, got '{raw}'")
+        return parsed
 
 
 class NotificationService:
@@ -340,13 +502,32 @@ class NotificationService:
             ["notifications.email_enabled", "notifications.push_enabled"],
         )
 
+        # Two gates, and both must be open. The WORKSPACE decides whether this
+        # deployment sends the channel at all (a shop that has no email provider
+        # configured must not send email); the PERSON decides whether they want it
+        # and whether they are currently quiet. Before this, the personal screen had
+        # nothing to write to and the switches would have been decoration.
+        pref = await NotificationPreferencesService.read(session, tenant_id, user_id)
+        quiet = False
+        if pref is not None and pref.quiet_start is not None and pref.quiet_end is not None:
+            from app.modules.notifications.digest import NotificationAggregator
+
+            local_now = await person_local_time(session, tenant_id, user_id)
+            quiet = NotificationAggregator._in_quiet_hours(pref, now_time=local_now)
+
+        # No row yet means the model defaults: email on, push off.
+        person_email = True if pref is None else pref.email_enabled
+        person_push = False if pref is None else pref.push_enabled
+        want_email = channels["notifications.email_enabled"] and person_email and not quiet
+        want_push = channels["notifications.push_enabled"] and person_push and not quiet
+
         delivery_ok = True
         try:
-            if channels["notifications.email_enabled"]:
+            if want_email:
                 await NotificationService._send_email(
                     session, tenant_id, user_id, title=title or kind, body=body
                 )
-            if channels["notifications.push_enabled"]:
+            if want_push:
                 await NotificationService._send_push(
                     session, tenant_id, user_id, title=title or kind, body=body
                 )

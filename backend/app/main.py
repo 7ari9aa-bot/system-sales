@@ -100,6 +100,7 @@ from app.modules.marketing.router import (
 from app.modules.marketing.router import (
     router as marketing_router,
 )
+from app.modules.notifications.router import me_router as notifications_me_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.operations.router import (
     router as operations_router,
@@ -509,6 +510,7 @@ def create_app() -> FastAPI:
         operations_sla_router,
         realtime_router,
         notifications_router,
+        notifications_me_router,
         privacy_router,
         privacy_public_router,
         platform_module_router,

@@ -18,7 +18,7 @@ imported the module. It now binds the canonical class instead.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 from sqlalchemy import (
     DateTime,
@@ -107,17 +107,25 @@ class NotificationAggregator:
 
         # Check user-level quiet hours first
         pref = await NotificationAggregator._get_preference(session, tenant_id, user_id)
-        if pref and NotificationAggregator._in_quiet_hours(pref):
-            return False
+        if pref and pref.quiet_start is not None:
+            from app.modules.notifications.service import person_local_time
+
+            local_now = await person_local_time(session, tenant_id, user_id)
+            if NotificationAggregator._in_quiet_hours(pref, now_time=local_now):
+                return False
 
         # Tenant-level quiet hours fallback (notifications.quiet_hours_start/end)
         if pref is None or not pref.quiet_start:
             if await NotificationAggregator._tenant_quiet_hours_active(session, tenant_id):
                 return False
 
-        # Non-critical with digest enabled → hold
-        if pref and pref.digest_enabled:
-            return False
+        # NOTE: there is no per-person "digest enabled" flag. The table has three
+        # channel switches and a quiet-hours window, nothing else; an earlier
+        # version of this method read ``pref.digest_enabled``, a column that never
+        # existed, so any preference row made this raise AttributeError. Whether a
+        # non-critical notification is digested stays a WORKSPACE rule
+        # (``notifications.digest_mode``) — the person controls the channels and the
+        # quiet hours, the workspace controls the batching.
 
         # Tenant-level digest mode fallback (notifications.digest_mode).
         # Read via app.core.settings_read (no import cycle with settings).
@@ -214,13 +222,18 @@ class NotificationAggregator:
         ).scalar_one_or_none()
 
     @staticmethod
-    def _in_quiet_hours(pref: NotificationPreference) -> bool:
-        """Check if current time is within the user's quiet hours."""
-        if not pref.quiet_start or not pref.quiet_end:
+    def _in_quiet_hours(pref: NotificationPreference, *, now_time: time | None = None) -> bool:
+        """Is the person inside their quiet window right now?
+
+        The window is a LOCAL time of day, so it is compared against a local clock:
+        the caller passes ``now_time`` already resolved in the person's zone (see
+        ``notifications.service.person_local_time``). Comparing a Cairo window to
+        UTC is a two-hour error twice a year and a three-hour error the rest of it.
+        """
+        if pref.quiet_start is None or pref.quiet_end is None:
             return False
-        # Simple check — production would use timezone-aware comparison
-        now_time = datetime.now(UTC).time()
+        moment = now_time or datetime.now(UTC).time()
         if pref.quiet_start <= pref.quiet_end:
-            return pref.quiet_start <= now_time <= pref.quiet_end
+            return pref.quiet_start <= moment <= pref.quiet_end
         # Overnight window (e.g. 22:00 → 06:00)
-        return now_time >= pref.quiet_start or now_time <= pref.quiet_end
+        return moment >= pref.quiet_start or moment <= pref.quiet_end

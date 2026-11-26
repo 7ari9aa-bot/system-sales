@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 685,
-    "sha256": "be4fe9ba13e7c18fb3a61db2733bc907a54a0cd58be5200c9748b68321252e62",
-    "typed_operations": 376
+    "operations": 687,
+    "sha256": "c744a8d2e4978825654ffba7a908b99109aeb12cd119c7c4387fdda53b481d4e",
+    "typed_operations": 378
   },
   "spec": {
     "components": {
@@ -4343,6 +4343,40 @@
             "checks"
           ],
           "title": "ChannelDiagnosticsOut",
+          "type": "object"
+        },
+        "ChannelPreference": {
+          "description": "One delivery channel as the person's screen shows it.\n\n``available`` is about THIS deployment, not about the person: a channel with no\nconfigured provider is reported as unavailable rather than offered as a switch\nthat changes nothing. ``locked`` marks in-app, which is always on — the bell row\nis the record of what happened, so it is not a preference.",
+          "properties": {
+            "available": {
+              "title": "Available",
+              "type": "boolean"
+            },
+            "channel": {
+              "title": "Channel",
+              "type": "string"
+            },
+            "enabled": {
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "label_key": {
+              "title": "Label Key",
+              "type": "string"
+            },
+            "locked": {
+              "default": false,
+              "title": "Locked",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "channel",
+            "label_key",
+            "enabled",
+            "available"
+          ],
+          "title": "ChannelPreference",
           "type": "object"
         },
         "ChosenRetentionPolicyOut": {
@@ -14537,6 +14571,93 @@
           "title": "NotificationOut",
           "type": "object"
         },
+        "NotificationPreferencesOut": {
+          "description": "Everything the personal-notifications screen needs in one answer.",
+          "properties": {
+            "channels": {
+              "items": {
+                "$ref": "#/components/schemas/ChannelPreference"
+              },
+              "title": "Channels",
+              "type": "array"
+            },
+            "quiet_hours": {
+              "$ref": "#/components/schemas/QuietHours"
+            },
+            "timezone": {
+              "title": "Timezone",
+              "type": "string"
+            },
+            "workspace": {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "title": "Workspace",
+              "type": "object"
+            }
+          },
+          "required": [
+            "channels",
+            "quiet_hours",
+            "timezone",
+            "workspace"
+          ],
+          "title": "NotificationPreferencesOut",
+          "type": "object"
+        },
+        "NotificationPreferencesUpdate": {
+          "description": "A partial rewrite of the person's own notification settings.\n\n``None`` leaves a value alone. On the quiet window, an empty string on BOTH ends\nclears it — a window needs two ends, and the service refuses a half of one.",
+          "properties": {
+            "email_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email Enabled"
+            },
+            "push_enabled": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Push Enabled"
+            },
+            "quiet_end": {
+              "anyOf": [
+                {
+                  "maxLength": 5,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quiet End"
+            },
+            "quiet_start": {
+              "anyOf": [
+                {
+                  "maxLength": 5,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quiet Start"
+            }
+          },
+          "title": "NotificationPreferencesUpdate",
+          "type": "object"
+        },
         "NotificationSummary": {
           "description": "Totals the centre labels its filters with.",
           "properties": {
@@ -17510,6 +17631,40 @@
             "quantity"
           ],
           "title": "PutawayRequest",
+          "type": "object"
+        },
+        "QuietHours": {
+          "description": "The person's quiet window, as ``HH:MM`` in their own clock, or off.",
+          "properties": {
+            "active_now": {
+              "default": false,
+              "title": "Active Now",
+              "type": "boolean"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          "title": "QuietHours",
           "type": "object"
         },
         "QuoteRequest": {
@@ -98816,6 +98971,210 @@
           "summary": "Open My Closure Request",
           "tags": [
             "users"
+          ]
+        }
+      },
+      "/api/v1/users/me/notification-preferences": {
+        "get": {
+          "description": "What this person's notifications actually do, and why.\n\nReading creates the row when it is missing, because \"no row\" and \"email is on\"\nare the same state: a screen that shows neither cannot be reasoned about.",
+          "operationId": "my_notification_preferences_api_v1_users_me_notification_preferences_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationPreferencesOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read the caller's own notification channels and quiet hours",
+          "tags": [
+            "notifications"
+          ]
+        },
+        "put": {
+          "description": "Save one switch or the window, then answer with the whole state.\n\nThe response is the same shape the GET returns, so the screen renders what the\nserver now holds instead of echoing the request back to itself.",
+          "operationId": "update_my_notification_preferences_api_v1_users_me_notification_preferences_put",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferencesUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NotificationPreferencesOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Change the caller's own notification channels or quiet hours",
+          "tags": [
+            "notifications"
           ]
         }
       },

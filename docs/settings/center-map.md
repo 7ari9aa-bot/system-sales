@@ -155,7 +155,7 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 01 Sign-in | done | `/settings/login` — password change, sign-in method, recovery |
 | 01 Personal security | done | `/settings/security` — two-step verification, signed-in devices |
 | 01 Preferences | done | `/settings/preferences` — language, appearance, the person's own timezone, date format, landing page; stored on the account (migration fe2026112606) |
-| 01 Personal notifications | pending | per-channel preferences and quiet hours (`notification_preferences` exists; no API yet) |
+| 01 Personal notifications | done | `/settings/notifications` — email/push switches (in-app locked as the record), quiet hours as real times read in the person's own zone; `GET`/`PUT /users/me/notification-preferences`; one row per person (migration fe2026112607) and the dispatcher now honours it |
 | 02–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
