@@ -13,11 +13,12 @@ A scope id that does not exist for the tenant is an error (``UnknownScopeError``
 not an empty chain: otherwise any random UUID would be accepted as a scope and a
 typo would silently fall back to the tenant value.
 
-``channel`` is a name (``pos``, ``website``, ``whatsapp``), not a row, so its
-``scope_id`` is a *warehouse* id plus the channel name carried by the caller. A
-channel-level override is therefore stored as scope ``channel`` with the
-warehouse that serves it as ``scope_id`` and the channel name inside the key's
-value namespace; see ``SettingsService`` for how it resolves.
+A ``channel`` is a row: the tenant's ``integrations`` row for that provider. Its
+``scope_id`` is that integration id, so two channels served by the same warehouse keep
+separate overrides. (It used to be a warehouse id, which made a WhatsApp setting and an
+Instagram setting on one warehouse the same row.) A channel resolves up through the
+warehouse named in its ``config->>'warehouse_id'`` when there is one, then branch,
+workspace, tenant.
 
 All reads here go through the tenant-bound session, so RLS applies a second time.
 """
@@ -62,6 +63,8 @@ _ROOT_TABLE: dict[Scope, str] = {
     Scope.POS_PROFILE: "pos_profiles",
     Scope.REGISTER: "pos_registers",
     Scope.USER: "tenant_users",
+    # A channel's identity is its integration row, not the warehouse behind it.
+    Scope.CHANNEL: "integrations",
 }
 
 
@@ -77,6 +80,19 @@ async def _exists(session: AsyncSession, scope: Scope, scope_id: uuid.UUID, tena
     return row.first() is not None
 
 
+async def _channel_warehouse(
+    session: AsyncSession, tenant_id: uuid.UUID, channel_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The warehouse a channel integration names, or None when it serves all of them."""
+    sql = (
+        "SELECT NULLIF(config->>'warehouse_id', '')::uuid FROM integrations "  # noqa: S608
+        "WHERE tenant_id = :tid AND id = :sid"
+    )
+    return (
+        await session.execute(text(sql), {"tid": tenant_id, "sid": channel_id})
+    ).scalar_one_or_none()
+
+
 async def require_scope_entity(
     session: AsyncSession, tenant_id: uuid.UUID, scope: Scope, scope_id: uuid.UUID | None
 ) -> None:
@@ -87,9 +103,6 @@ async def require_scope_entity(
         return
     if scope_id is None:
         raise UnknownScopeError(f"scope {scope.value!r} requires a scope_id")
-    if scope is Scope.CHANNEL:
-        # A channel override hangs on the warehouse that serves the channel.
-        scope = Scope.WAREHOUSE
     if not await _exists(session, scope, scope_id, tenant_id):
         raise UnknownScopeError(f"{scope.value} {scope_id} not found for this tenant")
 
@@ -116,11 +129,16 @@ async def resolve_chain(
         chain.append(ScopeLink(Scope.TENANT, None))
         return chain
 
-    # A channel override resolves through the warehouse that serves it.
-    current_scope = Scope.WAREHOUSE if scope is Scope.CHANNEL else scope
+    # A channel resolves through the warehouse its integration names, when it names one.
+    current_scope = scope
     current_id = scope_id
     if scope is Scope.CHANNEL:
-        chain.append(ScopeLink(Scope.WAREHOUSE, current_id))
+        warehouse_id = await _channel_warehouse(session, tenant_id, scope_id)
+        if warehouse_id is None:
+            chain.append(ScopeLink(Scope.TENANT, None))
+            return chain
+        current_scope, current_id = Scope.WAREHOUSE, warehouse_id
+        chain.append(ScopeLink(Scope.WAREHOUSE, warehouse_id))
 
     while current_scope in _PARENT_COLUMN:
         table, parent_scope, column = _PARENT_COLUMN[current_scope]
