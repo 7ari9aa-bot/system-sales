@@ -46,7 +46,16 @@ def _subscription_graph(*, already: str, posted: list[dict]):
         params = dict(request.url.params)
         if "/subscribed_apps" in url:
             if request.method == "GET":
-                data = [{"id": "app", "subscribed_fields": already.split(",")}] if already else []
+                # Meta lists every app on the Page and the code keeps only OUR app id, so the
+                # fixture must answer with the id the code will actually look for. Hardcoding
+                # "app" made the read look like "this app has no fields", the merge then posted
+                # the Messenger fields alone and dropped `feed` (shard 6, run 45770924359).
+                from app.core.config import get_settings
+
+                app_id = str(get_settings().meta_app_id or "")
+                data = (
+                    [{"id": app_id, "subscribed_fields": already.split(",")}] if already else []
+                )
                 return httpx.Response(200, json={"data": data})
             posted.append(params)
             return httpx.Response(200, json={"success": True})
