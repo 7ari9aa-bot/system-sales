@@ -184,7 +184,7 @@ async def test_provisioning_seeds_every_canonical_definition(db: AsyncSession, t
         tenant_name="Measured Co",
         tenant_slug=f"measured-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Measured Owner",
     )
     rows = (
@@ -202,7 +202,7 @@ async def test_every_seeded_row_equals_the_registry(db: AsyncSession, tenant_ctx
         tenant_name="Mirror Co",
         tenant_slug=f"mirror-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Mirror Owner",
     )
     await bind_tenant(db, tenant.id)
@@ -225,7 +225,7 @@ async def test_reseeding_converges_a_drifted_row(db: AsyncSession, tenant_ctx) -
         tenant_name="Drift Co",
         tenant_slug=f"drift-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Drift Owner",
     )
     await bind_tenant(db, tenant.id)
@@ -256,7 +256,7 @@ async def test_seed_is_idempotent_on_an_in_sync_tenant(db: AsyncSession, tenant_
         tenant_name="Twice Measured Co",
         tenant_slug=f"twice-{uuid.uuid4().hex[:8]}",
         email=f"owner-{uuid.uuid4().hex[:10]}@test.local",
-        password="secret-password",
+        password="secret-password-1",
         full_name="Twice Owner",
     )
     await bind_tenant(db, tenant.id)

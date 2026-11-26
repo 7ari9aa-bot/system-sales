@@ -134,6 +134,11 @@ def _graph_handler(
                 page["instagram_business_account"] = {"id": IG_ID, "username": "fihrist"}
             return httpx.Response(200, json={"data": [page]})
         if f"/{PAGE_ID}/subscribed_apps" in url:
+            if request.method == "GET":
+                # The flow reads what THIS app already has before writing: a read it cannot
+                # parse is "unknown", and unknown fails closed rather than overwriting the
+                # Page's subscription. A bare {"success": true} here is not that payload.
+                return httpx.Response(200, json={"data": [{"id": APP_ID, "subscribed_fields": []}]})
             return httpx.Response(200, json={"success": True})
         if "/me?" in url or url.rstrip("/?").endswith("/me"):
             # The messenger ownership check hits /me WITH the page token —
