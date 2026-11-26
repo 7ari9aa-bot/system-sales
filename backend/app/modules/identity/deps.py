@@ -103,8 +103,13 @@ def tenant_may_use_api(state: str | None) -> bool:
     return policy is not None and policy.allows_api
 
 
-async def get_db() -> AsyncSession:
-    """One session per request, one transaction: commit on success."""
+async def get_db(request: Request) -> AsyncSession:
+    """One session per request, one transaction: commit on success.
+
+    The session is also published on ``request.state`` so the route handler can commit it BEFORE
+    the response is sent (``app.core.routing.CommitBeforeResponseRoute``). Committing in this
+    dependency's exit is too late: FastAPI runs that exit after the client already has the body,
+    and a second request in that window cannot see the row it was just told exists."""
     # Lazy: app.core.db resolves SessionLocal through __getattr__ PER ACCESS,
     # so tests can bind the app's sessions to the test transaction
     # (conftest's app_sessions_on_test_connection). An import-time binding
@@ -112,6 +117,7 @@ async def get_db() -> AsyncSession:
     from app.core.db import SessionLocal
 
     async with SessionLocal() as session:
+        request.state.db_session = session
         async with session.begin():
             yield session
 
