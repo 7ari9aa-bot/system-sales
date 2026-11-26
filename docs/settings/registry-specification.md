@@ -4,45 +4,6 @@
 > This document is **generated** from the code by `backend/scripts/dev/gen_registry_spec.py`.
 > If the code and this table disagree, the code wins; run the script to regenerate.
 
-## Setting count
-
-The registry has **127 settings** (`len(REGISTRY)`). The source file contains
-120 `_reg()` call sites — fewer than 127 because one `_reg()` sits inside a
-`for` loop over `CAPABILITIES` (8 iterations), producing 8 setting definitions
-from a single call. So: 119 non-loop calls + 1 loop call × 8 iterations =
-127 definitions. There is no duplicate-key deduping: every `_reg()` call
-produces a unique key, and `len(REGISTRY) == len(_DEFINITIONS) == 127`.
-
-A review that reports **119** is counting only the non-loop `_reg()` call sites
-— the calls that are visible as individual statements outside any `for` body.
-The loop's single `_reg()` call site is not counted by a line-by-line review
-because it appears once in the source but runs 8 times. To count accurately:
-`len(REGISTRY)` is the source of truth; an AST walk that counts `_reg()` call
-nodes (including those inside `For` bodies) gives 120; multiplying by loop
-iterations and adding the non-loop count reproduces 127.
-
-## Channel scope — open question
-
-`Scope.CHANNEL` exists in the `Scope` enum and the inheritance chain
-(`channel → tenant`), and `orders.allow_backorder` declares it as an allowed
-scope. However, **per-channel settings within the same warehouse are not
-fully implemented**:
-
-* `require_scope_entity` redirects `Scope.CHANNEL` to `Scope.WAREHOUSE` for
-  validation, meaning the `scope_id` is checked against the `warehouses`
-  table — not a channels table (no `channels` table exists in the schema).
-* This means the current behaviour does not support different values for
-  individual channels served by the same warehouse; it only validates that
-  the `scope_id` refers to a valid warehouse.
-
-**Open product question:** Should `scope_id` for channel scope be the real
-channel/conversation ID (requiring a new validation path against a channels
-entity), or should channel-level overrides use a composite key (warehouse +
-channel) stored in a `channel` field on the request? This needs a product
-decision before per-channel differentiation can be implemented. Until then,
-channel scope works as a warehouse-level override with channel semantics
-documented but not individually addressable.
-
 ## How to read this table
 
 | Column | Meaning |
@@ -201,7 +162,7 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `customer_agent.enabled` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
+| `customer_agent.enabled` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 | `customer_agent.dialect` | enum | `egyptian` | TENANT | normal | validated | — | — | ✅ | msa, egyptian, gulf, levantine | all |
 | `customer_agent.formality` | enum | `friendly` | TENANT | normal | validated | — | — | ✅ | formal, friendly, casual | all |
 | `customer_agent.response_language` | enum | `ar` | TENANT | normal | validated | — | — | ✅ | ar, en, auto | all |
@@ -243,7 +204,7 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `catalog.sku_format` | string | `{category}-{number}` | TENANT | normal | validated | — | — | ✅ | — | all |
-| `catalog.barcode_auto_generate` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
+| `catalog.barcode_auto_generate` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
 | `catalog.default_tax_rate` | number | 0 | TENANT | normal | validated | 0 | 100 | ✅ | — | all |
 | `catalog.show_out_of_stock` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 | `catalog.max_variants_per_product` | number | 100 | TENANT | normal | validated | 1 | 10000 | ✅ | — | all |
@@ -261,18 +222,18 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `security.require_strong_passwords` | bool | true | TENANT | sensitive | validated | — | — | ✅ | — | all |
-| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | validated | 0 | 365 | ✅ | — | all |
-| `security.audit_retention_days` | number | 365 | TENANT | normal | validated | 0 | 2555 | ✅ | — | all |
-| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | validated | — | — | ✅ | — | all |
+| `security.require_strong_passwords` | bool | true | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
+| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | approval_required | 0 | 365 | ✅ | — | all |
+| `security.audit_retention_days` | number | 365 | TENANT | sensitive | approval_required | 0 | 2555 | ✅ | — | all |
+| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
 
 ## Billing (3 settings)
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `billing.auto_renew` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
-| `billing.currency` | enum | `EGP` | TENANT | normal | validated | — | — | ✅ | EGP, USD, SAR, AED | all |
-| `billing.notify_before_renewal_days` | number | 7 | TENANT | normal | validated | 0 | 30 | ✅ | — | all |
+| `billing.auto_renew` | bool | true | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
+| `billing.currency` | enum | `EGP` | TENANT | sensitive | approval_required | — | — | ✅ | EGP, USD, SAR, AED | all |
+| `billing.notify_before_renewal_days` | number | 7 | TENANT | sensitive | approval_required | 0 | 30 | ✅ | — | all |
 
 ---
 

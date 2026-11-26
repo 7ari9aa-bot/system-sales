@@ -61,6 +61,13 @@ def _ctx(db, tenant_ctx) -> TenantContext:
 async def test_inventory_location_routes(db, tenant_ctx):
     ctx = _ctx(db, tenant_ctx)
     tid = tenant_ctx.tenant_id
+    # A warehouse location is refused while inventory.track_locations is off (its default):
+    # create_warehouse_location reads that setting and raises. This test is about the routes, so
+    # it switches tracking on the way an owner does instead of meeting the gate.
+    from app.modules.settings.registry import Scope
+    from app.modules.settings.service import SettingsService
+
+    await SettingsService(db, tid).set("inventory.track_locations", True, scope=Scope.TENANT)
 
     wh = Warehouse(tenant_id=tid, name="WH-A", code="WHA", is_active=True)
     db.add(wh)

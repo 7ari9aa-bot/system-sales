@@ -119,7 +119,10 @@ class Settings(BaseSettings):
     # fleet times out at 30 s with no database error anywhere. The invariant is
     # pinned by tests/test_db_pool_invariant.py; overriding these in a deploy
     # must keep it true.
-    db_pool_size: int = 12
+    # 14 + 10 = 24: POOLS now holds nine streams (§144 bulk tier), so the
+    # 2 x (pools + relay) floor is 20 and the 4-headroom lands on 24. The old
+    # 12 + 10 = 22 fit by two units before the bulk pool arrived.
+    db_pool_size: int = 14
     db_max_overflow: int = 10
     # §144: per-tenant in-flight cap. 0 (the default) DERIVES the gate from the
     # DB pool (pool_size + max_overflow): the old hard-coded 50 exceeded the
