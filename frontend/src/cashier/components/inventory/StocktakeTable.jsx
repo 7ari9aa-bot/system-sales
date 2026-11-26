@@ -9,6 +9,9 @@ import ColorSwatch from "@/cashier/components/ui-kit/ColorSwatch";
 import { colorHex } from "@/cashier/lib/uiConstants";
 import { changedCounts, countsToSave, diffOf, parseCount, sheetTotals, stocktakeErrorMessage } from "@/cashier/api/stocktakeAdapter";
 import { scanRefusal, scanToCount } from "@/cashier/lib/stocktakeScan";
+// createCountQueue is used by the count queue below; without this import the whole stocktake
+// screen died on "createCountQueue is not defined" before a single row could be listed.
+import { createCountQueue } from "@/cashier/api/stocktakeQueue";
 import { useApproveStocktake, useCancelStocktake, useSaveCounts } from "@/cashier/api/useStocktake";
 import { fmtInt } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";

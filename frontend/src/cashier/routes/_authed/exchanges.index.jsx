@@ -57,6 +57,10 @@ function ExchangeScreen({ session }) {
   const [term, setTerm] = useState("");
   const [error, setError] = useState("");
   const [termError, setTermError] = useState("");
+  // Why the difference could not be taken/returned. The reset below always referenced it, but the
+  // state itself was never declared, so opening the exchange screen threw "setPayError is not
+  // defined" and nothing rendered at all.
+  const [payError, setPayError] = useState(null);
   const [restockChoice, setRestock] = useState(null); // null = the shop's own default (shown and applied)
   const [reason, setReason] = useState(null);
   const [tenderLines, setTenderLines] = useState([]); // how the customer pays the difference
@@ -237,6 +241,8 @@ function ExchangeScreen({ session }) {
     } catch (e) {
       const m = exchangeErrorMessage(e);
       setError(m);
+      // Next to the button the cashier just pressed, not only in the search card above.
+      setPayError(m);
       toast.error(m);
     } finally {
       setBusy(false);
@@ -350,6 +356,11 @@ function ExchangeScreen({ session }) {
         </div>
       </div>
       <div ref={actionsRef}>
+        {payError ? (
+          <p role="alert" className="px-3 pb-1 text-center text-[11px] font-semibold text-rose-600">
+            {payError}
+          </p>
+        ) : null}
         {!tenderPlan.ok && invoice && newLines.length > 0 ? (
           <p role="alert" className="px-3 pb-1 text-center text-[11px] font-semibold text-rose-600">
             {tenderPlan.message}

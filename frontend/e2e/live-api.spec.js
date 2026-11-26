@@ -2510,8 +2510,11 @@ test("print settings on the screen are saved for real: the prefix the owner type
   ).session;
 
   const main = await openPosSettings(page);
+  // Name the print tab itself. The old alternation included "receipt", which matches
+  // "Receipt tracking" — the first tab, so the click opened the receipt list and the prefix field
+  // was never on screen (run 45752402206: the snapshot showed Receipt tracking selected).
   await (
-    await posTab(main, /الفاتورة|الباركود|الطباعة|print|receipt/i)
+    await posTab(main, /Print & barcode|الطباعة والباركود/i)
   ).click();
 
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
