@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 700,
-    "sha256": "9f94da5b3d853fdeac449189a030eebff99854be8cf8cc23a32b650dfa9496c0",
-    "typed_operations": 386
+    "operations": 714,
+    "sha256": "786505d5f229927c50ba40fa8ea94ff66083de28318e98b696fe70dcc84fb077",
+    "typed_operations": 397
   },
   "spec": {
     "components": {
@@ -2805,6 +2805,43 @@
           "title": "BlockState",
           "type": "object"
         },
+        "BranchDayHours": {
+          "additionalProperties": false,
+          "description": "One day of a branch's week. `closed` wins over any open/close it carries.",
+          "properties": {
+            "close": {
+              "anyOf": [
+                {
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Close"
+            },
+            "closed": {
+              "default": false,
+              "title": "Closed",
+              "type": "boolean"
+            },
+            "open": {
+              "anyOf": [
+                {
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Open"
+            }
+          },
+          "title": "BranchDayHours",
+          "type": "object"
+        },
         "BreakGlassOut": {
           "description": "The one-shot capability token.\n\nThis is the only response in the module that carries a credential, and it\ncarries it exactly once: the token is minted here and consumed by the\nprotected action (GETDEL), so there is no later read to model.",
           "properties": {
@@ -4028,6 +4065,13 @@
               ],
               "title": "Reason"
             },
+            "resets": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Resets",
+              "type": "array"
+            },
             "review_note": {
               "anyOf": [
                 {
@@ -5117,7 +5161,7 @@
           "type": "object"
         },
         "CreateChangeRequestInput": {
-          "description": "Payload to create a change request for approval-gated settings.",
+          "description": "Payload to create a change request for approval-gated settings.\n\n``resets`` names settings the request will clear (remove the override). A clear is an\noperation, not a value, so it is listed here instead of being written as ``{key: None}``\n— which the per-type validator rejects for boolean, number and enum settings.",
           "properties": {
             "changes": {
               "additionalProperties": true,
@@ -5135,6 +5179,13 @@
                 }
               ],
               "title": "Reason"
+            },
+            "resets": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Resets",
+              "type": "array"
             },
             "scope": {
               "default": "tenant",
@@ -5155,9 +5206,6 @@
               "title": "Scope Id"
             }
           },
-          "required": [
-            "changes"
-          ],
           "title": "CreateChangeRequestInput",
           "type": "object"
         },
@@ -7860,6 +7908,262 @@
             "bucket"
           ],
           "title": "DimensionEntry",
+          "type": "object"
+        },
+        "DiscountRuleIn": {
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "max_discount": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Discount"
+            },
+            "min_subtotal": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Subtotal"
+            },
+            "name": {
+              "maxLength": 127,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "priority": {
+              "default": 0,
+              "title": "Priority",
+              "type": "integer"
+            },
+            "requires_code": {
+              "default": false,
+              "title": "Requires Code",
+              "type": "boolean"
+            },
+            "scope": {
+              "default": "order",
+              "title": "Scope",
+              "type": "string"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "target_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Value"
+            }
+          },
+          "required": [
+            "name",
+            "kind",
+            "value"
+          ],
+          "title": "DiscountRuleIn",
+          "type": "object"
+        },
+        "DiscountRuleOut": {
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "max_discount": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Discount"
+            },
+            "min_subtotal": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Subtotal"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "priority": {
+              "title": "Priority",
+              "type": "integer"
+            },
+            "requires_code": {
+              "title": "Requires Code",
+              "type": "boolean"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "target_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            },
+            "value": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "code",
+            "kind",
+            "value",
+            "scope",
+            "target_id",
+            "min_subtotal",
+            "max_discount",
+            "requires_code",
+            "priority",
+            "status",
+            "starts_on",
+            "ends_on"
+          ],
+          "title": "DiscountRuleOut",
           "type": "object"
         },
         "DoneOut": {
@@ -12732,6 +13036,20 @@
               ],
               "title": "Code"
             },
+            "hours": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/BranchDayHours"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hours"
+            },
             "is_active": {
               "anyOf": [
                 {
@@ -16714,6 +17032,232 @@
           "title": "PrescriptionRef",
           "type": "object"
         },
+        "PriceListIn": {
+          "properties": {
+            "code": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "currency": {
+              "default": "EGP",
+              "title": "Currency",
+              "type": "string"
+            },
+            "is_default": {
+              "default": false,
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "name": {
+              "maxLength": 127,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            },
+            "priority": {
+              "default": 0,
+              "title": "Priority",
+              "type": "integer"
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid From"
+            },
+            "valid_to": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid To"
+            }
+          },
+          "required": [
+            "name",
+            "code"
+          ],
+          "title": "PriceListIn",
+          "type": "object"
+        },
+        "PriceListItemIn": {
+          "properties": {
+            "min_quantity": {
+              "default": 1,
+              "minimum": 1.0,
+              "title": "Min Quantity",
+              "type": "integer"
+            },
+            "unit_price": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Unit Price"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "unit_price"
+          ],
+          "title": "PriceListItemIn",
+          "type": "object"
+        },
+        "PriceListItemOut": {
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "min_quantity": {
+              "title": "Min Quantity",
+              "type": "integer"
+            },
+            "price_list_id": {
+              "format": "uuid",
+              "title": "Price List Id",
+              "type": "string"
+            },
+            "unit_price": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "title": "Unit Price",
+              "type": "string"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "price_list_id",
+            "variant_id",
+            "unit_price",
+            "min_quantity"
+          ],
+          "title": "PriceListItemOut",
+          "type": "object"
+        },
+        "PriceListOut": {
+          "properties": {
+            "code": {
+              "title": "Code",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_default": {
+              "title": "Is Default",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes"
+            },
+            "priority": {
+              "title": "Priority",
+              "type": "integer"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid From"
+            },
+            "valid_to": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid To"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "code",
+            "currency",
+            "is_default",
+            "priority",
+            "status",
+            "valid_from",
+            "valid_to",
+            "notes"
+          ],
+          "title": "PriceListOut",
+          "type": "object"
+        },
         "ProductIntakeRequest": {
           "properties": {
             "brand_id": {
@@ -17706,6 +18250,91 @@
             }
           },
           "title": "QuietHours",
+          "type": "object"
+        },
+        "QuoteIn": {
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "lines": {
+              "items": {
+                "$ref": "#/components/schemas/QuoteLineIn"
+              },
+              "title": "Lines",
+              "type": "array"
+            },
+            "on_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On Date"
+            }
+          },
+          "required": [
+            "lines"
+          ],
+          "title": "QuoteIn",
+          "type": "object"
+        },
+        "QuoteLineIn": {
+          "properties": {
+            "category_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            },
+            "quantity": {
+              "default": 1,
+              "minimum": 1.0,
+              "title": "Quantity",
+              "type": "integer"
+            },
+            "unit_price": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Unit Price"
+            },
+            "variant_id": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "variant_id",
+            "unit_price"
+          ],
+          "title": "QuoteLineIn",
           "type": "object"
         },
         "QuoteRequest": {
@@ -21361,6 +21990,11 @@
               ],
               "title": "Feature Requirement"
             },
+            "impact_level": {
+              "default": "low",
+              "title": "Impact Level",
+              "type": "string"
+            },
             "key": {
               "title": "Key",
               "type": "string"
@@ -21406,6 +22040,11 @@
               ],
               "title": "Min Value"
             },
+            "page": {
+              "default": "",
+              "title": "Page",
+              "type": "string"
+            },
             "permission": {
               "title": "Permission",
               "type": "string"
@@ -21421,6 +22060,11 @@
               },
               "title": "Scopes",
               "type": "array"
+            },
+            "section": {
+              "default": "",
+              "title": "Section",
+              "type": "string"
             },
             "segments": {
               "default": [],
@@ -21916,6 +22560,19 @@
             "status"
           ],
           "title": "StatusChangeRequest",
+          "type": "object"
+        },
+        "StatusIn": {
+          "properties": {
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "title": "StatusIn",
           "type": "object"
         },
         "StatusOut": {
@@ -28342,6 +28999,18 @@
                 }
               ],
               "title": "Code"
+            },
+            "hours": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hours"
             },
             "id": {
               "format": "uuid",
@@ -39476,6 +40145,122 @@
           ]
         }
       },
+      "/api/v1/billing/invoices": {
+        "get": {
+          "description": "This tenant's invoices, newest first, bounded.\n\nA closed period's frozen snapshot and an ordinary invoice are both documents the shop\nowes or has paid, so both are listed. The totals are strings for the same reason the\nprice is: never a float on the way out.",
+          "operationId": "list_invoices_api_v1_billing_invoices_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 25,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Invoices",
+          "tags": [
+            "billing"
+          ]
+        }
+      },
       "/api/v1/billing/periods/close": {
         "post": {
           "description": "Freeze a period into an immutable snapshot. 409 if already closed.",
@@ -39795,6 +40580,7 @@
       },
       "/api/v1/billing/subscription": {
         "get": {
+          "description": "The subscription, and the plan behind it.\n\nThe Settings Center's \"current plan\" page has to name the plan and what it costs, so the\nrow carries its plan instead of leaving the page to fetch a catalog it has no endpoint\nfor. Money is returned as a string, like every other amount in the API: a float would\nround a Numeric(12,2) price on the way to JSON.",
           "operationId": "get_subscription_api_v1_billing_subscription_get",
           "parameters": [
             {
@@ -39989,6 +40775,102 @@
             }
           },
           "summary": "Record Usage",
+          "tags": [
+            "billing"
+          ]
+        }
+      },
+      "/api/v1/billing/usage/summary": {
+        "get": {
+          "description": "What this tenant has used this period, feature by feature, against its limits.\n\nReads the same numbers the entitlement gate reads, so the page and the refusal can\nnever disagree. A feature with no entitlement row is absent rather than zero: an empty\nlimit means \"unrestricted\", and printing it as 0 would say the opposite.",
+          "operationId": "get_usage_summary_api_v1_billing_usage_summary_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Usage Summary",
           "tags": [
             "billing"
           ]
@@ -74869,6 +75751,106 @@
           ]
         }
       },
+      "/api/v1/platform/rate-limits": {
+        "get": {
+          "description": "The request limits this deployment enforces, per bucket.\n\nSection 20's \"rate limits\" page asks a question the code answers in one place: how many\nrequests a caller may make before a 429. The numbers are module constants in\n``app.core.middleware`` (``RATE_LIMIT_BUCKETS``), not tenant settings — a shop cannot\nraise its own ceiling — so this route REPORTS them rather than offering an editor that\nwould write a row nothing reads.\n\n``enforced`` is the middleware's own switch: it is off only when ``ENVIRONMENT`` is\nexactly ``test``. Reporting it matters, because a page that showed limits while the\nlimiter was disabled would describe a system that is not running.",
+          "operationId": "read_rate_limits_api_v1_platform_rate_limits_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Read Rate Limits Api V1 Platform Rate Limits Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read Rate Limits",
+          "tags": [
+            "platform"
+          ]
+        }
+      },
       "/api/v1/platform/saved-views": {
         "get": {
           "description": "The caller's own private views plus every team/workspace view.\n\nAnother user's private view is filtered in the query, never returned and\nleft for the client to hide.\n\nPaged, and ordered by ``(name, id)`` rather than ``name`` alone.\n``saved_views.name`` carries no unique constraint — a tenant can hold two\nviews called \"Default\", one for customers and one for orders, and PostgreSQL\nowes nothing for their relative order. On a single unbounded read that is\ninvisible; the moment a page exists it is not: the tied pair can swap places\nbetween two reads, so one of them crosses the page boundary and the caller\neither sees it twice or never. ``id`` (the primary key) is the tie-break that\nmakes ``ORDER BY`` a total order, exactly as the webhook and security-event\nlists already do.\n\n``total`` is the size of the WHOLE filtered list, so a client that receives\n``len(items) < total`` knows it is looking at one page rather than at\neverything it has.",
@@ -83210,6 +84192,978 @@
           ]
         }
       },
+      "/api/v1/pricing/discount-rules": {
+        "get": {
+          "operationId": "list_discount_rules_api_v1_pricing_discount_rules_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/DiscountRuleOut"
+                    },
+                    "title": "Response List Discount Rules Api V1 Pricing Discount Rules Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Discount Rules",
+          "tags": [
+            "pricing"
+          ]
+        },
+        "post": {
+          "operationId": "create_discount_rule_api_v1_pricing_discount_rules_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DiscountRuleOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Discount Rule",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
+      "/api/v1/pricing/discount-rules/{rule_id}/status": {
+        "post": {
+          "operationId": "set_rule_status_api_v1_pricing_discount_rules__rule_id__status_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "rule_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Rule Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DiscountRuleOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Rule Status",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
+      "/api/v1/pricing/price-lists": {
+        "get": {
+          "operationId": "list_price_lists_api_v1_pricing_price_lists_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PriceListOut"
+                    },
+                    "title": "Response List Price Lists Api V1 Pricing Price Lists Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Price Lists",
+          "tags": [
+            "pricing"
+          ]
+        },
+        "post": {
+          "operationId": "create_price_list_api_v1_pricing_price_lists_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceListIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PriceListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Price List",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
+      "/api/v1/pricing/price-lists/{list_id}/archive": {
+        "post": {
+          "operationId": "archive_price_list_api_v1_pricing_price_lists__list_id__archive_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "list_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "List Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PriceListOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Archive Price List",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
+      "/api/v1/pricing/price-lists/{list_id}/items": {
+        "get": {
+          "operationId": "list_items_api_v1_pricing_price_lists__list_id__items_get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "list_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "List Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PriceListItemOut"
+                    },
+                    "title": "Response List Items Api V1 Pricing Price Lists  List Id  Items Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Items",
+          "tags": [
+            "pricing"
+          ]
+        },
+        "put": {
+          "operationId": "set_item_api_v1_pricing_price_lists__list_id__items_put",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "list_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "List Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceListItemIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PriceListItemOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Set Item",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
+      "/api/v1/pricing/quote": {
+        "post": {
+          "description": "What this basket costs after the offers allowed to run today.",
+          "operationId": "quote_api_v1_pricing_quote_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Quote Api V1 Pricing Quote Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Quote",
+          "tags": [
+            "pricing"
+          ]
+        }
+      },
       "/api/v1/privacy/consents": {
         "get": {
           "description": "List the consent ledger, filtered by customer / purpose / status.",
@@ -90053,7 +92007,7 @@
       },
       "/api/v1/settings/definitions": {
         "get": {
-          "description": "List setting metadata, optionally for one domain and/or one business segment.",
+          "description": "List setting metadata, narrowed by domain, segment, section and/or page.\n\n``section``/``page`` are the Settings Center home (docs/settings/center-map.md), so a page\nasks for the keys it owns and receives exactly those.",
           "operationId": "list_setting_definitions_api_v1_settings_definitions_get",
           "parameters": [
             {
@@ -90086,6 +92040,38 @@
                   }
                 ],
                 "title": "Segment"
+              }
+            },
+            {
+              "in": "query",
+              "name": "section",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Section"
+              }
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Page"
               }
             },
             {
@@ -91796,6 +93782,106 @@
             }
           },
           "summary": "Rollback Setting",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/security-posture": {
+        "get": {
+          "description": "What this deployment actually enforces today, in one read model.\n\nSection 18's \"session control\" page cannot offer a session-policy editor: the token\nlifetimes are deployment configuration (``ACCESS_TOKEN_TTL_SECONDS`` and\n``REFRESH_TOKEN_TTL_SECONDS``) and no registry key owns them, so an editor there would\nwrite rows nothing reads. What the page CAN do honestly is show the values the running\nprocess enforces beside the security keys that ARE editable, so a reader sees the whole\nposture and knows which half to change where.\n\nEvery field is read, never assumed: the four ``security.*`` keys through the resolver\n(the same values the password policy, the rotation sweep, the audit sweep and the IP\ngate read), and the two token lifetimes from the loaded configuration. The allowlist\nis reported as a count, never as its entries: the value is SENSITIVE and this route is\nnot the place that hands it out.",
+          "operationId": "get_security_posture_api_v1_settings_security_posture_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Get Security Posture Api V1 Settings Security Posture Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Security Posture",
           "tags": [
             "settings"
           ]
@@ -102346,6 +104432,138 @@
             }
           },
           "summary": "Register Webhook",
+          "tags": [
+            "webhooks"
+          ]
+        }
+      },
+      "/api/v1/webhook-endpoints/deliveries": {
+        "get": {
+          "description": "What this tenant's endpoints actually received, newest first.\n\nDeclared before the parameterised routes on purpose. Today they differ by method, so\nnothing shadows anything — but FastAPI matches in declaration order, and the day someone\nadds ``GET /webhook-endpoints/{endpoint_id}`` a static ``/deliveries`` declared after it\nwould be read as an id. The payload is never returned: it is the event body the caller's\nown systems produced, and echoing it would put customer data on a settings page.",
+          "operationId": "list_webhook_deliveries_api_v1_webhook_endpoints_deliveries_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 25,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "query",
+              "name": "offset",
+              "required": false,
+              "schema": {
+                "default": 0,
+                "title": "Offset",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Webhook Deliveries",
           "tags": [
             "webhooks"
           ]

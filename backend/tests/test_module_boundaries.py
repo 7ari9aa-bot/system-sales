@@ -340,7 +340,12 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # notifications/service.py was inlined to app.core.metrics.increment,
 # removing the notifications -> settings.slo edge that had drifted the
 # count to 336 without a documented reason. The count is back to 335.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 335
+# 335 → 338 with the `pricing` module (section 07 of the Settings Center). A NEW module has to
+# read the things it governs: `pricing` reads `catalog` variant rows to resolve a price, and the
+# `settings` engine for the seven `pricing.*` keys that are its policy. Those three imports are
+# the module's reason to exist, not coupling added to an existing one — every existing count is
+# unchanged. Lower this again if the catalogue read ever moves behind a service.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 338
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
