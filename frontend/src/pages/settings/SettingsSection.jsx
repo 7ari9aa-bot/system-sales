@@ -24,6 +24,7 @@ import StorePolicyEditor from "@/components/settings/StorePolicyEditor";
 import BranchesPanel from "@/components/settings/BranchesPanel";
 import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
 import CategoriesPanel from "@/components/settings/CategoriesPanel";
+import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import {
   BranchDataPanel,
   BranchHoursPanel,
@@ -309,6 +310,8 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "catalog/categories" && <CategoriesPanel />}
 
       {`${section}/${page}` === "catalog/attributes-and-specs" && <ApparelOptionsPanel />}
+
+      {`${section}/${page}` === "sales/exchange-and-returns" && <ReturnWindowPanel />}
       {`${section}/${page}` === "locations/branch-data" && <BranchDataPanel />}
       {`${section}/${page}` === "locations/branch-hours" && <BranchHoursPanel />}
       {`${section}/${page}` === "locations/branch-staff" && <BranchStaffPanel />}

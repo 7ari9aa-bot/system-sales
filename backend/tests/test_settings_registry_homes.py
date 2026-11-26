@@ -141,3 +141,21 @@ def test_the_default_tax_rate_is_high_impact() -> None:
     """A default rate that lands on every new product is money, so the page warns."""
     by_key = {d.key: d for d in list_definitions()}
     assert by_key["catalog.default_tax_rate"].impact_level == "high"
+
+
+def test_the_tax_keys_that_change_the_charge_are_high_impact() -> None:
+    """VAT category and whether prices include VAT change what the customer is charged."""
+    by_key = {d.key: d for d in list_definitions()}
+    assert by_key["einvoice.vat_category"].impact_level == "high"
+    assert by_key["einvoice.prices_include_vat"].impact_level == "high"
+    # Still on the tax page, not moved around by the flag.
+    assert by_key["einvoice.vat_category"].home == ("sales", "taxes-and-fees")
+
+
+def test_the_return_windows_have_exactly_one_editing_home() -> None:
+    """Section 07's exchange-and-returns page links here; it must not also own the keys."""
+    sales_keys = {d.key for d in list_definitions(section="sales")}
+    assert "pos.return_max_days" not in sales_keys
+    assert "pos.exchange_max_days" not in sales_keys
+    policies = {d.key for d in list_definitions(section="store", page="business-policies")}
+    assert {"pos.return_max_days", "pos.exchange_max_days"} <= policies

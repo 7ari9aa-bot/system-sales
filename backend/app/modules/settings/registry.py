@@ -739,6 +739,7 @@ _reg(
         label_en="Prices include VAT",
         description_ar="لو مفعّل فسعر الصنف المسجّل في الكاشير يشمل الضريبة، وتُستخرج منه في الإيصال.",
         description_en="Recorded prices already include VAT; it is extracted on the receipt.",
+        impact_level="high",
     )
 )
 _reg(
@@ -791,6 +792,7 @@ _reg(
         label_en="Item VAT category",
         description_ar="خاضع للضريبة، معفى، أو غير خاضع. تُطبّق على كل أصناف المحل.",
         description_en="Taxable, exempt or non-taxable; applied to every item of the store.",
+        impact_level="high",
     )
 )
 _reg(

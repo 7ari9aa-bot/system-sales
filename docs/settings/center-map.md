@@ -186,7 +186,13 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 06 SKU and barcode | done | `/settings/catalog/sku-and-barcode` — `catalog.sku_format` and `catalog.barcode_auto_generate`: the FORMAT, never a product's own barcode |
 | 06 Product states | done | `/settings/catalog/product-states` — `catalog.show_out_of_stock` |
 | 06 Images and media | pending | no media rule exists to edit (limits, ordering, placeholders are per-product data today); a page here would be switches wired to nothing |
-| 07–20 | pending | see the tables above |
+| 07 Sales settings | done | `/settings/sales/sales-settings` — `orders.reserve_on`, `orders.deduct_stock_on`, `orders.allow_backorder` |
+| 07 Taxes and fees | done | `/settings/sales/taxes-and-fees` — the fifteen `einvoice.*` keys, with `vat_category` and `prices_include_vat` marked high impact because they change what the customer is charged |
+| 07 Exchange and returns | done | `/settings/sales/exchange-and-returns` — reads the windows in force (`GET /settings/effective`) and LINKS to their single home on `/settings/store/business-policies`; it offers no second editor |
+| 07 Price lists | pending | no price-list table or endpoint exists; a product's price is append-only rows in `product_prices` per variant, currency and quantity tier |
+| 07 Pricing | pending | no pricing-rule key exists: currency and tiers are per-product data, so a page would edit nothing |
+| 07 Discounts and offers | pending | no offer engine exists; the only discount control is the till cap (`pos.max_discount_pct` at tenant level, `pos_profiles.max_discount_pct` per register), which belongs to section 08 |
+| 08–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

@@ -127,6 +127,12 @@ vi.mock("@/components/settings/ApparelOptionsPanel", () => ({
   default: (props) => apparelPanelMock(props),
 }));
 
+const returnWindowMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/ReturnWindowPanel", () => ({
+  default: (props) => returnWindowMock(props),
+}));
+
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
   BranchHoursPanel: (props) => branchHoursMock(props),
@@ -163,6 +169,7 @@ function renderAt(path) {
           <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
           <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
           <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
+          <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -176,6 +183,7 @@ describe("SettingsSection", () => {
     branchesPanelMock.mockClear();
     categoriesPanelMock.mockClear();
     apparelPanelMock.mockClear();
+    returnWindowMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
     branchStaffMock.mockClear();
@@ -293,5 +301,22 @@ describe("SettingsSection", () => {
     expect(apparelPanelMock).toHaveBeenCalled();
     // The two panels belong to their own pages only.
     expect(categoriesPanelMock).not.toHaveBeenCalled();
+  });
+
+  test("the sales section owns the rules of selling", () => {
+    renderAt("/settings/sales/taxes-and-fees");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("sales");
+    expect(opts.page).toBe("taxes-and-fees");
+  });
+
+  test("exchange and returns shows the windows instead of a second editor", () => {
+    renderAt("/settings/sales/exchange-and-returns");
+    expect(returnWindowMock).toHaveBeenCalled();
+  });
+
+  test("the returns panel is only on its own page", () => {
+    renderAt("/settings/sales/sales-settings");
+    expect(returnWindowMock).not.toHaveBeenCalled();
   });
 });
