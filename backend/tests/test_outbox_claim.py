@@ -99,6 +99,11 @@ class RecordingBus:
         self.published.append({"outbox_id": (meta or {}).get("outbox_id"), "stream": stream})
         return f"{self._calls}-0"
 
+    @property
+    def calls(self) -> int:
+        """Publishes attempted, including the call that raised."""
+        return self._calls
+
     def ids(self) -> list[str]:
         return [p["outbox_id"] for p in self.published]
 
@@ -422,6 +427,35 @@ async def _statuses(factory: async_sessionmaker, ids: list[str]) -> dict[str, st
         return {r.id: r.status for r in rows}
 
 
+async def _details(factory: async_sessionmaker, ids: list[str]) -> dict[str, dict]:
+    """The columns that explain a status, for failure messages.
+
+    A bare status cannot distinguish "never claimed" from "claimed, published,
+    mark lost" from "requeued by another relay". These four columns can, so the
+    assertion messages carry them instead of a string that hides the cause.
+    """
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                text(
+                    "SELECT id::text AS id, status, attempts, published_at, not_before, "
+                    "last_error FROM outbox_events WHERE id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": ids},
+            )
+        ).mappings()
+        return {
+            r.id: {
+                "status": r.status,
+                "attempts": r.attempts,
+                "published_at": str(r.published_at),
+                "not_before": str(r.not_before),
+                "last_error": (r.last_error or "")[:160],
+            }
+            for r in rows
+        }
+
+
 def _sessions_per_task():
     """Route ``outbox.SessionLocal`` to a per-task sessionmaker.
 
@@ -479,10 +513,21 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
 
     relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
     relay = OutboxRelay(bus)
-    with pytest.raises(RelayProcessDied):
+    # The requirement is unchanged (the drain must die); the try/else exists so
+    # the failure message can say whether the second row was ever claimed.
+    died = False
+    try:
         await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
     # The dead relay's unpublished row is NOT stranded in 'publishing'.
+    except RelayProcessDied:
+        died = True
+    assert died, (
+        "the relay did not die on the second row",
+        await _details(factory, [first, second]),
+        {"calls": bus.calls, "published_ids": bus.ids()},
+    )
+
     statuses = await _statuses(factory, [first, second])
     assert statuses[first] == "published", "the completed publish was rolled back"
     assert statuses[second] == "pending", (
@@ -544,7 +589,15 @@ async def test_two_concurrent_relays_never_work_the_same_row(
 
         factory = relay_env["factory"]
         statuses = await _statuses(factory, ids)
-        assert statuses == {i: "published" for i in ids}, statuses
+        assert statuses == {i: "published" for i in ids}, (
+            await _details(factory, ids),
+            {
+                "published_a": published_a,
+                "published_b": published_b,
+                "calls_a": bus_a.calls,
+                "calls_b": bus_b.calls,
+            },
+        )
         # Both relays did real work while the other was in flight (B returned
         # inside its timeout instead of blocking on A's claim).
         assert published_a >= 1 and published_b >= 1, (published_a, published_b)
@@ -700,5 +753,7 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
         f"{ {i: state[i] for i in stranded_rows} }"
     )
     assert sorted(i for i in bus.ids() if i in set(ids)) == sorted(ids), (
-        f"a stranded row never reached the stream: {state}"
+        f"a stranded row never reached the stream: {state}",
+        await _details(factory, ids),
+        {"published_calls": bus.calls},
     )
