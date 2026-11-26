@@ -4,9 +4,49 @@ on:
   push:
   pull_request:
 
+# One run per ref. A push to a branch that also has an open PR used to start TWO identical
+# runs (push + pull_request); the newer one supersedes the older, which would otherwise keep a
+# runner busy for two hours on a commit nobody is waiting for any more.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  backend:
+  # Cheap gate: a documentation-only push should not spend two runner-hours on the backend
+  # suite or ten minutes installing Chromium.
+  changes:
     runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+  # The suite is 11k+ tests and took 1h53m in one serial job (run 45635012681:
+  # "138 failed, 11175 passed … in 6811.16s"). xdist was tried and abandoned: its workers
+  # crashed on the runner's Python 3.13 and coverage fell to 38% (see the note this replaces).
+  # Sharding does not share a process, so it sidesteps that failure mode entirely: four jobs,
+  # each running its own share of the test files against its own disposable Postgres + Redis,
+  # and one small job that combines their coverage and keeps the 80% gate.
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         working-directory: backend
@@ -43,6 +83,8 @@ jobs:
       # production. Environment variables outrank `.env` in pydantic-settings,
       # so setting it here pins every session to the CI database.
       DATABASE_URL: postgresql+asyncpg://sales_app:ci-app-password@localhost:5432/sales
+      # Each shard writes its own coverage file so the combine job can add them up.
+      COVERAGE_FILE: .coverage.${{ matrix.shard }}
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -72,6 +114,11 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+          # Without this the cache key ignores the pin file and a constraints bump
+          # silently reuses a stale wheel cache.
+          cache-dependency-path: |
+            backend/pyproject.toml
+            backend/constraints.txt
       # constraints.txt pins the exact dependency closure the full local suite
       # was verified against — without it every CI run floats on the newest
       # satisfying versions and a release can break on an unrelated push.
@@ -84,34 +131,82 @@ jobs:
       # Seeds roles/permissions/plans + applies RLS — tests rely on the seeded
       # roles and are skipped silently without a configured database otherwise.
       - run: python scripts/provision.py
+      # Split the test FILES across shards by collected test count, not by file
+      # name: a handful of files hold hundreds of tests each, so a name-based
+      # split leaves one shard doing most of the work. Collection is one import
+      # pass over the suite (~40s) and yields a balanced, deterministic split.
+      - name: Choose this shard's test files
+        run: |
+          python - "${{ matrix.shard }}" 4 > /tmp/shard_files.txt <<'PY'
+          import pathlib, re, subprocess, sys
+
+          shard, total = int(sys.argv[1]), int(sys.argv[2])
+          files = sorted(p.as_posix() for p in pathlib.Path("tests").rglob("test_*.py"))
+          out = subprocess.run(
+              [sys.executable, "-m", "pytest", "--collect-only", "-q", *files],
+              capture_output=True, text=True,
+          ).stdout
+          counts = dict.fromkeys(files, 0)
+          for line in out.splitlines():
+              if "::" in line:
+                  head = line.split("::", 1)[0].strip()
+                  if head in counts:
+                      counts[head] += 1
+          if not any(counts.values()):
+              # Collection produced nothing (a broken conftest must not silently run the
+              # whole suite in every shard): fall back to an even split by file name.
+              counts = {name: 1 for name in files}
+          # greedy: biggest file first into the currently lightest shard
+          buckets = [[] for _ in range(total)]
+          load = [0] * total
+          for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+              target = load.index(min(load))
+              buckets[target].append(name)
+              load[target] += n or 1
+          for name in buckets[shard - 1]:
+              print(name)
+          print(f"shard {shard}/{total}: {len(buckets[shard-1])} files, ~{load[shard-1]} tests", file=sys.stderr)
+          PY
+          test -s /tmp/shard_files.txt || { echo "shard is empty — the split failed" >&2; exit 1; }
+          wc -l /tmp/shard_files.txt
       # -rs prints the reason for every skip. Without it a skip is invisible, and
       # a silently-skipped RLS test is indistinguishable from a passing one —
       # which is exactly how a FORCE-RLS production bug went unnoticed.
-      # Coverage gate (audit P0): 80% measured on the runner 2026-10-03
-      # (21,910 statements, 84%). Lowering this number requires an ADR.
-      # pytest-timeout: 300s per test — a hang fails instead of stalling the 11k+ suite.
-      # (The timeout is set in pyproject.toml addopts so it applies everywhere.)
-      # xdist (-n auto --dist loadscope) was tried but caused worker crashes on the
-      # CI's Python 3.13 runner — coverage dropped to 38% because most workers died.
-      # Re-enable after debugging the 3.13 compatibility issue.
-      - run: pytest -q -rs --durations=30 --cov=app --cov-report=term --cov-fail-under=80
+      # pytest-timeout: 300s per test — a hang fails instead of stalling the suite
+      # (set in pyproject.toml addopts so it applies everywhere).
+      # Coverage is measured here but gated in the `coverage` job: a shard only
+      # sees a quarter of the suite, so its own percentage means nothing.
+      - name: pytest (shard ${{ matrix.shard }}/4)
+        run: xargs -a /tmp/shard_files.txt pytest -q -rs --durations=30 --cov=app --cov-report=
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-${{ matrix.shard }}
+          path: backend/.coverage.${{ matrix.shard }}
+          if-no-files-found: warn
+          retention-days: 3
       # Contract drift gate: ensures openapi.lock.json, mobile Dart models, and desktop TS types match
-      - run: python scripts/check_contract_drift.py
+      - if: matrix.shard == 1
+        run: python scripts/check_contract_drift.py
       # Exercise the built frontend against this job's disposable PostgreSQL +
       # Redis and a real FastAPI process. The browser creates its own test user,
       # reads dashboard/orders, and logs out; no production data or credentials.
-      - uses: actions/setup-node@v7
+      - if: matrix.shard == 1
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
+        if: matrix.shard == 1
         working-directory: frontend
         run: npm ci
       - name: Install Chromium
+        if: matrix.shard == 1
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Start API for the real-data browser flow
+        if: matrix.shard == 1
         # The live suite signs up ~17 fresh accounts from one IP inside a few minutes. The
         # strict /auth/* brute-force bucket (10 per window per IP) is meant to refuse exactly
         # that, so this one throwaway API runs with the limiter off (ENVIRONMENT=test is the
@@ -132,25 +227,66 @@ jobs:
           cat /tmp/fihrist-api.log
           exit 1
       - name: Build frontend bundle
+        if: matrix.shard == 1
         working-directory: frontend
         run: npm run build
       - name: Verify real registration, dashboard, customers, and logout in Chromium
+        if: matrix.shard == 1
         working-directory: frontend
         env:
           E2E_LIVE_API: "1"
         run: npx playwright test e2e/live-api.spec.js
       - name: Dump API log (live-api failures are 404-after-create; the server log is the evidence)
-        if: failure()
+        if: failure() && matrix.shard == 1
         run: tail -n 400 /tmp/fihrist-api.log
       - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         with:
           name: live-api-playwright-results
           path: frontend/test-results/
           retention-days: 7
           if-no-files-found: ignore
 
+  # The 80% gate (audit P0: measured 84% on the runner 2026-10-03, 21,910 statements).
+  # Lowering this number requires an ADR. It lives here because coverage only means
+  # something over the whole suite.
+  coverage:
+    needs: backend
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/pyproject.toml
+            backend/constraints.txt
+      - run: pip install -e ".[dev]" -c backend/constraints.txt
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: coverage-data
+      - name: Combine shard coverage and enforce the gate
+        working-directory: backend
+        run: |
+          shopt -s nullglob
+          files=(../coverage-data/.coverage.*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no coverage artifacts found — refusing to pass the gate blind" >&2
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            cp "$f" ".coverage.$(basename "$f" | sed 's/^\.coverage\.//')"
+          done
+          coverage combine
+          coverage report --fail-under=80
+
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -176,6 +312,8 @@ jobs:
   # failing spec does not obscure lint/build results, and so the two jobs run
   # in parallel.
   frontend-e2e:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:

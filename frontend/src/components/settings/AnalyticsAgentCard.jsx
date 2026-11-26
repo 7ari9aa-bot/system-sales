@@ -7,6 +7,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 
+/** The two payloads this card needs, made safe.
+ *
+ * `/settings/definitions` answers with a list and `/settings/effective` with a keyed object.
+ * A payload that is neither (an error envelope the client did not raise on, a proxy page, a
+ * shape change on the server) used to throw inside the render pass and take the whole AI
+ * screen down with a white error page — the dialect card below it became unreachable even
+ * though it had loaded fine. Coercing here keeps one bad response to this card.
+ */
+export function normalizeSettingsPayload(definitions, effective) {
+  const defs = Array.isArray(definitions) ? definitions : [];
+  const values = {};
+  for (const [key, resolved] of Object.entries(effective && typeof effective === "object" ? effective : {})) {
+    values[key] = resolved?.value;
+  }
+  return { defs, values };
+}
+
 /** Analytics agent settings card — reads and writes analytics_agent.* via the settings API.
  *
  * Shown on the AI page so the owner can toggle the agent, set the default report period,
@@ -31,13 +48,10 @@ export default function AnalyticsAgentCard() {
     ])
       .then(([d, eff]) => {
         if (!alive) return;
-        setDefs(d);
-        const v = {};
-        for (const [key, resolved] of Object.entries(eff)) {
-          v[key] = resolved.value;
-        }
-        setValues(v);
-        setOriginal(v);
+        const { defs: safeDefs, values: loaded } = normalizeSettingsPayload(d, eff);
+        setDefs(safeDefs);
+        setValues(loaded);
+        setOriginal(loaded);
       })
       .catch((err) => {
         if (alive) setError(err?.message || (isAr ? "تعذر تحميل الإعدادات" : "Could not load settings"));
