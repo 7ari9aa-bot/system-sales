@@ -556,12 +556,20 @@ class AuthService:
 
     @staticmethod
     async def request_password_reset(session, *, email: str) -> None:
-        """Queue an account-recovery email without exposing account existence."""
+        """Queue an account-recovery email without exposing account existence.
+
+        No ``FOR UPDATE`` here. ``users`` is under row-level security and the
+        UPDATE policy needs ``app.user_id`` or a reset token that already
+        exists, so a locking read in this pre-auth path silently matched no
+        rows: every real account got the neutral 202 and no token was ever
+        created, while login (a plain SELECT on the same table) worked. The
+        row lock was never what prevented double issuance anyway — the 60s
+        throttle below is, and two concurrent requests at worst issue two
+        single-use tokens.
+        """
         now = _now()
         user = (
-            await session.execute(
-                select(User).where(User.email == email.strip().lower()).with_for_update()
-            )
+            await session.execute(select(User).where(User.email == email.strip().lower()))
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             return
