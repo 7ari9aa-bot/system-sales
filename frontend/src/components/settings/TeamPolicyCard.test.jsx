@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TeamField, buildChanges, describeResult, roleLabel } from "./TeamPolicyCard";
+import { TeamField, buildChanges, describeResult, orderedDefs, roleLabel } from "./TeamPolicyCard";
 
 const base = { domain: "team", label_ar: "الحقل", description_ar: "وصف", label_en: "Field" };
 const draw = (def, value) => renderToStaticMarkup(<TeamField def={def} value={value} isAr onChange={() => {}} />);
@@ -66,5 +66,28 @@ describe("team policies card", () => {
   it("an unknown role prints as itself instead of crashing the row", () => {
     expect(roleLabel("cashier", false)).toBe("Cashier");
     expect(roleLabel("owner", false)).toBe("owner");
+  });
+});
+
+describe("a definitions payload that is not a list", () => {
+  // Regression: the e2e members roster test mocks unknown API paths with {}, so
+  // /settings/definitions?domain=team answered with an object. Calling .find on it
+  // threw inside render, React unmounted the members page, and the roster table
+  // disappeared. A wrong shape must cost the card only.
+  it("yields no rows instead of throwing", () => {
+    expect(orderedDefs({})).toEqual([]);
+    expect(orderedDefs(null)).toEqual([]);
+    expect(orderedDefs(undefined)).toEqual([]);
+  });
+
+  it("still orders the real list by the card's own sequence, not the server's", () => {
+    const defs = [
+      { key: "team.allow_member_invites", type: "bool" },
+      { key: "team.default_role", type: "enum" },
+    ];
+    expect(orderedDefs(defs).map((d) => d.key)).toEqual([
+      "team.default_role",
+      "team.allow_member_invites",
+    ]);
   });
 });

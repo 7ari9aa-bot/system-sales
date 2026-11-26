@@ -32,6 +32,19 @@ export const TEAM_KEYS = [
   "team.allow_member_invites",
 ];
 
+/** The definitions for our four keys, in the order the card shows them.
+ *
+ * `/settings/definitions` is documented as a list, but an older backend, a proxy
+ * error or a test double can answer with an object. Calling `.find` on that used
+ * to throw inside render and take the whole members page down with it (the e2e
+ * roster test lost its table entirely), so anything that is not an array is
+ * treated as "no definitions yet" and the card simply shows nothing.
+ */
+export function orderedDefs(defs) {
+  if (!Array.isArray(defs)) return [];
+  return TEAM_KEYS.map((key) => defs.find((def) => def && def.key === key)).filter(Boolean);
+}
+
 export function roleLabel(role, isAr) {
   const entry = ROLE_LABELS[role];
   if (!entry) return String(role ?? "");
@@ -159,7 +172,7 @@ export default function TeamPolicyCard() {
     Promise.all([api("/settings/definitions?domain=team"), api("/settings/effective?domain=team")])
       .then(([teamDefs, teamEff]) => {
         if (!alive) return;
-        setDefs(teamDefs || []);
+        setDefs(Array.isArray(teamDefs) ? teamDefs : []);
         const next = {};
         for (const [key, resolved] of Object.entries(teamEff || {})) next[key] = resolved.value;
         setValues(next);
@@ -212,9 +225,7 @@ export default function TeamPolicyCard() {
     }
   }
 
-  const ordered = defs
-    ? TEAM_KEYS.map((key) => defs.find((d) => d.key === key)).filter(Boolean)
-    : [];
+  const ordered = orderedDefs(defs);
 
   return (
     <SettingCard
