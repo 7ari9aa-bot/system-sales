@@ -353,20 +353,25 @@ class PricingService:
         return candidates[0][0]
 
     async def _product_tier(self, variant_id: uuid.UUID, quantity: int) -> Decimal | None:
-        # The product's own tiered prices live in product_prices; read the highest tier reached.
-        from app.modules.catalog.models import ProductPrice
+        """The variant's own ladder at this quantity, read through the catalogue's service.
 
-        rows = await self.session.execute(
-            select(ProductPrice)
-            .where(
-                ProductPrice.tenant_id == self.tenant_id,
-                ProductPrice.variant_id == variant_id,
-                ProductPrice.min_quantity <= quantity,
-            )
-            .order_by(ProductPrice.min_quantity.desc(), ProductPrice.created_at.desc())
+        §8: a domain service never imports another module's models. The catalogue already
+        publishes the ladder (``price_tiers_for_many``) together with the rule that a tier is
+        only ever read in the tenant's own currency, so this asks it rather than reaching into
+        ``product_prices``. The previous query had no currency filter, which meant a tenant that
+        ever changed currency could be quoted from a ladder it can no longer sell.
+        """
+        from app.core.tenancy import resolve_tenant_currency
+        from app.modules.catalog.services import CatalogService
+
+        currency = await resolve_tenant_currency(self.session, self.tenant_id)
+        ladders = await CatalogService.price_tiers_for_many(
+            self.session, self.tenant_id, [variant_id], currency=currency
         )
-        row = rows.scalars().first()
-        return row.unit_price if row is not None else None
+        for min_quantity, unit_price in ladders.get(variant_id) or []:
+            if min_quantity <= quantity:
+                return unit_price
+        return None
 
     async def quote(
         self,
