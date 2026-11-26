@@ -1162,7 +1162,7 @@ test("a cash expense is recorded on the screen with no shift and moves no drawer
   await expect(
     page.getByRole("dialog"),
     "the cashier is told a cash expense is recorded even with no shift",
-  ).toContainText("بيتسجّل حتى من غير وردية");
+  ).toContainText("المصروف بيتسجّل على حساب خارج الدرج");
   await expect(
     page.getByRole("dialog").getByRole("button", { name: /تسجيل المصروف/ }),
     "cash with no shift is allowed",
@@ -2347,7 +2347,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   });
 
   await page.goto("/settings/pos", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
+  const main = page.locator(".cashier-root");
   await main.getByRole("tab", { name: /النسخ|الاحتياطي/ }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -2467,19 +2467,28 @@ test("print settings on the screen do not pretend to save: no save button, no ed
   ).session;
 
   await page.goto("/settings/pos", { waitUntil: "networkidle" });
-  const main = page.locator("main:has(.cashier-root)");
+  const main = page.locator(".cashier-root");
   await main.getByRole("tab", { name: /الفاتورة|الباركود|الطباعة/ }).click();
+
+  // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
+  // receipt actually reads are offered now (print.invoice_prefix, print.barcode_format), so the
+  // honest test is no longer "it refuses to pretend" but "what the owner types is what is stored".
+  const prefix = main.getByLabel("بادئة رقم الفاتورة", { exact: true });
   await expect(
-    main.getByTestId("print-not-stored"),
-    "it says plainly that nothing is stored",
-  ).toBeVisible({ timeout: 10000 });
-  await expect(
-    main.getByRole("button", { name: /^حفظ$/ }),
-    "no save button that would claim a save that never happens",
-  ).toHaveCount(0);
-  await expect(
-    main.getByRole("textbox"),
-    "no editable receipt field that is thrown away",
-  ).toHaveCount(0);
+    prefix,
+    "the prefix the receipt prints is on the screen",
+  ).toHaveValue("INV");
+  await prefix.fill("LIVE");
+  await main.getByRole("button", { name: "حفظ", exact: true }).click();
+  await expect(main.getByText("تم حفظ")).toBeVisible({ timeout: 20_000 });
+  const stored = await api("GET", "/settings/effective?domain=print");
+  const rows = stored.items ?? stored;
+  const flat = Object.fromEntries(
+    (Array.isArray(rows) ? rows : []).map((r) => [r.key, r.value]),
+  );
+  expect(
+    flat["print.invoice_prefix"],
+    "the engine hands the receipt the prefix the owner saved",
+  ).toBe("LIVE");
   expect(errs).toEqual([]);
 });
