@@ -392,6 +392,14 @@ async def _push_operator_emails(session, alerts: list) -> int:
 
     sender = ResendEmailSender()
     sent = 0
+    # Observable success: without this line a delivered alert and a silently
+    # skipped one (no gate, no operator) look identical in the logs, which is
+    # how "the email path was never actually proven" happens.
+    logger.info(
+        "platform.monitor_alerts_sending alerts=%s recipients=%s",
+        len(alerts),
+        len(recipients),
+    )
     hour_bucket = _dt.now(UTC).strftime("%Y%m%d%H")
     for alert in alerts:
         subject = f"[SalesOS monitor] {alert.severity}: {alert.code}"
