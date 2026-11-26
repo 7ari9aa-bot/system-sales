@@ -1281,10 +1281,17 @@ class SettingsService:
         back in line. Settings that didn't exist at the snapshot are reset
         (override deleted). Keys no longer in the registry are skipped.
 
-        Returns ``{"restored": N, "reset": M, "skipped": K, "pending_approval": P}``.
+        Scope contract: TENANT ONLY. Branch, register and workspace overrides are left
+        untouched, because a tenant-wide restore that silently rewrote a branch's own
+        choices is not something the owner can see or undo from one screen. The result
+        says so (``"scope": "tenant"``) instead of leaving the caller to guess.
 
-        APPROVAL_REQUIRED settings are skipped when ``bypass_approval=False``
-        (the default): they must go through the change-request flow. With
+        Returns
+        ``{"restored": N, "reset": M, "skipped": K, "pending_approval": P, "scope": "tenant"}``.
+
+        APPROVAL_REQUIRED settings are NOT skipped when ``bypass_approval=False`` (the
+        default): a real change request is opened for each one and counted in
+        ``pending_approval``, so the restore proposes and the owner approves. With
         ``bypass_approval=True`` (requires ``settings:emergency_bypass``) every
         setting is restored and an independent audit row records the bypass.
         """
@@ -1316,6 +1323,9 @@ class SettingsService:
             )
             .where(
                 TenantSettingHistory.tenant_id == self._tenant_id,
+                # Tenant-only contract: a branch's own overrides are not part of a snapshot.
+                TenantSettingHistory.scope == Scope.TENANT.value,
+                TenantSettingHistory.scope_id.is_(None),
                 TenantSettingHistory.created_at < snapshot_before,
             )
             .order_by(TenantSettingHistory.created_at.desc())
@@ -1356,7 +1366,11 @@ class SettingsService:
         all_overrides = (
             (
                 await self._session.execute(
-                    select(TenantSetting).where(TenantSetting.tenant_id == self._tenant_id)
+                    select(TenantSetting).where(
+                        TenantSetting.tenant_id == self._tenant_id,
+                        TenantSetting.scope == Scope.TENANT.value,
+                        TenantSetting.scope_id.is_(None),
+                    )
                 )
             )
             .scalars()
@@ -1380,9 +1394,23 @@ class SettingsService:
                 skipped += 1
                 continue
 
-            # APPROVAL_REQUIRED settings are skipped unless bypass (§172).
+            # APPROVAL_REQUIRED settings cannot be written here (§172). Open a real change
+            # request so the restore proposes the value and the owner approves it, instead of
+            # counting a key as "pending" that no reviewer will ever see.
             if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
-                pending_approval += 1
+                if target_value is not None:
+                    restore_val = (
+                        target_value.get("v") if isinstance(target_value, dict) else target_value
+                    )
+                    await self.create_change_request(
+                        {key: restore_val},
+                        scope=Scope(scope),
+                        scope_id=scope_id,
+                        user_id=user_id,
+                        reason=reason or f"restore:{snapshot_before.isoformat()}",
+                        permissions=permissions,
+                    )
+                    pending_approval += 1
                 continue
 
             scope_enum = _scope(scope)
@@ -1438,6 +1466,15 @@ class SettingsService:
                     skipped += 1
                     continue
                 if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
+                    # A key added after the snapshot needs approval to clear; propose it.
+                    await self.create_change_request(
+                        {key: None},
+                        scope=_scope(scope),
+                        scope_id=scope_id,
+                        user_id=user_id,
+                        reason=reason or f"restore:{snapshot_before.isoformat()}",
+                        permissions=permissions,
+                    )
                     pending_approval += 1
                     continue
                 await self.reset(
@@ -1472,6 +1509,8 @@ class SettingsService:
             "reset": reset,
             "skipped": skipped,
             "pending_approval": pending_approval,
+            # The contract, stated in the payload: a snapshot restore is tenant-wide only.
+            "scope": Scope.TENANT.value,
         }
 
     async def _find_override(
