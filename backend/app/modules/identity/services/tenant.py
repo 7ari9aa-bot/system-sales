@@ -237,11 +237,24 @@ class TenantService:
     async def accept_invitation(
         session, *, token: str, password: str, full_name: str
     ) -> tuple[User, Invitation]:
+        # ``invitations`` is FORCE RLS: without the token GUC the lookup below
+        # matches no row and every invitation answered "not found". Presenting
+        # the secret is the whole authorization for this public endpoint.
+        await session.execute(
+            sa.text("SELECT set_config('app.invitation_token', :token, true)"),
+            {"token": token},
+        )
         invitation = (
             await session.execute(select(Invitation).where(Invitation.token == token))
         ).scalar_one_or_none()
         if invitation is None:
             raise NotFoundError("invitation not found")
+        # The row is now proven to be ours; bind its tenant so the accept's
+        # UPDATE and the membership INSERT are inside a tenant RLS context.
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+            {"tenant_id": str(invitation.tenant_id)},
+        )
         if invitation.status != "pending":
             raise ConflictError("invitation already used or revoked")
         if invitation.expires_at < _now():

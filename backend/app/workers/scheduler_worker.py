@@ -474,7 +474,12 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         # Push: operators get an email the moment a monitor trips (contained —
         # an undeliverable alert never kills the job; the System tab still
         # shows it).
-        await monitors.notify_operators(session, fresh)
+        # The glue lives HERE since 338b5dbc ("the monitors glue belongs to
+        # the workers layer"): monitors evaluates, this module delivers. The
+        # old `monitors.notify_operators(...)` call survived the move and
+        # pointed at a function that no longer exists, so every
+        # platform_monitors run died with AttributeError before it reached
+        # _push_operator_emails — no operator email, no tenant alert, ever.
         await _push_operator_emails(session, fresh)
         for alert in fresh:
             logger.warning(
@@ -856,14 +861,24 @@ class SchedulerWorker(StreamWorker):
                 processed += 1
                 continue
             try:
-                # Already bound by _poll_once; re-binding is harmless and keeps
-                # _drain_tenant safe to call from anywhere.
-                await bind_tenant(session, job.tenant_id)
-                result = await handler(session, job.tenant_id, job.payload or {})
-                job.result = result or {}
-                # Recurring sweeps re-arm this row; one-shot jobs finish.
-                if not await self._reschedule_recurring(session, job, now):
-                    job.status = "completed"
+                # SAVEPOINT per job. A handler that raises a *database* error
+                # aborts the enclosing transaction, so the next statement in the
+                # batch (the advisory lock of job #2) died with
+                # InFailedSQLTransaction, the whole per-tenant transaction rolled
+                # back, and nothing was ever recorded: 836 rows sat at
+                # attempts=0 with an empty last_error while every poll re-ran the
+                # same broken handler. Rolling back to the savepoint keeps the
+                # session usable, so one bad job can no longer stop the other
+                # eighteen — and its own error is persisted for the next reader.
+                async with session.begin_nested():
+                    # Already bound by _poll_once; re-binding is harmless and
+                    # keeps _drain_tenant safe to call from anywhere.
+                    await bind_tenant(session, job.tenant_id)
+                    result = await handler(session, job.tenant_id, job.payload or {})
+                    job.result = result or {}
+                    # Recurring sweeps re-arm this row; one-shot jobs finish.
+                    if not await self._reschedule_recurring(session, job, now):
+                        job.status = "completed"
             except Exception as exc:  # noqa: BLE001
                 # Backoff with jitter — the previous code left
                 # next_attempt_at NULL, burning all 5 attempts in ~25s.

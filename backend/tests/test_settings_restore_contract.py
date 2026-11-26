@@ -36,7 +36,9 @@ def test_the_result_states_the_scope_it_restored() -> None:
 def test_approval_required_keys_open_a_real_change_request() -> None:
     assert "await self.create_change_request(" in BODY
     # Both the value case and the clear case propose rather than skip.
-    assert BODY.count("await self.create_change_request(") == 2
+    # Three proposals now: the restored value, the clear of a key the snapshot did not
+    # have, and the clear of a key added after the snapshot.
+    assert BODY.count("await self.create_change_request(") == 3
     assert "pending_approval += 1" in BODY
 
     # Each counter is bumped in the same block as the request it describes.

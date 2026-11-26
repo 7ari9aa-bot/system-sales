@@ -124,6 +124,7 @@ class ChangeRequestOut(BaseModel):
 
     id: uuid.UUID
     changes: dict[str, Any]
+    resets: list[str] = Field(default_factory=list)
     applied_changes: dict[str, Any] | None = None
     status: str
     scope: str
@@ -137,9 +138,15 @@ class ChangeRequestOut(BaseModel):
 
 
 class CreateChangeRequestInput(BaseModel):
-    """Payload to create a change request for approval-gated settings."""
+    """Payload to create a change request for approval-gated settings.
 
-    changes: dict[str, Any]
+    ``resets`` names settings the request will clear (remove the override). A clear is an
+    operation, not a value, so it is listed here instead of being written as ``{key: None}``
+    — which the per-type validator rejects for boolean, number and enum settings.
+    """
+
+    changes: dict[str, Any] = Field(default_factory=dict)
+    resets: list[str] = Field(default_factory=list)
     scope: str = Field(default="tenant", pattern=_SCOPE_PATTERN)
     scope_id: uuid.UUID | None = None
     reason: str | None = Field(default=None, max_length=255)
