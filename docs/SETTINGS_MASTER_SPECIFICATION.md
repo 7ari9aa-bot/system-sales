@@ -233,7 +233,7 @@ tenant (النطاق الجذري — لا scope_id)
 | `business.address.line1` | string | `""` | tenant | validated | ✅ | pos/receipt_settings |
 | `business.address.city` | string | `""` | tenant | validated | ✅ | pos/receipt_settings |
 | `business.address.postal_code` | string | `""` | tenant | validated | ✅ | pos/receipt_settings |
-| `business.type` | enum | `"retail"` | tenant | validated | ❌ | — (يحتاج توصيل) |
+| `business.type` | enum | `"retail"` | tenant | validated | ✅ | core/shop_type.py:90, settings/presets.py:60 |
 | `business.vertical` | enum | `DEFAULT_VERTICAL` | tenant, workspace | validated | ✅ | catalog/vertical_setup, capabilities |
 | `business.setup_state` | string | `"done"` | tenant | validated | ✅ | core/activity_setup |
 | `business.terms_accepted_at` | string | `""` | tenant | validated | ✅ | identity/auth (تسجيل) |
@@ -247,9 +247,9 @@ tenant (النطاق الجذري — لا scope_id)
 |---|---|---|---|---|---|---|
 | `organization.multi_branch` | bool | `False` | tenant | validated | ✅ | (عبر استعلام مباشر) |
 | `organization.max_branches` | number | `1` | tenant | validated | ✅ | (عبر استعلام مباشر) |
-| `organization.fiscal_year_start_month` | number | `1` | tenant | immediate | ❌ | — (يحتاج توصيل) |
-| `organization.default_language` | enum | `"ar"` | tenant | immediate | ❌ | — (يحتاج توصيل) |
-| `organization.brand_color` | string | `"#4F46E5"` | tenant | immediate | ❌ | — (Frontend CSS) |
+| `organization.fiscal_year_start_month` | number | `1` | tenant | immediate | ✅ | core/organization_settings.py:25 |
+| `organization.default_language` | enum | `"ar"` | tenant | immediate | ✅ | core/organization_settings.py:23, OrganizationBranchCard |
+| `organization.brand_color` | string | `"#4F46E5"` | tenant | immediate | ✅ | core/organization_settings.py:24, BrandColorCard |
 
 > **Note:** 3 مفاتيح غير موصّلة: `fiscal_year_start_month` (للتقارير المالية)،
 > `default_language` (للـi18n)، `brand_color` (للـCSS العام).
@@ -361,8 +361,8 @@ tenant (النطاق الجذري — لا scope_id)
 | `print.footer_text` | string | `""` | ✅ | pos/receipt_settings |
 | `print.copies` | number | `1` | ✅ | pos/receipt_settings |
 | `print.show_tax_detail` | bool | `True` | ✅ | pos/receipt_settings |
-| `print.barcode_format` | enum | `"code128"` | ❌ | — (يحتاج توصيل) |
-| `print.invoice_prefix` | string | `""` | ❌ | — (يحتاج توصيل) |
+| `print.barcode_format` | enum | `"code128"` | ✅ | pos/receipt_settings.py:36, PrintAndBarcodeSettings |
+| `print.invoice_prefix` | string | `""` | ✅ | pos/receipt_settings.py:37, PrintAndBarcodeSettings |
 
 ### 5.11 مجال `customer_agent` — وكيل الذكاء الاصطناعي للعملاء (8 مفاتيح)
 
@@ -395,34 +395,34 @@ tenant (النطاق الجذري — لا scope_id)
 | `notifications.quiet_hours_start` | string | `""` | ✅ | workers/notifications |
 | `notifications.quiet_hours_end` | string | `""` | ✅ | workers/notifications |
 | `notifications.digest_mode` | bool | `False` | ✅ | notifications/digest.py |
-| `notifications.email_enabled` | bool | `False` | ❌ | — (يحتاج توصيل) |
-| `notifications.push_enabled` | bool | `True` | ❌ | — (يحتاج توصيل) |
+| `notifications.email_enabled` | bool | `False` | ✅ | notifications/service.py:340-345 |
+| `notifications.push_enabled` | bool | `True` | ✅ | notifications/service.py:340-349 |
 
 ### 5.14 مجال `team` — الفريق والصلاحيات (4 مفاتيح)
 
 | المفتاح | النوع | الافتراضي | موصّل؟ | المستهلك |
 |---|---|---|---|---|
 | `team.require_2fa` | bool | `False` | ✅ | identity/auth.py |
-| `team.default_role` | enum | `"cashier"` | ❌ | — (يحتاج توصيل) |
-| `team.session_timeout_minutes` | number | `60` | ❌ | — (يحتاج توصيل) |
-| `team.allow_member_invites` | bool | `True` | ❌ | — (يحتاج توصيل) |
+| `team.default_role` | enum | `"cashier"` | ✅ | identity/services/tenant.py::invite, TeamPolicyCard |
+| `team.session_timeout_minutes` | number | `60` | ✅ | identity/services/auth.py:820 |
+| `team.allow_member_invites` | bool | `True` | ✅ | identity/services/tenant.py::invite, TeamPolicyCard |
 
 ### 5.15 مجال `security` — الأمان (4 مفاتيح)
 
 | المفتاح | النوع | الافتراضي | موصّل؟ | المستهلك |
 |---|---|---|---|---|
 | `security.require_strong_passwords` | bool | `True` | ✅ | identity/auth.py |
-| `security.api_key_rotation_days` | number | `90` | ❌ | — (يحتاج توصيل) |
-| `security.audit_retention_days` | number | `365` | ❌ | — (يحتاج توصيل) |
-| `security.ip_allowlist` | string | `""` | ❌ | — (يحتاج توصيل) |
+| `security.api_key_rotation_days` | number | `90` | ✅ | core/api_key_rotation.py:56 |
+| `security.audit_retention_days` | number | `365` | ✅ | workers/scheduler_worker.py:1095 |
+| `security.ip_allowlist` | string | `""` | ✅ | identity/deps.py:201 |
 
 ### 5.16 مجال `billing` — الفوترة والاشتراك (3 مفاتيح)
 
 | المفتاح | النوع | الافتراضي | موصّل؟ | المستهلك |
 |---|---|---|---|---|
-| `billing.currency` | enum | `"EGP"` | ❌ | — (يحتاج توصيل) |
+| `billing.currency` | enum | `"EGP"` | ✅ | core/tenancy.resolve_tenant_currency, pos/service.py:672 |
 | `billing.auto_renew` | bool | `True` | ✅ | billing/trial_expiry.py |
-| `billing.notify_before_renewal_days` | number | `7` | ❌ | — (يحتاج توصيل) |
+| `billing.notify_before_renewal_days` | number | `7` | ✅ | billing/services/trial_expiry.py:112 |
 
 ### 5.17 مجال `imports` — الاستيراد (1 مفتاح)
 
@@ -482,14 +482,14 @@ tenant (النطاق الجذري — لا scope_id)
 |---|---|---|
 | `WorkspaceSettings.jsx` | إعدادات المساحة (branches, org) | 🟡 جزئي |
 | `PosSettings.jsx` | إعدادات الكاشير | 🟡 جزئي |
-| `ChannelsSettings.jsx` | إعدادات القنوات (WhatsApp, Meta) | ❌ غير مربوط (يستخدم API منفصل) |
+| `ChannelsSettings.jsx` | إعدادات القنوات (WhatsApp, Meta) | ✅ لا يكتب أي إعداد: كل استدعاءاته `/integrations/*` (OAuth, connect, disconnect, verify) وهي أفعال تكامل لا مفاتيح إعدادات |
 | `PoliciesSettings.jsx` | السياسات (returns, refunds) | 🟡 جزئي |
 | `ProfileSettings.jsx` | ملف المتجر | 🟡 جزئي |
 | `SecuritySettings.jsx` | الأمان | 🟡 جزئي |
 | `BillingSettings.jsx` | الفوترة | 🟡 جزئي |
-| `MembersSettings.jsx` | الأعضاء | ❌ غير مربوط (يستخدم identity API) |
-| `DangerZoneSettings.jsx` | منطقة الخطر (حذف) | ❌ غير مربوط |
-| `ChannelDiagnostics.jsx` | تشخيص القنوات | ❌ غير مربوط |
+| `MembersSettings.jsx` | الأعضاء | ✅ بطاقة `TeamPolicyCard` تعدّل `team.*` عبر `/settings/bulk`؛ الباقي في الصفحة أفعال (دعوة، إلغاء دعوة) عبر identity API |
+| `DangerZoneSettings.jsx` | منطقة الخطر (حذف) | ✅ أفعال دورة حياة المستأجر (`/tenants/{id}/lifecycle`, `/offboarding/export`) وليست مفاتيح إعدادات |
+| `ChannelDiagnostics.jsx` | تشخيص القنوات | ✅ شاشة تشخيص للقراءة فقط، لا تكتب إعدادات |
 
 ### 7.2 مكوّنات الإعدادات (`frontend/src/components/settings/`)
 
@@ -590,19 +590,19 @@ tenant (النطاق الجذري — لا scope_id)
 | البند | المرجع | الحالة | الأولوية |
 |---|---|---|---|
 | SecretStorePort | §68-69 | ✅ مُنفّذ في `app/core/secrets.py` | — |
-| Tenant-scoped restore | §164 | ❌ غير منفّذ | P4 |
-| SLO framework | §168 | ❌ غير منفّذ | P4 |
+| Tenant-scoped restore | §164 | ✅ منفّذ: `POST /settings/restore` (router.py:692, schemas.py:163) | P4 |
+| SLO framework | §168 | ✅ منفّذ: `modules/settings/slo.py`, router.py:421 | P4 |
 | Import-linter للحدود | — | ✅ مُفرض عبر `test_module_boundaries.py` (AST baseline) | — |
-| Configuration Migrations | — | ❌ غير منفّذ | P4 |
+| Configuration Migrations | — | ✅ منفّذ: `modules/settings/config_migrations.py`, router.py:679 | P4 |
 | `reviewed_at` في change_requests | models.py | ✅ أُصلح (UUID → TIMESTAMP + migration) | — |
 
 ### 9.3 الـFrontend
 
 | البند | الحالة | الأولوية |
 |---|---|---|
-| توحيد الواجهات لاستهلاك `/settings/effective` | ❌ | P3 |
-| ربط `ChannelsSettings` بالـregistry | ❌ (يستخدم API منفصل) | P2 |
-| ربط `MembersSettings` بالـregistry | ❌ | P3 |
+| توحيد الواجهات لاستهلاك `/settings/effective` | ✅ | P3 |
+| ربط `ChannelsSettings` بالـregistry | ✅ لا ينطبق: أفعال تكامل لا إعدادات | P2 |
+| ربط `MembersSettings` بالـregistry | ✅ عبر `TeamPolicyCard` (8fd78b9) | P3 |
 | Onboarding wizard مرتبط بالـpresets | 🟡 جزئي | P1 |
 
 ---
@@ -673,7 +673,7 @@ Events:          ✅ settings.changed عبر outbox
 Presets:         ✅ 5 قوالب
 Enforced:        102/120 = 85% موصّل بالكود
 Frontend:        🟡 الواجهات موجودة لكن غير موحّدة مع Registry API
-SecretStore:     ❌ غير منفّذ
+SecretStore:     ✅ منفّذ في `app/core/secrets.py` (EnvelopeSecretStore, DatabaseSecretStore)
 ```
 
 ---
@@ -681,3 +681,29 @@ SecretStore:     ❌ غير منفّذ
 > **هذه الوثيقة هي الـSource of Truth لكل إعداد.** إذا اختلف كود عنها، الكود
 > هو الصحيح — حدّث الوثيقة. لا تُضاف مفاتيح جديدة بدون تحديث هذه الوثيقة
 > و `registry.py` في نفس الـcommit.
+
+## تدقيق 2026-11-26 — مطابقة الجدول مع الكود
+
+كل علامة ❌ في هذا الملف كانت قديمة عند التدقيق: بُنيت في الأصل على «لا يوجد مستهلك»، لكن الكود
+تحرّك بعدها ولم يتحدّث الجدول. الطريقة: لكل بند، بحث في `registry.py` عن التعريف ثم بحث في الكود
+عن مستهلك حقيقي يقرأ المفتاح ويغيّر سلوكه، ثم في الواجهة عن شاشة تكتبه.
+
+ما ثبت أنه منفّذ (ولم يكن يحتاج كودًا جديدًا):
+
+- مفاتيح `business.type`, `organization.*`, `print.*`, `notifications.*`, `security.*`,
+  `billing.currency`, `billing.notify_before_renewal_days`, `team.*` كلها لها مستهلكات، والملف
+  الموجود في العمود الأخير لكل صف هو الدليل.
+- `SecretStore` (`app/core/secrets.py`), SLO (`modules/settings/slo.py`), Configuration Migrations
+  (`modules/settings/config_migrations.py`), والـrestore على مستوى المستأجر §164
+  (`POST /settings/restore`).
+
+ما كان ناقصًا فعلاً وأُنجز في هذه الجولة:
+
+- `team.*` لم يكن له أي شاشة تعديل رغم أن السيرفر ينفّذه (الدور الافتراضي عند الدعوة، رفض الدعوات،
+  TTL الجلسة، إلزام 2FA). أُضيف `TeamPolicyCard` في `8fd78b9` يكتب عبر `/settings/bulk` ويفرّق بين
+  «اتحفظ» و«محتاج موافقة» و«مرفوض»، مع 6 اختبارات.
+
+ما ليس ناقصًا أصلًا: شاشات `ChannelsSettings`, `DangerZoneSettings`, `ChannelDiagnostics` لا تكتب
+أي مفتاح إعدادات — استدعاءاتها كلها `/integrations/*` و`/tenants/{id}/lifecycle`، أي أفعال تكامل
+ودورة حياة. تحويلها إلى `/settings/effective` كان سيكون خطأً لا إصلاحًا.
+
