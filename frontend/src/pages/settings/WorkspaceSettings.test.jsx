@@ -89,9 +89,9 @@ describe("WorkspaceSettings", () => {
 
   test("every page is reachable from the tab bar", () => {
     const html = render();
-    for (const slug of WORKSPACE_SECTION_SLUGS) {
-      expect(html).toContain(`role="tab"`);
-    }
+    // One tab per section, and no more: the loop is over the slugs so a section
+    // added to the list without a tab (or a stray tab without a section) fails here.
+    expect(html.match(/role="tab"/g)).toHaveLength(WORKSPACE_SECTION_SLUGS.length);
     // the bar names all five (the test provider defaults to English)
     expect(html).toContain("Overview");
     expect(html).toContain("Workspace data");
