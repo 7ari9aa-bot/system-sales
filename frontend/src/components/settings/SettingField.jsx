@@ -85,6 +85,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
         <Input
           type="number"
           className="w-[140px]"
+          aria-label={label}
           value={value ?? ""}
           min={defn.min_value ?? undefined}
           max={defn.max_value ?? undefined}
@@ -97,6 +98,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
       return (
         <Input
           className="w-[260px]"
+          aria-label={label}
           value={Array.isArray(value) ? value.join(", ") : String(value ?? "")}
           onChange={(e) => onChange(defn.key, e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
         />
@@ -107,6 +109,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
     return (
       <Input
         className="w-[260px]"
+        aria-label={label}
         value={String(value ?? "")}
         maxLength={defn.max_length ?? undefined}
         onChange={(e) => onChange(defn.key, e.target.value)}
