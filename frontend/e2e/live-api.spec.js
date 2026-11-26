@@ -2371,7 +2371,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
   expect(errs).toEqual([]);
 });
 
-test("print settings on the screen do not pretend to save: no save button, no editable fields, and a clear notice", async ({
+test("print settings on the screen are saved for real: the prefix the owner types is what the engine returns", async ({
   page,
 }) => {
   const errs = [];

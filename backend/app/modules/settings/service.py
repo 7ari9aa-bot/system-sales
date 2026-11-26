@@ -50,6 +50,7 @@ from app.modules.settings.registry import (
     ApplyMode,
     Scope,
     SettingDef,
+    REGISTRY,
     get_definition,
     list_definitions,
 )
@@ -469,7 +470,12 @@ class SettingsService:
         """
         scope_enum = _scope(scope)
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
-        current = await self.resolve_many(list(settings), scope=scope_enum, scope_id=scope_id)
+        # Resolve only the keys the registry knows: an unknown key is one row of the report
+        # ("invalid: unknown setting"), not a 400 that hides the other 20 keys in the batch.
+        known = [k for k in settings if k in REGISTRY]
+        current = (
+            await self.resolve_many(known, scope=scope_enum, scope_id=scope_id) if known else {}
+        )
         entries: list[dict[str, Any]] = []
         summary = {"changes": 0, "unchanged": 0, "needs_approval": 0, "invalid": 0}
         for key, value in settings.items():

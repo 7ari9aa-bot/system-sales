@@ -119,6 +119,7 @@ async def _make_announcement(
     is_active: bool = True,
     starts_delta: timedelta | None = None,
     ends_delta: timedelta | None = None,
+    dismissible: bool = True,
 ) -> PlatformAnnouncement:
     now = datetime.now(UTC)
     row = PlatformAnnouncement(
@@ -127,6 +128,7 @@ async def _make_announcement(
         body=body,
         audience=audience,
         is_active=is_active,
+        dismissible=dismissible,
         starts_at=now + starts_delta if starts_delta is not None else now - timedelta(minutes=5),
         ends_at=now + ends_delta if ends_delta is not None else None,
     )
@@ -203,9 +205,10 @@ async def test_dismissal_hides_for_that_user_only_and_is_idempotent(db, tenant_c
 
 
 async def test_a_non_dismissible_announcement_refuses_the_tombstone(db, tenant_ctx) -> None:
-    row = await _make_announcement(db)
-    row.dismissible = False
-    await db.flush()
+    # The row is planted through the admin DSN, so it is detached from ``db``: setting a
+    # column on it afterwards would never reach the database and the guard would look
+    # broken while the notice stayed dismissible. The value has to go in at insert.
+    row = await _make_announcement(db, dismissible=False)
 
     dismissed = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
 
