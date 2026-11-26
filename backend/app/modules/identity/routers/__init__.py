@@ -62,6 +62,12 @@ from app.modules.identity.routers.users import (
     my_profile,
     users_router,
 )
+from app.modules.identity.routers.workspaces import (
+    current_workspace,
+    current_workspace_admins,
+    list_my_workspaces,
+    workspaces_router,
+)
 
 __all__ = [
     "LifecycleTransitionRequest",
@@ -116,5 +122,9 @@ __all__ = [
     "update_location",
     "update_workspace",
     "users_router",
+    "current_workspace",
+    "current_workspace_admins",
+    "list_my_workspaces",
+    "workspaces_router",
     "verify_email",
 ]

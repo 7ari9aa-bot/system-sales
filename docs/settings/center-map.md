@@ -156,6 +156,11 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 01 Personal security | done | `/settings/security` — two-step verification, signed-in devices |
 | 01 Preferences | done | `/settings/preferences` — language, appearance, the person's own timezone, date format, landing page; stored on the account (migration fe2026112606) |
 | 01 Personal notifications | done | `/settings/notifications` — email/push switches (in-app locked as the record), quiet hours as real times read in the person's own zone; `GET`/`PUT /users/me/notification-preferences`; one row per person (migration fe2026112607) and the dispatcher now honours it |
+| 02 Workspace overview | done | `/settings/workspace` — the container, its state, your role in it, member count, region |
+| 02 Workspace data | done | `/settings/workspace/data` — name (editable), identifier (read-only: other systems address it), country/currency/timezone; brand logo stays in Store & business, where the identity belongs |
+| 02 Ownership and administration | done | `/settings/workspace/ownership` — owner and administrators from `GET /workspaces/current/admins` (settings read); transfer is explained, not offered, because no transfer endpoint exists behind it |
+| 02 Manage workspaces | done | `/settings/workspace/switch` — every membership from `GET /workspaces`, entering one through `POST /auth/switch-tenant` |
+| 02 Workspace settings | done | `/settings/workspace/defaults` — the inherited values read-only, each with a link to the single page that owns it |
 | 02–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual

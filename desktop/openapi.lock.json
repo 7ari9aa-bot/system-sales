@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 687,
-    "sha256": "c744a8d2e4978825654ffba7a908b99109aeb12cd119c7c4387fdda53b481d4e",
-    "typed_operations": 378
+    "operations": 690,
+    "sha256": "5eba86b46f8a955df01b8c571873784dcce9096c272f95cf78dc92f45b2d091b",
+    "typed_operations": 381
   },
   "spec": {
     "components": {
@@ -27400,6 +27400,33 @@
           "title": "WorkingSessionOut",
           "type": "object"
         },
+        "WorkspaceAdminsOut": {
+          "description": "Who runs the workspace. Empty for a caller without ``settings:read``.",
+          "properties": {
+            "admin_user_ids": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "title": "Admin User Ids",
+              "type": "array"
+            },
+            "owner_user_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Owner User Id"
+            }
+          },
+          "title": "WorkspaceAdminsOut",
+          "type": "object"
+        },
         "WorkspaceCreate": {
           "properties": {
             "name": {
@@ -27439,6 +27466,52 @@
           "title": "WorkspaceListOut",
           "type": "object"
         },
+        "WorkspaceMembershipOut": {
+          "description": "One workspace the person belongs to, as the switcher lists it.",
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "lifecycle_state": {
+              "title": "Lifecycle State",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "role_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role Code"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "lifecycle_state",
+            "is_active"
+          ],
+          "title": "WorkspaceMembershipOut",
+          "type": "object"
+        },
         "WorkspaceOut": {
           "properties": {
             "id": {
@@ -27472,6 +27545,106 @@
             "is_active"
           ],
           "title": "WorkspaceOut",
+          "type": "object"
+        },
+        "WorkspaceOverviewOut": {
+          "description": "The account workspace: the container, its region, its size, and your role.\n\n``role_code`` is the caller's own role, not the workspace's: the same container\nlooks different to its owner and to its cashier.",
+          "properties": {
+            "country_code": {
+              "title": "Country Code",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "currency": {
+              "title": "Currency",
+              "type": "string"
+            },
+            "dialect": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dialect"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "lifecycle_state": {
+              "title": "Lifecycle State",
+              "type": "string"
+            },
+            "member_count": {
+              "title": "Member Count",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "role_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role Code"
+            },
+            "slug": {
+              "title": "Slug",
+              "type": "string"
+            },
+            "status_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Reason"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "lifecycle_state",
+            "is_active",
+            "currency",
+            "country_code",
+            "member_count",
+            "created_at"
+          ],
+          "title": "WorkspaceOverviewOut",
           "type": "object"
         },
         "WorkspaceUpdate": {
@@ -102700,6 +102873,304 @@
           "summary": "Publish Workflow Version",
           "tags": [
             "automation"
+          ]
+        }
+      },
+      "/api/v1/workspaces": {
+        "get": {
+          "description": "Every container this person is a member of, with their role in each.\n\nThe switcher's source. Deliberately not scoped to the current workspace: the\npoint of the list is to leave the one you are in.",
+          "operationId": "list_my_workspaces_api_v1_workspaces_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/WorkspaceMembershipOut"
+                    },
+                    "title": "Response List My Workspaces Api V1 Workspaces Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List the workspaces the caller belongs to",
+          "tags": [
+            "workspaces"
+          ]
+        }
+      },
+      "/api/v1/workspaces/current": {
+        "get": {
+          "description": "The container, its region, its size and the caller's own role in it.",
+          "operationId": "current_workspace_api_v1_workspaces_current_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkspaceOverviewOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read the workspace the caller is currently in",
+          "tags": [
+            "workspaces"
+          ]
+        }
+      },
+      "/api/v1/workspaces/current/admins": {
+        "get": {
+          "description": "Ids only, resolved against the roster the members screen already shows.\n\nReading the team roster is a settings read (it carries everyone's email), so a\ncashier gets a 403 here and the ownership page says so instead of drawing an\nempty list as if the workspace had no owner.",
+          "operationId": "current_workspace_admins_api_v1_workspaces_current_admins_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkspaceAdminsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Who administers the workspace (owner and admins)",
+          "tags": [
+            "workspaces"
           ]
         }
       },

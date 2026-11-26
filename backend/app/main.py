@@ -91,6 +91,7 @@ from app.modules.identity.router import hierarchy_router as identity_hierarchy_r
 from app.modules.identity.router import router as identity_router
 from app.modules.identity.router import tenants_router as identity_tenants_router
 from app.modules.identity.router import users_router as identity_users_router
+from app.modules.identity.router import workspaces_router as identity_workspaces_router
 from app.modules.identity.routers.google import router as google_auth_router
 from app.modules.imports.router import router as imports_router
 from app.modules.inventory.router import router as inventory_router
@@ -486,6 +487,7 @@ def create_app() -> FastAPI:
         google_auth_router,
         identity_users_router,
         identity_tenants_router,
+        identity_workspaces_router,
         identity_hierarchy_router,
         conversations_router,
         conversations_templates_router,

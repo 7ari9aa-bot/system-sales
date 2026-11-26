@@ -181,6 +181,7 @@ const DashboardRoutes = () => (
         <Route element={<SettingsLayout />}>
           <Route path="/settings" element={<ProfileSettings />} />
           <Route path="/settings/workspace" element={<WorkspaceSettings />} />
+          <Route path="/settings/workspace/:section" element={<WorkspaceSettings />} />
           <Route path="/settings/channels" element={<ChannelsSettings />} />
           <Route path="/settings/channels/:channel" element={<ChannelsSettings />} />
           <Route path="/settings/ai" element={<AI />} />

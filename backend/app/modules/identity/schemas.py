@@ -400,3 +400,43 @@ class AccountClosureState(BaseModel):
     request: AccountClosureRequestOut | None = None
     blockers: list[AccountClosureBlocker] = []
     memberships: int = 0
+
+
+class WorkspaceMembershipOut(BaseModel):
+    """One workspace the person belongs to, as the switcher lists it."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    role_code: str | None = None
+    lifecycle_state: str
+    is_active: bool
+
+
+class WorkspaceOverviewOut(BaseModel):
+    """The account workspace: the container, its region, its size, and your role.
+
+    ``role_code`` is the caller's own role, not the workspace's: the same container
+    looks different to its owner and to its cashier.
+    """
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    role_code: str | None = None
+    lifecycle_state: str
+    is_active: bool
+    status_reason: str | None = None
+    currency: str
+    timezone: str | None = None
+    country_code: str
+    dialect: str | None = None
+    member_count: int
+    created_at: datetime
+
+
+class WorkspaceAdminsOut(BaseModel):
+    """Who runs the workspace. Empty for a caller without ``settings:read``."""
+
+    owner_user_id: uuid.UUID | None = None
+    admin_user_ids: list[uuid.UUID] = Field(default_factory=list)

@@ -61,6 +61,7 @@ from app.modules.identity.routers import (
     update_workspace,
     users_router,
     verify_email,
+    workspaces_router,
 )
 
 __all__ = [
@@ -116,5 +117,6 @@ __all__ = [
     "update_location",
     "update_workspace",
     "users_router",
+    "workspaces_router",
     "verify_email",
 ]
