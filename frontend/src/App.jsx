@@ -63,7 +63,6 @@ const PreferencesSettings = lazy(() => import('@/pages/settings/PreferencesSetti
 const NotificationPreferences = lazy(() => import('@/pages/settings/NotificationPreferences'));
 const SettingsSection = lazy(() => import('@/pages/settings/SettingsSection'));
 const UnifiedSettings = lazy(() => import('@/pages/settings/UnifiedSettings'));
-const BillingSettings = lazy(() => import('@/pages/settings/BillingSettings'));
 const DataSettings = lazy(() => import('@/pages/settings/DangerZoneSettings'));
 
 /** الموقع العام (الماركتنج) — عام للزوار، بدون مصادقة.
@@ -214,7 +213,11 @@ const DashboardRoutes = () => (
           <Route path="/settings/customers" element={<Navigate to="/settings/customers/customer-records" replace />} />
           <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
           <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
-          <Route path="/settings/billing" element={<BillingSettings />} />
+          {/* Section 19 owns the plan. The old single billing screen read the same two
+              endpoints in a different layout, so it now lands on the section instead of
+              answering "what am I paying" in a second place. */}
+          <Route path="/settings/billing" element={<Navigate to="/settings/billing/current-plan" replace />} />
+          <Route path="/settings/billing/:page" element={<SettingsSection section="billing" />} />
           <Route path="/settings/members" element={<MembersSettings />} />
           <Route path="/settings/team" element={<TeamSettings />} />
           <Route path="/settings/team/:section" element={<TeamSettings />} />

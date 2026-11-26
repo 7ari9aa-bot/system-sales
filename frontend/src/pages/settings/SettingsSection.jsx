@@ -46,6 +46,11 @@ import {
 import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
 import ChangeRequestList from "@/components/settings/ChangeRequestList";
 import {
+  InvoicesPanel,
+  PlanUsagePanel,
+  SubscriptionPanel,
+} from "@/components/settings/BillingPanels";
+import {
   SecurityPosturePanel,
   SensitiveSettingsPanel,
   SettingsRestorePanel,
@@ -189,6 +194,10 @@ const SECTION_PAGES = {
     "sensitive-settings",
     "emergency-procedures",
   ],
+  // Section 19. Payment methods and renewal/upgrade get no tab: there is no stored payment
+  // instrument and no checkout path, so they stay named in the map with the reason instead
+  // of opening a screen of dead buttons.
+  billing: ["current-plan", "usage", "invoices", "billing-details"],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -265,6 +274,12 @@ const PANEL_PAGES = new Set([
   "security/approval-requests",
   "security/sensitive-settings",
   "security/emergency-procedures",
+  // Section 19: the plan, its metering and its invoices are rows the billing module owns,
+  // and billing-details points at the legal identity that already lives in section 04.
+  "billing/current-plan",
+  "billing/usage",
+  "billing/invoices",
+  "billing/billing-details",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -691,6 +706,20 @@ export default function SettingsSection({ section }) {
       )}
       {`${section}/${page}` === "security/sensitive-settings" && <SensitiveSettingsPanel />}
       {`${section}/${page}` === "security/emergency-procedures" && <SettingsRestorePanel />}
+
+      {/* Section 19: the plan is a subscription row, usage is the number the entitlement gate
+          refuses on, and an invoice is a document. None of the three is a switch, so none of
+          them is rendered as one; the billing.* keys on current-plan ARE the switches. */}
+      {`${section}/${page}` === "billing/current-plan" && <SubscriptionPanel />}
+      {`${section}/${page}` === "billing/usage" && <PlanUsagePanel />}
+      {`${section}/${page}` === "billing/invoices" && <InvoicesPanel />}
+      {`${section}/${page}` === "billing/billing-details" && (
+        <StaticNotePanel
+          titleKey="settings.billing.billingDetails.title"
+          descKey="settings.billing.billingDetails.desc"
+          bodyKey="settings.billing.billingDetails.body"
+        />
+      )}
       {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row
           below is the AI module's own record — an agent, a knowledge item, a provider policy, an
           evaluation — so no page here offers a control the runtime does not read. Editing happens

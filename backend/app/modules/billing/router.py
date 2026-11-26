@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.modules.billing.service import BillingService, BillingSnapshotService
+from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.platform.service import WebhookService
 
@@ -153,15 +154,91 @@ async def delete_webhook_endpoint(
 
 @billing_router.get("/subscription")
 async def get_subscription(ctx: TenantCtxDep):
+    """The subscription, and the plan behind it.
+
+    The Settings Center's "current plan" page has to name the plan and what it costs, so the
+    row carries its plan instead of leaving the page to fetch a catalog it has no endpoint
+    for. Money is returned as a string, like every other amount in the API: a float would
+    round a Numeric(12,2) price on the way to JSON.
+    """
     subscription = await BillingService.get_subscription(ctx.session, ctx.tenant_id)
     if subscription is None:
         return {"status": "none"}
+    plan = await BillingService.plan_for(ctx.session, subscription)
     return {
         "id": str(subscription.id),
         "status": subscription.status,
+        "current_period_start": (
+            subscription.current_period_start.isoformat()
+            if subscription.current_period_start
+            else None
+        ),
         "current_period_end": (
             subscription.current_period_end.isoformat() if subscription.current_period_end else None
         ),
+        "cancel_at_period_end": bool(subscription.cancel_at_period_end),
+        "plan": (
+            {
+                "code": plan.code,
+                "name": plan.name,
+                "price": str(plan.price),
+                "currency": plan.currency,
+                "interval": plan.interval,
+            }
+            if plan is not None
+            else None
+        ),
+    }
+
+
+@billing_router.get("/usage/summary")
+async def get_usage_summary(ctx: TenantCtxDep):
+    """What this tenant has used this period, feature by feature, against its limits.
+
+    Reads the same numbers the entitlement gate reads, so the page and the refusal can
+    never disagree. A feature with no entitlement row is absent rather than zero: an empty
+    limit means "unrestricted", and printing it as 0 would say the opposite.
+    """
+    return {"items": await BillingService.usage_summary(ctx.session, ctx.tenant_id)}
+
+
+@billing_router.get("/invoices")
+async def list_invoices(
+    ctx: TenantCtxDep,
+    limit: int = 25,
+    offset: int = 0,
+):
+    """This tenant's invoices, newest first, bounded.
+
+    A closed period's frozen snapshot and an ordinary invoice are both documents the shop
+    owes or has paid, so both are listed. The totals are strings for the same reason the
+    price is: never a float on the way out.
+    """
+    if limit < 1 or limit > 100:
+        raise ValidationError("limit must be between 1 and 100", details={"limit": limit})
+    if offset < 0:
+        raise ValidationError("offset must not be negative", details={"offset": offset})
+    rows = await BillingService.list_invoices(
+        ctx.session, ctx.tenant_id, limit=limit, offset=offset
+    )
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "number": row.number,
+                "status": row.status,
+                "total": str(row.total),
+                "subtotal": str(row.subtotal),
+                "tax": str(row.tax),
+                "currency": row.currency,
+                "issued_at": row.issued_at.isoformat() if row.issued_at else None,
+                "due_at": row.due_at.isoformat() if row.due_at else None,
+                "paid_at": row.paid_at.isoformat() if row.paid_at else None,
+                "period_start": row.period_start.isoformat() if row.period_start else None,
+                "period_end": row.period_end.isoformat() if row.period_end else None,
+            }
+            for row in rows
+        ]
     }
 
 

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFoundError, RateLimitExceededError, ValidationError
 from app.modules.billing.models import (
     Entitlement,
+    Invoice,
     Plan,
     Subscription,
     UsageRecord,
@@ -163,3 +164,85 @@ class BillingService:
             )
         )
         await session.flush()
+
+    # ------------------------------------------------------------------
+    # Section 19 read models — what the Settings Center's plan pages show
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def plan_for(session: AsyncSession, subscription: Subscription | None) -> Plan | None:
+        """The plan row behind a subscription, or None when there is none.
+
+        Read as its own query rather than a relationship: ``Subscription.plan_id`` is a
+        plain FK column with no ORM relationship, and a lazy load inside an async session
+        would raise on first access.
+        """
+        if subscription is None:
+            return None
+        return (
+            await session.execute(select(Plan).where(Plan.id == subscription.plan_id))
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def usage_summary(session: AsyncSession, tenant_id: uuid.UUID) -> list[dict[str, object]]:
+        """Every metered feature the tenant has a limit for, with what it has used.
+
+        The number the shop is judged against is the same one the gate uses:
+        ``used_this_period`` (which knows that a seat count is a live row count, not an
+        accumulator) compared with the entitlement's ``limit_value``. A feature with no
+        entitlement row is not listed: an empty limit would read as "zero allowed", which
+        is the opposite of "unrestricted".
+        """
+        subscription = await BillingService.get_subscription(session, tenant_id)
+        if subscription is None:
+            return []
+        entitlements = (
+            (
+                await session.execute(
+                    select(Entitlement)
+                    .where(
+                        Entitlement.tenant_id == tenant_id,
+                        Entitlement.subscription_id == subscription.id,
+                    )
+                    .order_by(Entitlement.feature)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        rows: list[dict[str, object]] = []
+        for entitlement in entitlements:
+            used = await BillingService.used_this_period(session, tenant_id, entitlement.feature)
+            rows.append(
+                {
+                    "feature": entitlement.feature,
+                    "used": used,
+                    "limit": entitlement.limit_value,
+                    "is_unlimited": bool(entitlement.is_unlimited),
+                }
+            )
+        return rows
+
+    @staticmethod
+    async def list_invoices(
+        session: AsyncSession, tenant_id: uuid.UUID, *, limit: int = 25, offset: int = 0
+    ) -> list[Invoice]:
+        """This tenant's invoices, newest first.
+
+        A closed period's snapshot and an ordinary invoice share the table, so both are
+        returned: to the shop they are the same document. ``limit`` is clamped by the
+        caller's dependency, never trusted from the query string.
+        """
+        return (
+            (
+                await session.execute(
+                    select(Invoice)
+                    .where(Invoice.tenant_id == tenant_id)
+                    .order_by(Invoice.created_at.desc(), Invoice.id.desc())
+                    .limit(limit)
+                    .offset(offset)
+                )
+            )
+            .scalars()
+            .all()
+        )
