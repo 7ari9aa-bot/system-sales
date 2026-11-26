@@ -39,17 +39,18 @@ _WAREHOUSE_BY_CODE = text(
 )
 _VARIANT_BY_SKU = text("SELECT id FROM product_variants WHERE tenant_id = :t AND sku = :sku")
 _PRODUCT_BY_SLUG = text("SELECT id FROM products WHERE tenant_id = :t AND slug = :slug")
+# The product lookup also answers "how many variants does this product hold", which the cap check
+# needs for every row that adds one: the count is a correlated subquery on the row we are already
+# reading, so the batch costs ONE statement here instead of a lookup plus a separate counts scan.
 _PRODUCTS_BY_SLUGS = text(
-    "SELECT slug, id FROM products WHERE tenant_id = :t AND slug = ANY(:slugs)"
+    "SELECT p.slug, p.id, "
+    "(SELECT count(*) FROM product_variants v "
+    "WHERE v.tenant_id = p.tenant_id AND v.product_id = p.id) AS held "
+    "FROM products p WHERE p.tenant_id = :t AND p.slug = ANY(:slugs)"
 )
 _VARIANTS_BY_SKUS = text(
     "SELECT sku, id FROM product_variants WHERE tenant_id = :t AND sku = ANY(:skus)"
 )
-_VARIANT_COUNTS = text(
-    "SELECT product_id, count(*) FROM product_variants "
-    "WHERE tenant_id = :t AND product_id = ANY(:ids) GROUP BY product_id"
-)
-
 # خرائط الدفعة الحالية: المنتج بالـslug والصنف بالـSKU، متجمّعة مرة واحدة قبل ما الصفوف تتطبق.
 # كل صف كان بيعمل استعلامين لوحده (منتج + كود)، فدفعة 500 صف كانت بتعمل ألف استعلام زيادة.
 _BATCH_MAPS: ContextVar[dict | None] = ContextVar("import_batch_maps", default=None)
@@ -92,11 +93,13 @@ async def _prepare_batch(session: AsyncSession, tenant_id: uuid.UUID, rows: list
         "asked_products": set(slugs),
         "asked_variants": set(skus),
     }
+    maps["variant_counts"] = {}
     if slugs:
-        for slug, product_id in (
+        for slug, product_id, held in (
             await session.execute(_PRODUCTS_BY_SLUGS, {"t": tenant_id, "slugs": sorted(slugs)})
         ).all():
             maps["products"][slug] = product_id
+            maps["variant_counts"][product_id] = int(held or 0)
     if skus:
         for sku, variant_id in (
             await session.execute(_VARIANTS_BY_SKUS, {"t": tenant_id, "skus": sorted(skus)})
@@ -110,13 +113,6 @@ async def _prepare_batch(session: AsyncSession, tenant_id: uuid.UUID, rows: list
     shop = SettingsService(session, tenant_id)
     maps["max_variants"] = await shop.value("catalog.max_variants_per_product")
     maps["auto_barcode"] = await shop.value("catalog.barcode_auto_generate")
-    maps["variant_counts"] = {}
-    product_ids = list(dict.fromkeys(maps["products"].values()))
-    if product_ids:
-        for product_id, held in (
-            await session.execute(_VARIANT_COUNTS, {"t": tenant_id, "ids": product_ids})
-        ).all():
-            maps["variant_counts"][product_id] = int(held or 0)
     _BATCH_MAPS.set(maps)
 
 

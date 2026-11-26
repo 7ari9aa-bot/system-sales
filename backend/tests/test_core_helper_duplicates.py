@@ -32,6 +32,8 @@ from typing import Any
 
 import pytest
 
+from starlette.requests import Request
+
 from app.core.events.schemas import build_envelope, serialize
 from app.workers.inspector import list_dlq
 
@@ -99,7 +101,20 @@ async def test_get_db_opens_one_transaction_around_the_session(
     # guard patches the same seam the binding does.
     monkeypatch.setattr("app.core.db.get_sessionmaker", lambda: lambda: _FakeSession())
 
-    dependency = deps.get_db()
+    # get_db takes the request since §152: it publishes the session on request.state so the route
+    # can commit before the response is sent. A bare ASGI scope is all it needs here.
+    dependency = deps.get_db(
+        Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/",
+                "headers": [],
+                "query_string": b"",
+                "app": None,
+            }
+        )
+    )
     session = await dependency.__anext__()
     assert session is not None
     # the transaction is open for the whole time the caller holds the session
