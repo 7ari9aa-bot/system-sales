@@ -320,28 +320,51 @@ class SettingsService:
             row = existing
             await self._session.flush()
         else:
-            old_value = None
-            # ON CONFLICT closes the race where two requests both saw "no row": the
-            # loser updates the winner's row instead of failing on the unique key.
-            stmt = (
-                pg_insert(TenantSetting)
-                .values(
-                    tenant_id=self._tenant_id,
-                    key=key,
-                    scope=scope_enum.value,
-                    scope_id=scope_id,
-                    value=new_value,
-                    updated_by=user_id,
+            # First write for this (key, scope, scope_id): there is no row to lock, so the
+            # race has to be settled by the insert itself. DO NOTHING makes exactly one
+            # writer the creator; every loser falls through to the update path below and
+            # sees the winner's real value as the old value instead of claiming there was
+            # none, and an optimistic expectation still gets its ConflictError.
+            insert_id = (
+                await self._session.execute(
+                    pg_insert(TenantSetting)
+                    .values(
+                        tenant_id=self._tenant_id,
+                        key=key,
+                        scope=scope_enum.value,
+                        scope_id=scope_id,
+                        value=new_value,
+                        updated_by=user_id,
+                    )
+                    .on_conflict_do_nothing(constraint="uq_tenant_settings_key_scope")
+                    .returning(TenantSetting.id)
                 )
-                .on_conflict_do_update(
-                    constraint="uq_tenant_settings_key_scope",
-                    set_={"value": new_value, "updated_by": user_id},
-                )
-                .returning(TenantSetting.id)
-            )
-            row_id = (await self._session.execute(stmt)).scalar_one()
-            row = await self._session.get(TenantSetting, row_id, populate_existing=True)
-            assert row is not None  # just written in this transaction
+            ).scalar_one_or_none()
+
+            if insert_id is None:
+                # Another writer created the row first. Take the locked update path.
+                winner = await self._find_override(key, scope_enum.value, scope_id, for_update=True)
+                if winner is None:
+                    raise ConflictError(
+                        f"{key}: the setting row disappeared while writing; retry",
+                        details={"conflicting_keys": [key]},
+                    )
+                if expected_history_id is not None:
+                    latest = await self._latest_history_id(key, scope_enum.value, scope_id)
+                    if latest is not None and latest != expected_history_id:
+                        raise ConflictError(
+                            f"{key}: settings changed by another user; reload and try again",
+                            details={"conflicting_keys": [key]},
+                        )
+                old_value = winner.value
+                winner.value = new_value
+                winner.updated_by = user_id
+                row = winner
+                await self._session.flush()
+            else:
+                old_value = None
+                row = await self._session.get(TenantSetting, insert_id, populate_existing=True)
+                assert row is not None  # just written in this transaction
 
         await self._record(
             defn,
