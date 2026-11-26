@@ -439,7 +439,10 @@ async def test_suspended_default_tenant_does_not_lock_out_the_active_ones(
     pair, _user, tenant_id = await AuthService.login(
         db,
         email=tenant_ctx.user.email,
-        password="secret-password-1",
+        # The fixture hashes "secret-password" (conftest owner_password_hash); a "-1" suffix here
+        # verifies against nothing and the login fails as "invalid credentials" before the
+        # suspended-default fallback is ever reached.
+        password="secret-password",
         user_agent="test",
         ip="127.0.0.1",
     )
