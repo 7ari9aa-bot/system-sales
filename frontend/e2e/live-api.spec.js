@@ -2555,7 +2555,10 @@ test("print settings on the screen are saved for real: the prefix the owner type
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
   // receipt actually reads are offered now (print.invoice_prefix, print.barcode_format), so the
   // honest test is no longer "it refuses to pretend" but "what the owner types is what is stored".
-  const prefix = main.getByLabel("بادئة رقم الفاتورة", { exact: true });
+  // The center's fields take their accessible name from the registry label, and the label follows
+  // the UI language — this suite's tenant renders English, where the wrapper it replaced showed
+  // Arabic. Accept both, and never a bare "prefix" (it would also match a neighbouring key).
+  const prefix = main.getByLabel(/بادئة رقم الفاتورة|Invoice Number Prefix/);
   await expect(
     prefix,
     "the prefix the receipt prints is on the screen",
