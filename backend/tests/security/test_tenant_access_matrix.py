@@ -65,6 +65,17 @@ _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
         "POST /api/v1/auth/logout",
         "GET /api/v1/auth/me",
         "POST /api/v1/auth/switch-tenant",
+        # Account-global, not tenant-global: a person may belong to several shops, and
+        # "every device signed in to this account" spans all of them. Each route filters
+        # by the caller's own user id (SignedInDeviceService) or re-verifies the current
+        # password, and refresh_tokens is possession-scoped by policy (the token hash is
+        # the credential, USING(true) on purpose), so no tenant GUC is needed to read it.
+        # Covered by tests/test_signed_in_devices.py.
+        "GET /api/v1/auth/sessions",
+        "POST /api/v1/auth/sessions/revoke-others",
+        "POST /api/v1/auth/sessions/revoke-all",
+        "POST /api/v1/auth/sessions/{session_id}/revoke",
+        "POST /api/v1/auth/password/change",
         "POST /api/v1/auth/mfa/verify",
         "POST /api/v1/auth/mfa/enroll",
         "POST /api/v1/auth/mfa/confirm",

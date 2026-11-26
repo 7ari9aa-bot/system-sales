@@ -204,7 +204,10 @@ def test_every_notification_route_has_a_typed_response() -> None:
     """The bell's counts were ``dict``\\ s: an anonymous body on the wire."""
     document = _document()
     mounted = _mounted_for(NOTIFICATIONS_MODULE)
-    assert len(mounted) == 7, f"expected the seven notification routes, got {mounted}"
+    # Nine, not seven: the caller's own notification preferences (GET and PUT
+    # /users/me/notification-preferences) are served by this module and answer with
+    # NotificationPreferencesOut, so they belong inside the same typed-response fence.
+    assert len(mounted) == 9, f"expected the nine notification routes, got {mounted}"
 
     untyped = sorted(
         f"{method} {path} ({endpoint})"

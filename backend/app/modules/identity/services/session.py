@@ -93,7 +93,7 @@ class SignedInDeviceService:
                         RefreshToken.revoked_at.is_(None),
                         RefreshToken.expires_at > now,
                     )
-                    .order_by(RefreshToken.created_date.desc())
+                    .order_by(RefreshToken.created_at.desc())
                 )
             )
             .scalars()
@@ -113,8 +113,8 @@ class SignedInDeviceService:
                     "device": describe_device(row.user_agent),
                     "user_agent": row.user_agent,
                     "ip": row.ip,
-                    "signed_in_at": row.created_date,
-                    "last_used_at": row.created_date,
+                    "signed_in_at": row.created_at,
+                    "last_used_at": row.created_at,
                     "expires_at": row.expires_at,
                     "current": bool(current_token_hash) and row.token_hash == current_token_hash,
                 }
