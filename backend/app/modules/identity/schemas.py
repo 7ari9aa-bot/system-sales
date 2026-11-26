@@ -6,7 +6,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 # Same shape the telemetry ingest accepts (platform/services/telemetry.py). Always
 # used with fullmatch: a "$" anchor would let a trailing newline through.
@@ -147,21 +147,41 @@ class CurrentUser(BaseModel):
     # The security screen used to apologise that it could not read this; it is one
     # flag on the row the account already loads, so it is answered with the account.
     mfa_enabled: bool = False
+    # Proven-inbox flag. The profile screen shows it beside the address instead of
+    # implying an unverified account is verified.
+    email_verified: bool = False
+    # Optional contact/display facts the person fills in themselves.
+    phone: str | None = None
+    job_title: str | None = None
     tenants: list[CurrentTenant] = []
 
 
 class ProfileUpdate(BaseModel):
     """The parts of an account its owner may rewrite about themselves.
 
-    Deliberately narrow: the full name is the one personal fact the API owns.
-    Email is not here — changing it is a verified-identity operation (prove the
-    inbox, then move the login), not a field edit, and the address is the key
-    invitations bind to. The workspace name is not here either: it belongs to
-    the shop (``PUT /tenants/{id}/name``), not to the person.
+    Deliberately narrow: the display name, the phone and the job title are the
+    personal facts the API owns. Email is not here — changing it is a
+    verified-identity operation (prove the inbox, then move the login), not a
+    field edit, and the address is the key invitations bind to. The workspace
+    name is not here either: it belongs to the shop (``PUT /tenants/{id}/name``),
+    not to the person.
+
+    Every field is optional so the screen can save one row at a time; an empty
+    body is refused rather than answered with a no-op 200.
     """
 
     # Trimmed and collapsed by the service; the bound only stops an absurd payload.
-    full_name: str = Field(min_length=1, max_length=255)
+    full_name: str | None = Field(default=None, max_length=255)
+    # Free-form as people write numbers ("+20 100 123 4567"). The service keeps
+    # the digits and the leading + and refuses anything that is not a phone.
+    phone: str | None = Field(default=None, max_length=32)
+    job_title: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> ProfileUpdate:
+        if self.full_name is None and self.phone is None and self.job_title is None:
+            raise ValueError("nothing to update")
+        return self
 
 
 class InviteRequest(BaseModel):
@@ -258,3 +278,44 @@ class LocationAccessOut(BaseModel):
 
 class LocationAccessListOut(BaseModel):
     items: list[LocationAccessOut]
+
+
+class AccountClosureRequestIn(BaseModel):
+    """Ask to close the account, or to erase the personal data as well."""
+
+    # close: stop using the account, keep the rows the shops still need.
+    # delete: erase the personal data too.
+    mode: str = Field(pattern="^(close|delete)$")
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class AccountClosureBlocker(BaseModel):
+    """One membership that stops the request: the person owns this shop alone."""
+
+    tenant_id: uuid.UUID
+    tenant_name: str
+    role_code: str | None = None
+
+
+class AccountClosureRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mode: str
+    reason: str | None = None
+    status: str
+    created_at: datetime
+    decided_at: datetime | None = None
+
+
+class AccountClosureState(BaseModel):
+    """What the profile screen needs to draw the "close my account" card.
+
+    ``blockers`` is not decoration: a sole owner cannot walk away from a shop
+    that would be left without one, so the screen disables the request and names
+    the shop instead of letting the person submit something that must fail.
+    """
+
+    request: AccountClosureRequestOut | None = None
+    blockers: list[AccountClosureBlocker] = []
+    memberships: int = 0

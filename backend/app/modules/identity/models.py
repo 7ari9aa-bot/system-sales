@@ -123,6 +123,11 @@ class User(TimestampMixin, Base):
     # The account's own picture as an object key ("s3://avatars/<id>/<file>"),
     # never a signed URL: those expire. Read paths sign it per response.
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional contact/display facts the person owns. Neither is an identity
+    # key: the email stays the login and the address invitations bind to, so
+    # filling these in can never move an account or reach another one.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class PasswordResetToken(TimestampMixin, Base):
@@ -405,3 +410,30 @@ class UserLocationAccess(AppendOnlyCreatedAtMixin, Base):
     )
     role_override: Mapped[str | None] = mapped_column(String(63))
     granted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class AccountClosureRequest(TimestampMixin, Base):
+    """A person's request to close their account, or to erase their data.
+
+    A request, never a deletion: other people's shops reference this account, so
+    the platform decides (rejected / completed) after the person has handed over
+    what they own. ``mode`` says which they asked for — ``close`` stops the
+    account while keeping the rows the shops still need, ``delete`` erases the
+    personal data as well.
+
+    Global table (no ``tenant_id``), self-scoped by RLS on ``app.user_id``.
+    """
+
+    __tablename__ = "account_closure_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    mode: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(12), server_default="pending", nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (Index("ix_account_closure_requests_user", "user_id", "created_at"),)

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Camera, Loader2, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { BadgeCheck, Camera, Loader2, Save, ShieldCheck, ShieldQuestion, Trash2 } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { useTheme } from "@/lib/themeContext";
@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { activeTenant } from "@/lib/activeTenant";
 import useAvatarUpload from "@/hooks/useAvatarUpload";
 import SettingsShell, { SettingRow } from "@/components/settings/SettingsShell";
+import AccountClosureCard from "@/components/settings/AccountClosureCard";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,80 @@ export default function ProfileSettings() {
   const [savingName, setSavingName] = React.useState(false);
   const [nameError, setNameError] = React.useState("");
   const [nameNotice, setNameNotice] = React.useState("");
+
+  // The two optional contact facts the account owns. They save on their own row, like the name,
+  // so a half-filled form never blocks the field the person actually came to change.
+  const [phone, setPhone] = React.useState(user?.phone || "");
+  const [jobTitle, setJobTitle] = React.useState(user?.job_title || "");
+  const [savingField, setSavingField] = React.useState("");
+  const [fieldError, setFieldError] = React.useState("");
+  const [fieldNotice, setFieldNotice] = React.useState("");
+
+  const [closure, setClosure] = React.useState(null);
+  const [closureBusy, setClosureBusy] = React.useState(false);
+  const [closureError, setClosureError] = React.useState("");
+  const [closureNotice, setClosureNotice] = React.useState("");
+
+  const loadClosure = React.useCallback(async () => {
+    try {
+      setClosure(await api("/users/me/closure-request"));
+    } catch {
+      // a card that cannot be read must not invent a state: leave it loading and say why
+      setClosureError(t("account.closure.failed"));
+    }
+  }, [t]);
+
+  React.useEffect(() => { void loadClosure(); }, [loadClosure]);
+
+  // A refreshed account is the truth; only overwrite a field the person is not editing.
+  React.useEffect(() => { setPhone((current) => (current === "" ? user?.phone || "" : current)); }, [user?.phone]);
+  React.useEffect(() => { setJobTitle((current) => (current === "" ? user?.job_title || "" : current)); }, [user?.job_title]);
+
+  async function saveContact(field) {
+    if (savingField) return;
+    const body = field === "phone" ? { phone } : { job_title: jobTitle };
+    setSavingField(field);
+    setFieldError("");
+    setFieldNotice("");
+    try {
+      await api("/users/me", { method: "PATCH", body });
+      await refreshUser();
+      setFieldNotice(t("profile.contact.saved"));
+    } catch (failure) {
+      setFieldError(failure?.message || t("profile.contact.failed"));
+    } finally {
+      setSavingField("");
+    }
+  }
+
+  async function openClosure(mode, reason) {
+    setClosureBusy(true);
+    setClosureError("");
+    setClosureNotice("");
+    try {
+      setClosure(await api("/users/me/closure-request", { method: "POST", body: { mode, reason } }));
+      setClosureNotice(t("account.closure.submitted"));
+    } catch (failure) {
+      setClosureError(failure?.message || t("account.closure.failed"));
+    } finally {
+      setClosureBusy(false);
+    }
+  }
+
+  async function cancelClosure() {
+    setClosureBusy(true);
+    setClosureError("");
+    setClosureNotice("");
+    try {
+      await api("/users/me/closure-request", { method: "DELETE" });
+      await loadClosure();
+      setClosureNotice(t("account.closure.cancelled"));
+    } catch (failure) {
+      setClosureError(failure?.message || t("account.closure.failed"));
+    } finally {
+      setClosureBusy(false);
+    }
+  }
 
   // A refreshed account (another tab, an avatar change) is the truth; only overwrite the field
   // when the owner is not mid-edit, so their typing is never yanked away.
@@ -170,8 +245,84 @@ export default function ProfileSettings() {
           )}
         </form>
         <SettingRow label={t("profile.email")} desc={t("profile.email.locked")}>
-          <span className="text-[13px] font-medium" dir="ltr">{user?.email || "—"}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px] font-medium" dir="ltr">{user?.email || "—"}</span>
+            <span data-testid="profile-email-verified">
+              {user?.email_verified ? (
+                <span className="inline-flex items-center gap-1 text-[12px] text-success">
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  {t("profile.email.verified")}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+                  <ShieldQuestion className="h-3.5 w-3.5" />
+                  {t("profile.email.unverified")}
+                </span>
+              )}
+            </span>
+            {!user?.email_verified && (
+              <Link to="/verify-email" className="text-[12.5px] font-medium text-primary hover:underline">
+                {t("profile.email.verify")}
+              </Link>
+            )}
+          </div>
         </SettingRow>
+        <SettingRow label={t("profile.phone")} desc={t("profile.phone.desc")} stretch>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Input
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              maxLength={32}
+              autoComplete="tel"
+              inputMode="tel"
+              dir="ltr"
+              aria-label={t("profile.phone")}
+              placeholder="+20 100 123 4567"
+              className="min-w-0 flex-1 sm:w-56 sm:flex-none"
+              data-testid="profile-phone"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={savingField === "phone" || phone === (user?.phone || "")}
+              onClick={() => void saveContact("phone")}
+              data-testid="profile-phone-save"
+            >
+              {savingField === "phone" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </Button>
+          </div>
+        </SettingRow>
+        <SettingRow label={t("profile.jobTitle")} desc={t("profile.jobTitle.desc")} stretch>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Input
+              value={jobTitle}
+              onChange={(event) => setJobTitle(event.target.value)}
+              maxLength={120}
+              autoComplete="organization-title"
+              aria-label={t("profile.jobTitle")}
+              className="min-w-0 flex-1 sm:w-56 sm:flex-none"
+              data-testid="profile-job-title"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={savingField === "job_title" || jobTitle === (user?.job_title || "")}
+              onClick={() => void saveContact("job_title")}
+              data-testid="profile-job-title-save"
+            >
+              {savingField === "job_title" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            </Button>
+          </div>
+        </SettingRow>
+        {(fieldError || fieldNotice) && (
+          <div
+            role={fieldError ? "alert" : "status"}
+            data-testid="profile-contact-message"
+            className={`border-b border-border py-2 text-[12.5px] ${fieldError ? "text-destructive" : "text-success"}`}
+          >
+            {fieldError || fieldNotice}
+          </div>
+        )}
         <SettingRow label={t("appearance.language")}>
           <Choice
             label={t("appearance.language")}
@@ -209,6 +360,17 @@ export default function ProfileSettings() {
             {t("profile.link.security")}
           </Link>
         </SettingRow>
+      </div>
+
+      <div className="mt-8 border-t border-border pt-5">
+        <AccountClosureCard
+          state={closure}
+          busy={closureBusy}
+          error={closureError}
+          notice={closureNotice}
+          onOpen={openClosure}
+          onCancel={cancelClosure}
+        />
       </div>
     </SettingsShell>
   );

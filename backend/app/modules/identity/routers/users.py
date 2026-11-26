@@ -29,6 +29,9 @@ async def _current_user(session, user_id) -> schemas.CurrentUser:
         is_platform_admin=full.is_platform_admin,
         avatar_url=avatar.read_url(full.avatar_url),
         mfa_enabled=await is_mfa_enabled(session, user_id=user_id),
+        email_verified=bool(full.email_verified),
+        phone=full.phone,
+        job_title=full.job_title,
         tenants=[
             schemas.CurrentTenant(
                 id=t.id, name=t.name, slug=t.slug, role_code=role, currency=t.currency
@@ -45,14 +48,20 @@ async def my_profile(ctx: TenantCtxDep):
 
 @users_router.patch("/me", response_model=schemas.CurrentUser)
 async def update_my_profile(body: schemas.ProfileUpdate, ctx: TenantCtxDep):
-    """Rewrite the caller's own display name — the one personal fact the API owns.
+    """Rewrite the caller's own display name, phone and job title.
 
     It answers with the WHOLE account rather than the changed field, so the
     screen renders what the server now holds instead of echoing the input back
     to itself. Nothing here can touch another user: the id comes from the
     verified token, never from the body.
     """
-    await service.UserService.update_profile(ctx.session, ctx.user.id, full_name=body.full_name)
+    await service.UserService.update_profile(
+        ctx.session,
+        ctx.user.id,
+        full_name=body.full_name,
+        phone=body.phone,
+        job_title=body.job_title,
+    )
     return await _current_user(ctx.session, ctx.user.id)
 
 
@@ -96,6 +105,44 @@ async def clear_my_avatar(ctx: TenantCtxDep):
     """Forget the picture. The object itself goes with the media retention sweep."""
     await service.UserService.clear_avatar_url(ctx.session, ctx.user.id)
     return {"avatar_url": None}
+
+
+def _closure_state(state: dict) -> schemas.AccountClosureState:
+    request = state["request"]
+    return schemas.AccountClosureState(
+        request=schemas.AccountClosureRequestOut.model_validate(request) if request else None,
+        blockers=[schemas.AccountClosureBlocker(**blocker) for blocker in state["blockers"]],
+        memberships=state["memberships"],
+    )
+
+
+@users_router.get("/me/closure-request", response_model=schemas.AccountClosureState)
+async def my_closure_request(ctx: TenantCtxDep):
+    """What the "close my account" card draws: the open request, or why none can open.
+
+    ``blockers`` names every shop this person administers alone. The card shows
+    them instead of letting the person submit a request that must be refused.
+    """
+    state = await service.AccountClosureService.state(ctx.session, ctx.user.id)
+    return _closure_state(state)
+
+
+@users_router.post(
+    "/me/closure-request", response_model=schemas.AccountClosureState, status_code=201
+)
+async def open_my_closure_request(body: schemas.AccountClosureRequestIn, ctx: TenantCtxDep):
+    """Ask to close the account (or erase the personal data too). A request, not a deletion."""
+    await service.AccountClosureService.open(
+        ctx.session, ctx.user.id, mode=body.mode, reason=body.reason
+    )
+    state = await service.AccountClosureService.state(ctx.session, ctx.user.id)
+    return _closure_state(state)
+
+
+@users_router.delete("/me/closure-request", status_code=204)
+async def cancel_my_closure_request(ctx: TenantCtxDep):
+    """Withdraw the open request before the platform decides on it."""
+    await service.AccountClosureService.cancel(ctx.session, ctx.user.id)
 
 
 # The roster carries every teammate's email and role, so reading it is a settings read: the owner

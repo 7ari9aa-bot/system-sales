@@ -5,6 +5,7 @@ Extracted from the original monolithic service.py.
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import select
@@ -32,8 +33,15 @@ class UserService:
         return {row.id: row.full_name for row in rows}
 
     @staticmethod
-    async def update_profile(session, user_id: uuid.UUID, *, full_name: str | None = None) -> User:
-        """Rewrite the account's own display name.
+    async def update_profile(
+        session,
+        user_id: uuid.UUID,
+        *,
+        full_name: str | None = None,
+        phone: str | None = None,
+        job_title: str | None = None,
+    ) -> User:
+        """Rewrite the account's own display name, phone and job title.
 
         The name is shown to colleagues, on the POS receipt header and beside
         every audit row this person writes, so the stored value is the cleaned
@@ -41,16 +49,58 @@ class UserService:
         a name that is only whitespace is refused (400) rather than saved as an
         invisible identity. ``None`` means "leave it alone", which is what keeps
         this usable as a partial update.
+
+        The phone and the job title are optional facts, so an EMPTY string is a
+        real instruction: it clears the field. A non-empty phone is reduced to
+        the digits and one leading ``+`` (people write "+20 100 123 4567"), and
+        a value that is not a phone number after that is refused instead of
+        stored as decoration.
         """
         user = await UserService.get(session, user_id)
+        changed = False
         if full_name is not None:
             cleaned = " ".join(full_name.split())
             if not cleaned:
                 raise ValidationError("a profile name cannot be empty")
             if cleaned != user.full_name:
                 user.full_name = cleaned
-                await session.flush()
+                changed = True
+        if phone is not None:
+            cleaned_phone = UserService._clean_phone(phone)
+            if cleaned_phone != user.phone:
+                user.phone = cleaned_phone
+                changed = True
+        if job_title is not None:
+            cleaned_title = " ".join(job_title.split()) or None
+            if cleaned_title != user.job_title:
+                user.job_title = cleaned_title
+                changed = True
+        if changed:
+            await session.flush()
         return user
+
+    #: Digits with an optional leading "+", the only shape a stored phone takes.
+    _PHONE_RE = re.compile(r"^\+?[0-9]{7,15}$")
+
+    @staticmethod
+    def _clean_phone(value: str) -> str | None:
+        """Reduce a typed phone number to its digits, or clear it.
+
+        Anything that still is not a phone after stripping the punctuation
+        people type (spaces, dashes, brackets) is refused: a stored value that
+        cannot be dialled is worse than an empty field.
+        """
+        raw = (value or "").strip()
+        if not raw:
+            return None
+        stripped = re.sub(r"[^0-9+]", "", raw)
+        if stripped.startswith("+"):
+            stripped = "+" + stripped[1:].replace("+", "")
+        else:
+            stripped = stripped.replace("+", "")
+        if not UserService._PHONE_RE.match(stripped):
+            raise ValidationError("a phone number must be 7 to 15 digits")
+        return stripped
 
     @staticmethod
     async def set_avatar_url(session, user_id: uuid.UUID, value: str | None) -> User:

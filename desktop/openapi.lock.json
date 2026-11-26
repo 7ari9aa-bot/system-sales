@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 675,
-    "sha256": "30632520b7b6c8c79e69e79acc18717615cd619eda4a060812358ee72d30e16f",
-    "typed_operations": 369
+    "operations": 678,
+    "sha256": "e5829ddb63eb9870703eaa0949f949a89d22bb5230b70bb49e759fec37f748ff",
+    "typed_operations": 371
   },
   "spec": {
     "components": {
@@ -34,6 +34,147 @@
             "full_name"
           ],
           "title": "AcceptInvitationRequest",
+          "type": "object"
+        },
+        "AccountClosureBlocker": {
+          "description": "One membership that stops the request: the person owns this shop alone.",
+          "properties": {
+            "role_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role Code"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "tenant_name": {
+              "title": "Tenant Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "tenant_name"
+          ],
+          "title": "AccountClosureBlocker",
+          "type": "object"
+        },
+        "AccountClosureRequestIn": {
+          "description": "Ask to close the account, or to erase the personal data as well.",
+          "properties": {
+            "mode": {
+              "pattern": "^(close|delete)$",
+              "title": "Mode",
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "title": "AccountClosureRequestIn",
+          "type": "object"
+        },
+        "AccountClosureRequestOut": {
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "mode": {
+              "title": "Mode",
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "mode",
+            "status",
+            "created_at"
+          ],
+          "title": "AccountClosureRequestOut",
+          "type": "object"
+        },
+        "AccountClosureState": {
+          "description": "What the profile screen needs to draw the \"close my account\" card.\n\n``blockers`` is not decoration: a sole owner cannot walk away from a shop\nthat would be left without one, so the screen disables the request and names\nthe shop instead of letting the person submit something that must fail.",
+          "properties": {
+            "blockers": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/AccountClosureBlocker"
+              },
+              "title": "Blockers",
+              "type": "array"
+            },
+            "memberships": {
+              "default": 0,
+              "title": "Memberships",
+              "type": "integer"
+            },
+            "request": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AccountClosureRequestOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "AccountClosureState",
           "type": "object"
         },
         "AccountCreate": {
@@ -2772,8 +2913,15 @@
               "anyOf": [
                 {
                   "additionalProperties": {
-                    "format": "uuid",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "type": "object"
                 },
@@ -5347,6 +5495,11 @@
               "title": "Email",
               "type": "string"
             },
+            "email_verified": {
+              "default": false,
+              "title": "Email Verified",
+              "type": "boolean"
+            },
             "full_name": {
               "title": "Full Name",
               "type": "string"
@@ -5360,10 +5513,32 @@
               "title": "Is Platform Admin",
               "type": "boolean"
             },
+            "job_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Title"
+            },
             "mfa_enabled": {
               "default": false,
               "title": "Mfa Enabled",
               "type": "boolean"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
             },
             "tenants": {
               "default": [],
@@ -16724,18 +16899,45 @@
           "type": "object"
         },
         "ProfileUpdate": {
-          "description": "The parts of an account its owner may rewrite about themselves.\n\nDeliberately narrow: the full name is the one personal fact the API owns.\nEmail is not here — changing it is a verified-identity operation (prove the\ninbox, then move the login), not a field edit, and the address is the key\ninvitations bind to. The workspace name is not here either: it belongs to\nthe shop (``PUT /tenants/{id}/name``), not to the person.",
+          "description": "The parts of an account its owner may rewrite about themselves.\n\nDeliberately narrow: the display name, the phone and the job title are the\npersonal facts the API owns. Email is not here — changing it is a\nverified-identity operation (prove the inbox, then move the login), not a\nfield edit, and the address is the key invitations bind to. The workspace\nname is not here either: it belongs to the shop (``PUT /tenants/{id}/name``),\nnot to the person.\n\nEvery field is optional so the screen can save one row at a time; an empty\nbody is refused rather than answered with a no-op 200.",
           "properties": {
             "full_name": {
-              "maxLength": 255,
-              "minLength": 1,
-              "title": "Full Name",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Full Name"
+            },
+            "job_title": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Title"
+            },
+            "phone": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
             }
           },
-          "required": [
-            "full_name"
-          ],
           "title": "ProfileUpdate",
           "type": "object"
         },
@@ -97519,7 +97721,7 @@
           ]
         },
         "patch": {
-          "description": "Rewrite the caller's own display name — the one personal fact the API owns.\n\nIt answers with the WHOLE account rather than the changed field, so the\nscreen renders what the server now holds instead of echoing the input back\nto itself. Nothing here can touch another user: the id comes from the\nverified token, never from the body.",
+          "description": "Rewrite the caller's own display name, phone and job title.\n\nIt answers with the WHOLE account rather than the changed field, so the\nscreen renders what the server now holds instead of echoing the input back\nto itself. Nothing here can touch another user: the id comes from the\nverified token, never from the body.",
           "operationId": "update_my_profile_api_v1_users_me_patch",
           "parameters": [
             {
@@ -97810,6 +98012,299 @@
             }
           },
           "summary": "Set My Avatar",
+          "tags": [
+            "users"
+          ]
+        }
+      },
+      "/api/v1/users/me/closure-request": {
+        "delete": {
+          "description": "Withdraw the open request before the platform decides on it.",
+          "operationId": "cancel_my_closure_request_api_v1_users_me_closure_request_delete",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Cancel My Closure Request",
+          "tags": [
+            "users"
+          ]
+        },
+        "get": {
+          "description": "What the \"close my account\" card draws: the open request, or why none can open.\n\n``blockers`` names every shop this person administers alone. The card shows\nthem instead of letting the person submit a request that must be refused.",
+          "operationId": "my_closure_request_api_v1_users_me_closure_request_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountClosureState"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "My Closure Request",
+          "tags": [
+            "users"
+          ]
+        },
+        "post": {
+          "description": "Ask to close the account (or erase the personal data too). A request, not a deletion.",
+          "operationId": "open_my_closure_request_api_v1_users_me_closure_request_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountClosureRequestIn"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountClosureState"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open My Closure Request",
           "tags": [
             "users"
           ]
