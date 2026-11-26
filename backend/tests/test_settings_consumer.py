@@ -84,8 +84,8 @@ class TestSettingsConsumer:
         await bind_tenant(db, tenant.id)
 
         # Pre-populate the cache with a stale value.
-        put(tenant.id, "pos.max_discount_pct", 15.0)
-        assert cache.get(tenant.id, "pos.max_discount_pct") == 15.0
+        put(tenant.id, "tenant", None, "pos.max_discount_pct", 15.0)
+        assert cache.get(tenant.id, "tenant", None, "pos.max_discount_pct") == 15.0
 
         consumer = SettingsConsumer.__new__(SettingsConsumer)
         consumer._bus = None  # type: ignore[assignment]
@@ -106,7 +106,7 @@ class TestSettingsConsumer:
         await consumer.handle(event)
 
         # The cache entry should be gone.
-        assert cache.get(tenant.id, "pos.max_discount_pct") is None
+        assert cache.get(tenant.id, "tenant", None, "pos.max_discount_pct") is None
 
     @pytest.mark.asyncio
     async def test_security_key_stages_audit_outbox_event(
@@ -120,7 +120,7 @@ class TestSettingsConsumer:
         user, tenant = await _create_tenant(db)
         await bind_tenant(db, tenant.id)
 
-        put(tenant.id, "security.require_strong_passwords", True)
+        put(tenant.id, "tenant", None, "security.require_strong_passwords", True)
 
         consumer = SettingsConsumer.__new__(SettingsConsumer)
         consumer._bus = None  # type: ignore[assignment]
@@ -141,7 +141,7 @@ class TestSettingsConsumer:
         await consumer.handle(event)
 
         # Cache invalidated.
-        assert cache.get(tenant.id, "security.require_strong_passwords") is None
+        assert cache.get(tenant.id, "tenant", None, "security.require_strong_passwords") is None
 
         # A security.setting_changed outbox event was staged — query through
         # the patched session factory so we see the consumer's writes.
@@ -224,7 +224,7 @@ class TestSettingsConsumer:
         user, tenant = await _create_tenant(db)
         await bind_tenant(db, tenant.id)
 
-        put(tenant.id, "pos.max_discount_pct", 10.0)
+        put(tenant.id, "tenant", None, "pos.max_discount_pct", 10.0)
 
         consumer = SettingsConsumer.__new__(SettingsConsumer)
         consumer._bus = None  # type: ignore[assignment]
@@ -241,4 +241,4 @@ class TestSettingsConsumer:
         await consumer.handle(event)
 
         # Cache should NOT be invalidated (event type mismatch).
-        assert cache.get(tenant.id, "pos.max_discount_pct") == 10.0
+        assert cache.get(tenant.id, "tenant", None, "pos.max_discount_pct") == 10.0

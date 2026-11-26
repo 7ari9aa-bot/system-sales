@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 675,
-    "sha256": "30632520b7b6c8c79e69e79acc18717615cd619eda4a060812358ee72d30e16f",
+    "sha256": "de122f996a7edcd75c648b929bd89197cb52737b16487be144818d3a88a2aa38",
     "typed_operations": 369
   },
   "spec": {
@@ -2772,8 +2772,15 @@
               "anyOf": [
                 {
                   "additionalProperties": {
-                    "format": "uuid",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "type": "object"
                 },
@@ -3857,6 +3864,13 @@
               ],
               "title": "Reason"
             },
+            "resets": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Resets",
+              "type": "array"
+            },
             "review_note": {
               "anyOf": [
                 {
@@ -4912,7 +4926,7 @@
           "type": "object"
         },
         "CreateChangeRequestInput": {
-          "description": "Payload to create a change request for approval-gated settings.",
+          "description": "Payload to create a change request for approval-gated settings.\n\n``resets`` names settings the request will clear (remove the override). A clear is an\noperation, not a value, so it is listed here instead of being written as ``{key: None}``\n— which the per-type validator rejects for boolean, number and enum settings.",
           "properties": {
             "changes": {
               "additionalProperties": true,
@@ -4930,6 +4944,13 @@
                 }
               ],
               "title": "Reason"
+            },
+            "resets": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Resets",
+              "type": "array"
             },
             "scope": {
               "default": "tenant",
@@ -4950,9 +4971,6 @@
               "title": "Scope Id"
             }
           },
-          "required": [
-            "changes"
-          ],
           "title": "CreateChangeRequestInput",
           "type": "object"
         },

@@ -13,12 +13,19 @@ from pathlib import Path
 
 from app.modules.customers import meta_oauth as mo
 
-SCREEN = Path(__file__).resolve().parents[2] / "frontend/src/pages/settings/ChannelsSettings.jsx"
+# The connect flow moved out of the channels screen into its own module (ee7a730 / 055e94d), so
+# the waits are armed in the hook and its helpers now, not in ChannelsSettings.jsx.
+CHANNELS = Path(__file__).resolve().parents[2] / "frontend/src/pages/settings/channels"
 
 
 def _screen_wait_seconds() -> list[int]:
-    """Every `N * 60 * 1000` wait the settings screen arms for a connect window."""
-    return [int(m) * 60 for m in re.findall(r"(\d+) \* 60 \* 1000", SCREEN.read_text())]
+    """Every `N * 60 * 1000` wait the connect flow arms for a connect window."""
+    waits: list[int] = []
+    for name in ("useChannelConnect.js", "channelHelpers.js"):
+        waits += [
+            int(m) * 60 for m in re.findall(r"(\d+) \* 60 \* 1000", (CHANNELS / name).read_text())
+        ]
+    return waits
 
 
 def test_the_screen_still_waits_a_whole_number_of_minutes_we_can_read():
