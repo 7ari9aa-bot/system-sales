@@ -2016,9 +2016,11 @@ export default {
   "settings.data.retention.desc": "The current retention position: the limits and policies the retention worker actually runs on.",
   "settings.data.retention.empty": "No retention policies yet.",
   "settings.data.retention.whereToEdit": "The policy is written through the same endpoint the worker reads, so no retention period is computed anywhere else.",
-  "settings.data.backups.title": "Backups and restore",
-  "settings.data.backups.desc": "There is no backup or restore system in the product yet.",
-  "settings.data.backups.body": "Backup is the responsibility of the layer below (the database and the host), and restore is a catastrophic procedure that needs approval and a record. There is no backup table and no restore path in the system, so this page says that instead of showing a setting wired to nothing.",
+  // The page this tab opens is the offboarding screen (`DataSettings`), so the label is the
+  // screen's own name: a tab called "Backups and restore" that opens "Data & offboarding" is
+  // the same drift as a nav entry that opens a different page than it names.
+  "settings.data.backups.title": "Data & offboarding",
+  "settings.data.backups.desc": "The export the server actually serves, and where the workspace stands.",
   "settings.data.privacy.title": "Privacy and consents",
   "settings.data.privacy.desc": "The consents actually recorded: who agreed to what and when, from the privacy module itself.",
   "settings.data.privacy.empty": "No consents recorded yet.",

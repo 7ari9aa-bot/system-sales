@@ -154,23 +154,24 @@ test("login can send a password reset link and never claims the mail arrived", a
 
 test("the data page names itself honestly and explains why export is closed", async ({ page }) => {
   await setup(page, { lifecycle: "active" });
+  // Section 17's "Data & offboarding" tab owns this screen; the old /settings/danger address
+  // forwards to it rather than opening a second copy.
   await page.goto("/settings/danger");
+  await expect(page).toHaveURL(/\/settings\/data\/backups-and-restore$/);
+  await page.goto("/settings/data/backups-and-restore");
 
   await expect(page.getByRole("heading", { level: 1, name: "Data & offboarding" })).toBeVisible();
   await expect(page.getByTestId("workspace-state")).toHaveText("active");
   await expect(page.getByTestId("data-export")).toBeDisabled();
   await expect(page.getByTestId("data-export-reason")).toContainText("during the offboarding window");
-  // The screen stays reachable by address but is NOT a sidebar entry: the map gives it no
-  // section of its own (backups and restore is still a pending page in section 17, because no
-  // backup system exists in the product), so listing it would promise a place in the Center
-  // that the Center does not have. `settingsManifest.js`'s SETTINGS_UNLISTED_SCREENS records
-  // that reason beside the route, and the sidebar offers section 17 instead.
-  await expect(
-    page.getByRole("navigation").getByRole("link", { name: "Data & offboarding" })
-  ).toHaveCount(0);
+  // It is a PAGE of section 17, not a nineteenth sidebar entry: the Center lists sections, and
+  // section 17's own tab strip carries this page.
   await expect(
     page.getByRole("navigation").getByRole("link", { name: "Data & privacy", exact: true })
   ).toBeVisible();
+  await expect(
+    page.getByRole("navigation").getByRole("link", { name: "Data & offboarding" })
+  ).toHaveCount(0);
 });
 
 test("during offboarding the export button actually works", async ({ page }) => {

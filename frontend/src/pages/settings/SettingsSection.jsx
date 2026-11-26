@@ -686,13 +686,8 @@ export default function SettingsSection({ section }) {
         />
       )}
 
-      {`${section}/${page}` === "data/backups-and-restore" && (
-        <StaticNotePanel
-          titleKey="settings.data.backups.title"
-          descKey="settings.data.backups.desc"
-          bodyKey="settings.data.backups.body"
-        />
-      )}
+      {/* data/backups-and-restore is served by its own route (`DataSettings`, the offboarding
+          screen): the tab leads there, so this section never renders it. */}
 
       {`${section}/${page}` === "data/data-privacy" && (
         <GenericListPanel

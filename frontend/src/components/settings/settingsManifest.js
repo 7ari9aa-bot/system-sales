@@ -250,7 +250,9 @@ export const SETTINGS_SECTIONS = [
     labelKey: "settings.nav.data",
     to: "/settings/data/data-privacy",
     icon: Database,
-    pages: ["import", "retention", "data-privacy", "data-deletion"],
+    // "backups-and-restore" is the offboarding screen (`DataSettings`), served by its own
+    // route: the tab leads there, and /settings/danger forwards to it.
+    pages: ["import", "retention", "data-privacy", "data-deletion", "backups-and-restore"],
   },
   {
     id: "18",
@@ -342,9 +344,5 @@ export const SETTINGS_UNLISTED_SCREENS = [
   {
     to: "/settings/all",
     why: "The unified editor that lists every key at once. It is a working screen, not a place in the map: the map's twenty sections are how a person is meant to arrive.",
-  },
-  {
-    to: "/settings/danger",
-    why: "Backup/export state and workspace lifecycle. Backup and restore is still a pending page in section 17 (no backup system exists in the product), so this screen has no section home yet and stays address-only.",
   },
 ];

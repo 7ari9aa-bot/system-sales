@@ -248,8 +248,14 @@ const DashboardRoutes = () => (
           <Route path="/settings/preferences" element={<PreferencesSettings />} />
           <Route path="/settings/notifications" element={<NotificationPreferences />} />
           <Route path="/settings/notifications/:page" element={<SettingsSection section="notifications" />} />
+          {/* Section 17's "Backups and restore" IS the offboarding screen: what the backup
+              actually is here (a file the server serves only during the offboarding window) and
+              where the workspace stands. It is declared BEFORE :page so the real screen wins the
+              match instead of the static apology the section would otherwise render. */}
+          <Route path="/settings/data/backups-and-restore" element={<DataSettings />} />
           <Route path="/settings/data/:page" element={<SettingsSection section="data" />} />
-          <Route path="/settings/danger" element={<DataSettings />} />
+          {/* The old address stays a way in, never a second screen. */}
+          <Route path="/settings/danger" element={<Navigate to="/settings/data/backups-and-restore" replace />} />
           {/* The Settings Center map: a section is a navigation group with its own pages, and
               each page renders only the keys whose registry home is that section+page. */}
           <Route path="/settings/store" element={<Navigate to="/settings/store/business-profile" replace />} />

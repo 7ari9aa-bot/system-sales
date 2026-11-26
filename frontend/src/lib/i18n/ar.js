@@ -2016,9 +2016,9 @@ export default {
   "settings.data.retention.desc": "وضع الاحتفاظ الحالي: الحدود والسياسات اللي worker الاحتفاظ بيمشي عليها فعلًا.",
   "settings.data.retention.empty": "لسه مفيش سياسات احتفاظ.",
   "settings.data.retention.whereToEdit": "السياسة بتتكتب من نفس الـendpoint اللي الـworker بيقراه، فمفيش مدة احتفاظ بتتحسب من مكان تاني.",
-  "settings.data.backups.title": "النسخ الاحتياطي والاسترجاع",
-  "settings.data.backups.desc": "مفيش نظام نسخ احتياطي أو استرجاع في المنتج لحد الآن.",
-  "settings.data.backups.body": "النسخ الاحتياطي مسؤولية الطبقة اللي تحت (قاعدة البيانات والاستضافة)، والاسترجاع إجراء كارثي محتاج موافقة وسجل. مفيش جدول نسخ ولا مسار استرجاع في النظام، فالصفحة بتقول كده بدل ما تعرض إعداد مش موصّل بحاجة.",
+  // التاب بيفتح شاشة إنهاء الحساب (DataSettings)، فالاسم هو اسم الشاشة نفسها.
+  "settings.data.backups.title": "البيانات وإنهاء الحساب",
+  "settings.data.backups.desc": "الملف اللي السيرفر بيقدّمه فعلاً، وحالة مساحة العمل.",
   "settings.data.privacy.title": "الخصوصية والموافقات",
   "settings.data.privacy.desc": "الموافقات المسجّلة فعلًا: مين وافق على إيه وإمتى، ومن وحدة الخصوصية نفسها.",
   "settings.data.privacy.empty": "لسه مفيش موافقات مسجّلة.",
