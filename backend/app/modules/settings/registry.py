@@ -398,6 +398,7 @@ ENFORCED_KEYS: frozenset[str] = frozenset(
         "catalog.default_tax_rate",  # catalog/products.py
         "catalog.show_out_of_stock",  # ai/tools/catalog
         "catalog.max_variants_per_product",  # catalog/variants.py
+        "catalog.max_images_per_sku",  # catalog/services/taxonomy.py
         # Phase 7 wiring — Team, Security, Billing, Notifications.
         "team.require_2fa",  # identity/services/auth.py login
         "billing.auto_renew",  # billing/services/trial_expiry.py::_should_lock
@@ -2260,6 +2261,27 @@ _reg(
         max_value=10000,
         label_ar="الحد الأقصى للمتغيرات لكل منتج",
         label_en="Max Variants Per Product",
+        description_ar="أقصى عدد متغيرات (مقاس/لون) يمكن إضافتها لمنتج واحد.",
+        description_en="The maximum number of variants (size/colour) a single product can have.",
+    )
+)
+
+# ============================== TEAM (§117 Phase 7) ========================
+#
+# Team-level settings controlling how new members join and how sessions behave.
+
+_reg(
+    SettingDef(
+        key="catalog.max_images_per_sku",
+        domain="catalog",
+        page="images-and-media",
+        type=SettingType.NUMBER,
+        default=10,
+        scopes=(Scope.TENANT,),
+        min_value=1,
+        max_value=100,
+        label_ar="أقصى عدد صور للصنف",
+        label_en="Maximum images per SKU",
         description_ar="أقصى عدد متغيرات (مقاس/لون) يمكن إضافتها لمنتج واحد.",
         description_en="The maximum number of variants (size/colour) a single product can have.",
     )

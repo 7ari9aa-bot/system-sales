@@ -113,9 +113,22 @@ class TaxonomyServiceMixin:
                 )
             )
         ).scalar()
-        if (existing or 0) >= MAX_IMAGES_PER_SKU:
+        # الحد بقى إعداد (catalog.max_images_per_sku) بدل ثابت في الكود: نفس الرقم اللي
+        # الصفحة بتعرضه هو اللي الخدمة بتفرضه، والثابت في limits.py بقى الاحتياطي فقط لو
+        # الإعداد مش مقروء.
+        limit = MAX_IMAGES_PER_SKU
+        try:
+            from app.modules.settings.service import SettingsService
+
+            limit = int(
+                await SettingsService(session, tenant_id).value("catalog.max_images_per_sku")
+                or MAX_IMAGES_PER_SKU
+            )
+        except Exception:  # noqa: BLE001 - an unreadable setting must not block an upload
+            limit = MAX_IMAGES_PER_SKU
+        if (existing or 0) >= limit:
             raise ValidationError(
-                f"الصنف ده وصل للحد الأقصى ({MAX_IMAGES_PER_SKU} صور). امسح صورة قبل ما تضيف غيرها"
+                f"الصنف ده وصل للحد الأقصى ({limit} صور). امسح صورة قبل ما تضيف غيرها"
             )
         highest = (
             await session.execute(
