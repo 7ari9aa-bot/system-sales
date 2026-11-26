@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,6 +13,8 @@ from app.modules.catalog.apparel.barcode import is_valid_ean13
 from app.modules.catalog.models import ProductIdentifier, ProductVariant
 from app.modules.catalog.services._common import IDENTIFIER_TYPES
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class IdentifierServiceMixin:
@@ -59,7 +62,28 @@ class IdentifierServiceMixin:
             raise ValidationError(
                 f"رقم الباركود {cleaned} غير صحيح: رقم التحقق الأخير لا يطابق الأرقام السابقة"
             )
-        variant = await CatalogService.get_variant(session, tenant_id, variant_id)
+        try:
+            variant = await CatalogService.get_variant(session, tenant_id, variant_id)
+        except NotFoundError:
+            # A client that was just told a variant exists posts a code to it and gets "not found".
+            # Say WHICH not-found this is: the row belongs to another tenant, it exists but is not
+            # sellable, or it is not there at all — three different bugs behind one message.
+            # Same tenant only: RLS hides another tenant's row from this query too, so the useful
+            # distinction here is "exists but not sellable" against "not there".
+            try:
+                await CatalogService.get_variant(
+                    session, tenant_id, variant_id, include_inactive=True
+                )
+                inactive = True
+            except NotFoundError:
+                inactive = False
+            logger.warning(
+                "identifier.variant_missing variant=%s tenant=%s exists_inactive=%s",
+                variant_id,
+                tenant_id,
+                inactive,
+            )
+            raise
         row = ProductIdentifier(
             tenant_id=tenant_id,
             variant_id=variant.id,
