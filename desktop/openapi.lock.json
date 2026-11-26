@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 663,
-    "sha256": "2d76c738d9e6ea8edff0971cb3ab87a4e0c4636152301452568e21eebe03b653",
-    "typed_operations": 358
+    "operations": 675,
+    "sha256": "30632520b7b6c8c79e69e79acc18717615cd619eda4a060812358ee72d30e16f",
+    "typed_operations": 369
   },
   "spec": {
     "components": {
@@ -2768,6 +2768,21 @@
         "BulkSetSettingsRequest": {
           "description": "Payload to update multiple settings at once at a specific scope.",
           "properties": {
+            "expected_history_ids": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected History Ids"
+            },
             "reason": {
               "anyOf": [
                 {
@@ -2782,7 +2797,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -3801,6 +3816,117 @@
           "title": "CategoryRequest",
           "type": "object"
         },
+        "ChangeRequestOut": {
+          "description": "A change request with its lifecycle state (§28).",
+          "properties": {
+            "applied_changes": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Applied Changes"
+            },
+            "changes": {
+              "additionalProperties": true,
+              "title": "Changes",
+              "type": "object"
+            },
+            "created_at": {
+              "default": "",
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "review_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review Note"
+            },
+            "reviewed_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reviewed By"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "submitted_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted By"
+            },
+            "updated_at": {
+              "default": "",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "changes",
+            "status",
+            "scope"
+          ],
+          "title": "ChangeRequestOut",
+          "type": "object"
+        },
         "ChannelAccessUpdate": {
           "properties": {
             "can_send": {
@@ -4783,6 +4909,51 @@
             "name"
           ],
           "title": "CreateCategoryRequest",
+          "type": "object"
+        },
+        "CreateChangeRequestInput": {
+          "description": "Payload to create a change request for approval-gated settings.",
+          "properties": {
+            "changes": {
+              "additionalProperties": true,
+              "title": "Changes",
+              "type": "object"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "scope": {
+              "default": "tenant",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            }
+          },
+          "required": [
+            "changes"
+          ],
+          "title": "CreateChangeRequestInput",
           "type": "object"
         },
         "CreateOrderRequest": {
@@ -11106,9 +11277,15 @@
               "type": "string"
             },
             "role_code": {
-              "default": "staff",
-              "title": "Role Code",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role Code"
             }
           },
           "required": [
@@ -13732,6 +13909,48 @@
             "code"
           ],
           "title": "MfaVerifyRequest",
+          "type": "object"
+        },
+        "MigrationLogOut": {
+          "description": "One applied config migration for this tenant.",
+          "properties": {
+            "applied_by": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Applied By"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "migration_id": {
+              "title": "Migration Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "migration_id",
+            "description",
+            "created_at"
+          ],
+          "title": "MigrationLogOut",
           "type": "object"
         },
         "MintLeaseRequest": {
@@ -17720,6 +17939,58 @@
           "title": "RegisterRequest",
           "type": "object"
         },
+        "RejectRefundRequest": {
+          "description": "The terminal refused: why, and (optionally) where the money went instead.",
+          "properties": {
+            "external_reference": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Reference"
+            },
+            "reason": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            },
+            "replacement_method": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replacement Method"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "title": "RejectRefundRequest",
+          "type": "object"
+        },
         "Relationship": {
           "description": "§9.2 — how strongly the evidence supports the claim. The wording\nladder enforces: temporal alignment alone may never read as cause.",
           "enum": [
@@ -17913,7 +18184,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -17969,6 +18240,18 @@
               "title": "Key",
               "type": "string"
             },
+            "latest_history_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest History Id"
+            },
             "scope": {
               "title": "Scope",
               "type": "string"
@@ -17998,6 +18281,38 @@
             "definition"
           ],
           "title": "ResolvedSettingOut",
+          "type": "object"
+        },
+        "RestoreSnapshotInput": {
+          "description": "Payload to restore all tenant settings to a point in time (§164).",
+          "properties": {
+            "bypass_approval": {
+              "default": false,
+              "title": "Bypass Approval",
+              "type": "boolean"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "snapshot_before": {
+              "description": "ISO 8601 timestamp — settings are restored to their state before this moment",
+              "title": "Snapshot Before",
+              "type": "string"
+            }
+          },
+          "required": [
+            "snapshot_before"
+          ],
+          "title": "RestoreSnapshotInput",
           "type": "object"
         },
         "RetentionPolicyChoice": {
@@ -18625,6 +18940,25 @@
           "title": "ReverseRequest",
           "type": "object"
         },
+        "ReviewChangeRequestInput": {
+          "description": "Payload to approve or reject a change request.",
+          "properties": {
+            "review_note": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review Note"
+            }
+          },
+          "title": "ReviewChangeRequestInput",
+          "type": "object"
+        },
         "RoasRowOut": {
           "description": "One ROI row, named for the denominator its ratio actually used.\n\nThe two wire types meet in this one object and the split is the rule:\n``revenue``/``planned_budget``/``actual_spend`` are amounts and are Decimal\nstrings; ``budget_roas``/``spend_roas`` are dimensionless shares a client\nsorts and thresholds, so they are numbers — or ``null``, because no\ndenominator is not 0.0 of return.",
           "properties": {
@@ -18710,6 +19044,60 @@
             "spend_roas"
           ],
           "title": "RoasRowOut",
+          "type": "object"
+        },
+        "RollbackInput": {
+          "description": "Payload to roll back a setting to a previous revision.",
+          "properties": {
+            "bypass_approval": {
+              "default": false,
+              "title": "Bypass Approval",
+              "type": "boolean"
+            },
+            "history_id": {
+              "format": "uuid",
+              "title": "History Id",
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          "required": [
+            "history_id"
+          ],
+          "title": "RollbackInput",
+          "type": "object"
+        },
+        "RunMigrationsOut": {
+          "description": "Result of running pending config migrations.",
+          "properties": {
+            "applied": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Applied",
+              "type": "array"
+            },
+            "current_version": {
+              "title": "Current Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "applied",
+            "current_version"
+          ],
+          "title": "RunMigrationsOut",
           "type": "object"
         },
         "SLAPolicyList": {
@@ -20285,6 +20673,18 @@
         "SetSettingRequest": {
           "description": "Payload to create or update an override at a specific scope.",
           "properties": {
+            "expected_history_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected History Id"
+            },
             "reason": {
               "anyOf": [
                 {
@@ -20299,7 +20699,7 @@
             },
             "scope": {
               "default": "tenant",
-              "pattern": "^(tenant|branch|warehouse|pos_profile|register|channel|user)$",
+              "pattern": "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$",
               "title": "Scope",
               "type": "string"
             },
@@ -20359,6 +20759,11 @@
               ],
               "title": "Allowed Values"
             },
+            "apply_mode": {
+              "default": "validated",
+              "title": "Apply Mode",
+              "type": "string"
+            },
             "audit": {
               "title": "Audit",
               "type": "boolean"
@@ -20381,6 +20786,17 @@
             "enforced": {
               "title": "Enforced",
               "type": "boolean"
+            },
+            "feature_requirement": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Feature Requirement"
             },
             "key": {
               "title": "Key",
@@ -20431,6 +20847,11 @@
               "title": "Permission",
               "type": "string"
             },
+            "rollback_supported": {
+              "default": true,
+              "title": "Rollback Supported",
+              "type": "boolean"
+            },
             "scopes": {
               "items": {
                 "type": "string"
@@ -20445,6 +20866,11 @@
               },
               "title": "Segments",
               "type": "array"
+            },
+            "sensitivity": {
+              "default": "normal",
+              "title": "Sensitivity",
+              "type": "string"
             },
             "type": {
               "title": "Type",
@@ -20544,6 +20970,11 @@
                 }
               ],
               "title": "Setting Id"
+            },
+            "source": {
+              "default": "api",
+              "title": "Source",
+              "type": "string"
             }
           },
           "required": [
@@ -20554,6 +20985,101 @@
             "created_at"
           ],
           "title": "SettingHistoryOut",
+          "type": "object"
+        },
+        "SettingPreviewEntryOut": {
+          "description": "What would happen to one key — the answer a dry run exists to give.",
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "current": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Current"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "key": {
+              "title": "Key",
+              "type": "string"
+            },
+            "needs_approval": {
+              "default": false,
+              "title": "Needs Approval",
+              "type": "boolean"
+            },
+            "proposed": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposed"
+            }
+          },
+          "required": [
+            "key",
+            "action"
+          ],
+          "title": "SettingPreviewEntryOut",
+          "type": "object"
+        },
+        "SettingsPreviewOut": {
+          "description": "A whole save, checked and not written.",
+          "properties": {
+            "keys": {
+              "items": {
+                "$ref": "#/components/schemas/SettingPreviewEntryOut"
+              },
+              "title": "Keys",
+              "type": "array"
+            },
+            "scope": {
+              "title": "Scope",
+              "type": "string"
+            },
+            "scope_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
+            },
+            "summary": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Summary",
+              "type": "object"
+            }
+          },
+          "required": [
+            "scope",
+            "keys",
+            "summary"
+          ],
+          "title": "SettingsPreviewOut",
           "type": "object"
         },
         "ShipmentCreateRequest": {
@@ -76652,6 +77178,122 @@
           ]
         }
       },
+      "/api/v1/pos/refunds/{refund_id}/reject": {
+        "post": {
+          "description": "Record a failed card/wallet reversal and release the money it was holding.\n\nWithout this a declined reversal stayed pending forever: counted as reserved, so the sale could\nnot be refunded another way, and the customer's money had not come back either. Rejecting frees\nthe reservation exactly once; ``replacement_method`` refunds the same amount on another tender\nas a NEW row, so the rejected attempt stays in history.",
+          "operationId": "reject_refund_api_v1_pos_refunds__refund_id__reject_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "refund_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Refund Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RejectRefundRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {}
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reject Refund",
+          "tags": [
+            "pos"
+          ]
+        }
+      },
       "/api/v1/pos/registers": {
         "get": {
           "operationId": "list_registers_api_v1_pos_registers_get",
@@ -87562,6 +88204,466 @@
           ]
         }
       },
+      "/api/v1/settings/change-requests": {
+        "get": {
+          "description": "List change requests, optionally filtered by status.",
+          "operationId": "list_change_requests_api_v1_settings_change_requests_get",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ChangeRequestOut"
+                    },
+                    "title": "Response List Change Requests Api V1 Settings Change Requests Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Change Requests",
+          "tags": [
+            "settings"
+          ]
+        },
+        "post": {
+          "description": "Create a change request for approval-gated settings.",
+          "operationId": "create_change_request_api_v1_settings_change_requests_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateChangeRequestInput"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChangeRequestOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Create Change Request",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/change-requests/{request_id}/approve": {
+        "post": {
+          "description": "Approve a pending change request and apply it.",
+          "operationId": "approve_change_request_api_v1_settings_change_requests__request_id__approve_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "request_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewChangeRequestInput"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChangeRequestOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Approve Change Request",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/change-requests/{request_id}/reject": {
+        "post": {
+          "description": "Reject a pending change request.",
+          "operationId": "reject_change_request_api_v1_settings_change_requests__request_id__reject_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "request_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Request Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewChangeRequestInput"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChangeRequestOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Reject Change Request",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
       "/api/v1/settings/definitions": {
         "get": {
           "description": "List setting metadata, optionally for one domain and/or one business segment.",
@@ -88095,7 +89197,7 @@
       },
       "/api/v1/settings/history": {
         "get": {
-          "description": "Return the audit log of settings changes, newest first.",
+          "description": "Return the audit log of settings changes, newest first, with filters (§174).\n\nFilter by ``key``, ``source`` (api/preset/restore/migration/rollback/change_request),\n``action`` (set/reset), ``changed_by`` (user id), and/or a time range\n(``since`` / ``until`` as ISO 8601 timestamps).",
           "operationId": "get_settings_history_api_v1_settings_history_get",
           "parameters": [
             {
@@ -88112,6 +89214,87 @@
                   }
                 ],
                 "title": "Key"
+              }
+            },
+            {
+              "in": "query",
+              "name": "source",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Source"
+              }
+            },
+            {
+              "in": "query",
+              "name": "action",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Action"
+              }
+            },
+            {
+              "in": "query",
+              "name": "changed_by",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Changed By"
+              }
+            },
+            {
+              "in": "query",
+              "name": "since",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Since"
+              }
+            },
+            {
+              "in": "query",
+              "name": "until",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Until"
               }
             },
             {
@@ -88218,6 +89401,206 @@
             }
           },
           "summary": "Get Settings History",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/migrations": {
+        "get": {
+          "description": "List config migrations already applied to this tenant.",
+          "operationId": "list_config_migrations_api_v1_settings_migrations_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/MigrationLogOut"
+                    },
+                    "title": "Response List Config Migrations Api V1 Settings Migrations Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Config Migrations",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/migrations/run": {
+        "post": {
+          "description": "Run all pending config migrations for this tenant. Idempotent.",
+          "operationId": "run_config_migrations_api_v1_settings_migrations_run_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunMigrationsOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Run Config Migrations",
           "tags": [
             "settings"
           ]
@@ -88376,7 +89759,7 @@
       },
       "/api/v1/settings/presets": {
         "get": {
-          "description": "List available business configuration presets and their default keys.",
+          "description": "List available business configuration presets with composition metadata.",
           "operationId": "list_presets_api_v1_settings_presets_get",
           "parameters": [
             {
@@ -88479,7 +89862,7 @@
       },
       "/api/v1/settings/presets/{preset_name}": {
         "post": {
-          "description": "Apply a business-type preset to the tenant scope.",
+          "description": "Apply a business-type preset to the tenant scope (atomic, with audit).",
           "operationId": "apply_preset_api_v1_settings_presets__preset_name__post",
           "parameters": [
             {
@@ -88581,6 +89964,551 @@
             }
           },
           "summary": "Apply Preset",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/presets/{preset_name}/preview": {
+        "post": {
+          "description": "Dry-run: show what would change if the preset were applied, without writing.",
+          "operationId": "preview_preset_api_v1_settings_presets__preset_name__preview_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "preset_name",
+              "required": true,
+              "schema": {
+                "title": "Preset Name",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Preview Preset Api V1 Settings Presets  Preset Name  Preview Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Preview Preset",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/preview": {
+        "post": {
+          "description": "Dry run of a save: every key checked, nothing written.\n\nThe settings screen shows this diff before the owner commits, so a key that is invalid,\nforbidden at this scope, or needs approval is visible BEFORE the request is sent — not\nas a 400/403 after half the form was filled in.",
+          "operationId": "preview_settings_api_v1_settings_preview_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkSetSettingsRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsPreviewOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Preview Settings",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/restore": {
+        "post": {
+          "description": "Restore all tenant-level settings to their state before a timestamp (§164).\n\nRequires ``settings:write``. Tenant-scoped by RLS — only touches this\ntenant's overrides. Each change is recorded in history with a restore\nreason, and an audit log entry is written.",
+          "operationId": "restore_snapshot_api_v1_settings_restore_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreSnapshotInput"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "type": "integer"
+                    },
+                    "title": "Response Restore Snapshot Api V1 Settings Restore Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Restore Snapshot",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/rollback": {
+        "post": {
+          "description": "Roll back a setting to a previous revision's value.\n\nCreates a NEW revision with the restored value — does not delete history.\nFor APPROVAL_REQUIRED settings, a change request is created instead.",
+          "operationId": "rollback_setting_api_v1_settings_rollback_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackInput"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/TenantSettingOut"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Response Rollback Setting Api V1 Settings Rollback Post"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Rollback Setting",
+          "tags": [
+            "settings"
+          ]
+        }
+      },
+      "/api/v1/settings/slo": {
+        "get": {
+          "description": "Return the current SLO status for the settings control plane.\n\nAdmin-only: requires ``settings:read``. Reads the live metrics counters\nand outbox gauges, and returns the compliance verdict for each SLO.",
+          "operationId": "get_settings_slo_api_v1_settings_slo_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Get Settings Slo Api V1 Settings Slo Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Get Settings Slo",
           "tags": [
             "settings"
           ]

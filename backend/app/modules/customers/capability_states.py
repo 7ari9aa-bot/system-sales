@@ -101,7 +101,11 @@ _CAPABILITIES: dict[str, tuple[dict[str, Any], ...]] = {
             "key": "message_edit",
             "scopes": ("pages_messaging",),
             "fields": ("message_edits",),
-            "live_fields": ("message_edits",),
+            # Message edits are quiet when idle: Meta only sends `message_edits` when
+            # someone actually edits, so requiring it as a live field would make every
+            # shop that never had an edit look broken.
+            "live_fields": (),
+            "quiet_when_idle": True,
         },
         {
             "key": "reactions",

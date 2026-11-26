@@ -146,6 +146,14 @@ async def _messages_sent(db, tenant_ctx, monkeypatch, *, question="مبيعات 
         )
 
     monkeypatch.setattr(AIGateway, "chat", fake_chat)
+    # The analytics agent is gated by analytics_agent.enabled (§settings): a tenant that has
+    # not turned it on never reaches the model, so the run returns "disabled" before any chat
+    # call. This lane is about what the model is TOLD, so it turns the agent on first.
+    from app.modules.settings.service import SettingsService
+
+    await SettingsService(db, tenant_ctx.tenant_id).set(
+        "analytics_agent.enabled", True, scope="tenant"
+    )
     agent = await _agent(db, tenant_ctx.tenant_id, kind or "sales_intelligence", ("si_metric",))
     agent.system_prompt = None
     await db.flush()

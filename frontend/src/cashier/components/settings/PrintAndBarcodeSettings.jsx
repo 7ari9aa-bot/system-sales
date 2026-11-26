@@ -9,6 +9,10 @@ export const PRINT_KEYS = [
   "print.header_text",
   "print.footer_text",
   "print.show_tax_detail",
+  // Both are read by the receipt (pos/receipt_settings.py::_KEYS) and had no field anywhere, so
+  // an owner could not change the barcode format or the invoice prefix at all.
+  "print.barcode_format",
+  "print.invoice_prefix",
 ];
 
 export default function PrintAndBarcodeSettings() {

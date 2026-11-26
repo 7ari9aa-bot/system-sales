@@ -100,11 +100,16 @@ async def _transform_value(
 # ---------------------------------------------------------------------------
 
 MIGRATIONS: list[ConfigMigration] = [
-    # Example migration (no-op placeholder kept for documentation):
+    # No migrations are registered yet.  This list is intentionally empty:
+    # the framework is in place (runner, log table, idempotency) but no
+    # setting key has been renamed or had its value format changed since
+    # the framework was introduced.  When that happens, add a migration
+    # here following the pattern below:
+    #
     # ConfigMigration(
-    #     id="001_example",
-    #     description="Rename pos.discount_cap → pos.max_discount",
-    #     apply=lambda s, t: _rename_key(s, t, "pos.discount_cap", "pos.max_discount"),
+    #     id="001_rename_discount_cap",
+    #     description="Rename pos.discount_cap → pos.max_discount_pct",
+    #     apply=lambda s, t: _rename_key(s, t, "pos.discount_cap", "pos.max_discount_pct"),
     # ),
 ]
 

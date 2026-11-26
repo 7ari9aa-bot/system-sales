@@ -128,12 +128,21 @@ def _graph_handler(
                 "id": PAGE_ID,
                 "name": "Fihrist Page",
                 "access_token": PAGE_TOKEN,
-                "tasks": ["MESSAGING", "ANALYTICS"],
+                # What /me/accounts really returns for a Page the caller administers. The flow
+                # refuses a Page it cannot manage (facebook needs MANAGE, messenger needs
+                # MESSAGING or MANAGE), so a fixture without MANAGE models a Page nobody here can
+                # run — the refusal is right and the fixture was wrong.
+                "tasks": ["MANAGE", "MESSAGING", "ANALYTICS"],
             }
             if instagram:
                 page["instagram_business_account"] = {"id": IG_ID, "username": "fihrist"}
             return httpx.Response(200, json={"data": [page]})
         if f"/{PAGE_ID}/subscribed_apps" in url:
+            if request.method == "GET":
+                # The flow reads what THIS app already has before writing: a read it cannot
+                # parse is "unknown", and unknown fails closed rather than overwriting the
+                # Page's subscription. A bare {"success": true} here is not that payload.
+                return httpx.Response(200, json={"data": [{"id": APP_ID, "subscribed_fields": []}]})
             return httpx.Response(200, json={"success": True})
         if "/me?" in url or url.rstrip("/?").endswith("/me"):
             # The messenger ownership check hits /me WITH the page token —
@@ -673,6 +682,7 @@ async def test_facebook_connect_records_the_permissions_meta_granted(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ):
     result, _calls = await _facebook_callback(db, tenant_ctx, monkeypatch)
+    assert "connected" in result, f"the link was refused: {result.get('error')}"
     assert result["connected"].startswith("facebook:")
     row = (await db.execute(sa_select_integration())).scalar_one()
     assert set(row.config["_connection"]["granted_scopes"]) == set(ALL_FACEBOOK_PERMISSIONS)

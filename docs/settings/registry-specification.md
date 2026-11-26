@@ -162,7 +162,7 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `customer_agent.enabled` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
+| `customer_agent.enabled` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 | `customer_agent.dialect` | enum | `egyptian` | TENANT | normal | validated | — | — | ✅ | msa, egyptian, gulf, levantine | all |
 | `customer_agent.formality` | enum | `friendly` | TENANT | normal | validated | — | — | ✅ | formal, friendly, casual | all |
 | `customer_agent.response_language` | enum | `ar` | TENANT | normal | validated | — | — | ✅ | ar, en, auto | all |
@@ -204,7 +204,7 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `catalog.sku_format` | string | `{category}-{number}` | TENANT | normal | validated | — | — | ✅ | — | all |
-| `catalog.barcode_auto_generate` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
+| `catalog.barcode_auto_generate` | bool | false | TENANT | normal | validated | — | — | ✅ | — | all |
 | `catalog.default_tax_rate` | number | 0 | TENANT | normal | validated | 0 | 100 | ✅ | — | all |
 | `catalog.show_out_of_stock` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
 | `catalog.max_variants_per_product` | number | 100 | TENANT | normal | validated | 1 | 10000 | ✅ | — | all |
@@ -222,18 +222,18 @@ All overrides are stored in the `tenant_settings` table (tenant-scoped, RLS-prot
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `security.require_strong_passwords` | bool | true | TENANT | sensitive | validated | — | — | ✅ | — | all |
-| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | validated | 0 | 365 | ✅ | — | all |
-| `security.audit_retention_days` | number | 365 | TENANT | normal | validated | 0 | 2555 | ✅ | — | all |
-| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | validated | — | — | ✅ | — | all |
+| `security.require_strong_passwords` | bool | true | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
+| `security.api_key_rotation_days` | number | 90 | TENANT | sensitive | approval_required | 0 | 365 | ✅ | — | all |
+| `security.audit_retention_days` | number | 365 | TENANT | sensitive | approval_required | 0 | 2555 | ✅ | — | all |
+| `security.ip_allowlist` | list | `[]` | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
 
 ## Billing (3 settings)
 
 | Key | Type | Default | Scopes | Sens. | Apply | Min | Max | Enforced | Allowed | Segments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `billing.auto_renew` | bool | true | TENANT | normal | validated | — | — | ✅ | — | all |
-| `billing.currency` | enum | `EGP` | TENANT | normal | validated | — | — | ✅ | EGP, USD, SAR, AED | all |
-| `billing.notify_before_renewal_days` | number | 7 | TENANT | normal | validated | 0 | 30 | ✅ | — | all |
+| `billing.auto_renew` | bool | true | TENANT | sensitive | approval_required | — | — | ✅ | — | all |
+| `billing.currency` | enum | `EGP` | TENANT | sensitive | approval_required | — | — | ✅ | EGP, USD, SAR, AED | all |
+| `billing.notify_before_renewal_days` | number | 7 | TENANT | sensitive | approval_required | 0 | 30 | ✅ | — | all |
 
 ---
 

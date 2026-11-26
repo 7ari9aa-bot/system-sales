@@ -106,6 +106,16 @@ export function settlementSummary(result) {
     }
   }
   else if (result?.settlement === "exchange_only") parts.push("استبدال بدون فرق");
+  else if (result?.settlement === "record_only") {
+    // The till records no payments, but the difference is not imaginary: it sits on the new
+    // invoice. Naming the amount is the whole point of the confirmation.
+    const gap = Number(result?.uncollected ?? 0);
+    parts.push(
+      gap > 0
+        ? `الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات): ${gap.toFixed(2)} ج.م`
+        : "الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات)",
+    );
+  }
   else parts.push("الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات)");
   if (methods) parts.push(methods);
   if (uncollected > 0) parts.push(`منها ${uncollected.toFixed(2)} ج.م لم تُحصَّل أصلًا فلم تُرَد`);

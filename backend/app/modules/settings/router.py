@@ -21,6 +21,7 @@ from app.modules.settings.presets import PRESET_DEFS, PRESETS, preset_chain, res
 from app.modules.settings.registry import (
     SEGMENTS,
     Scope,
+    Sensitivity,
     SettingDef,
     get_definition,
     list_definitions,
@@ -42,6 +43,7 @@ from app.modules.settings.schemas import (
     SetSettingRequest,
     SettingDefOut,
     SettingHistoryOut,
+    SettingsPreviewOut,
     TenantSettingOut,
 )
 from app.modules.settings.service import ResolvedSetting, SettingsService
@@ -49,6 +51,20 @@ from app.modules.settings.service import ResolvedSetting, SettingsService
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
+
+MASKED_VALUE = "******"
+
+
+def _can_read_sensitive(ctx: TenantContext) -> bool:
+    """Whether the caller may see the *value* of SENSITIVE settings."""
+    return "settings:read_sensitive" in ctx.permission_codes
+
+
+def _mask_if_sensitive(defn: SettingDef, value: object, can_read_sensitive: bool) -> object:
+    """Mask the value of a SENSITIVE setting when the caller lacks read_sensitive."""
+    if defn.sensitivity is Sensitivity.SENSITIVE and not can_read_sensitive:
+        return MASKED_VALUE
+    return value
 
 
 class _AnySettingsPermission:
@@ -98,14 +114,15 @@ def _def_to_out(d: SettingDef) -> SettingDefOut:
     )
 
 
-def _resolved_to_out(r: ResolvedSetting) -> ResolvedSettingOut:
+def _resolved_to_out(r: ResolvedSetting, *, can_read_sensitive: bool = True) -> ResolvedSettingOut:
     return ResolvedSettingOut(
         key=r.key,
-        value=r.value,
+        value=_mask_if_sensitive(r.definition, r.value, can_read_sensitive),
         scope=r.scope,
         scope_id=r.scope_id,
         is_inherited=r.is_inherited,
         is_default=r.is_default,
+        latest_history_id=r.latest_history_id,
         definition=_def_to_out(r.definition),
     )
 
@@ -171,7 +188,8 @@ async def resolve_effective_settings(
         resolved = await svc.resolve_many(all_keys, scope=scope_enum, scope_id=scope_id)
 
     await record_settings_resolve(duration_seconds=time.monotonic() - t0)
-    return {k: _resolved_to_out(v) for k, v in resolved.items()}
+    can_read = _can_read_sensitive(ctx)
+    return {k: _resolved_to_out(v, can_read_sensitive=can_read) for k, v in resolved.items()}
 
 
 @router.get("/effective/{key:path}", response_model=ResolvedSettingOut)
@@ -189,7 +207,7 @@ async def resolve_effective_setting(
 
     svc = SettingsService(ctx.session, ctx.tenant_id)
     resolved = await svc.resolve(key, scope=Scope(scope), scope_id=scope_id)
-    return _resolved_to_out(resolved)
+    return _resolved_to_out(resolved, can_read_sensitive=_can_read_sensitive(ctx))
 
 
 # ---------------------------------------------------------------------------
@@ -208,17 +226,26 @@ async def list_overrides(
     svc = SettingsService(ctx.session, ctx.tenant_id)
     scope_enum = Scope(scope) if scope else None
     rows = await svc.list_overrides(scope=scope_enum, scope_id=scope_id, domain=domain)
-    return [
-        TenantSettingOut(
-            id=r.id,
-            key=r.key,
-            scope=r.scope,
-            scope_id=r.scope_id,
-            value=r.value.get("v") if isinstance(r.value, dict) else r.value,
-            updated_by=r.updated_by,
+    can_read = _can_read_sensitive(ctx)
+    out = []
+    for r in rows:
+        raw = r.value.get("v") if isinstance(r.value, dict) else r.value
+        try:
+            defn = get_definition(r.key)
+            out_val = _mask_if_sensitive(defn, raw, can_read)
+        except KeyError:
+            out_val = raw
+        out.append(
+            TenantSettingOut(
+                id=r.id,
+                key=r.key,
+                scope=r.scope,
+                scope_id=r.scope_id,
+                value=out_val,
+                updated_by=r.updated_by,
+            )
         )
-        for r in rows
-    ]
+    return out
 
 
 @router.put("/{key:path}", response_model=TenantSettingOut)
@@ -268,6 +295,7 @@ async def bulk_set_settings(
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        expected_history_ids=body.expected_history_ids,
     )
     return [
         TenantSettingOut(
@@ -280,6 +308,28 @@ async def bulk_set_settings(
         )
         for r in rows
     ]
+
+
+@router.post("/preview", response_model=SettingsPreviewOut)
+async def preview_settings(
+    body: BulkSetSettingsRequest,
+    ctx: SettingsWriteCtx,
+) -> SettingsPreviewOut:
+    """Dry run of a save: every key checked, nothing written.
+
+    The settings screen shows this diff before the owner commits, so a key that is invalid,
+    forbidden at this scope, or needs approval is visible BEFORE the request is sent — not
+    as a 400/403 after half the form was filled in.
+    """
+    svc = SettingsService(ctx.session, ctx.tenant_id)
+    result = await svc.preview(
+        body.settings,
+        scope=Scope(body.scope),
+        scope_id=body.scope_id,
+        user_id=ctx.user.id,
+        permissions=ctx.permission_codes,
+    )
+    return SettingsPreviewOut(**result)
 
 
 @router.delete("/{key:path}")
@@ -352,12 +402,13 @@ async def apply_preset(
         raise PermissionDeniedError("applying a preset requires settings:write")
 
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    applied = await svc.apply_preset(
+    result = await svc.apply_preset(
         preset_name, user_id=ctx.user.id, permissions=ctx.permission_codes
     )
     return {
         "preset": preset_name,
-        "applied_count": len(applied),
+        "applied_count": len(result["applied"]),
+        "pending_approval": result["pending_approval"],
     }
 
 
@@ -431,23 +482,38 @@ async def get_settings_history(
         until=until_dt,
         limit=limit,
     )
-    return [
-        SettingHistoryOut(
-            id=r.id,
-            setting_id=r.setting_id,
-            key=r.key,
-            scope=r.scope,
-            scope_id=r.scope_id,
-            old_value=r.old_value.get("v") if isinstance(r.old_value, dict) else r.old_value,
-            new_value=r.new_value.get("v") if isinstance(r.new_value, dict) else r.new_value,
-            action=r.action,
-            changed_by=r.changed_by,
-            change_reason=r.change_reason,
-            source=r.source,
-            created_at=r.created_at.isoformat() if r.created_at else "",
+    can_read = _can_read_sensitive(ctx)
+    out = []
+    for r in rows:
+        try:
+            defn = get_definition(r.key)
+        except KeyError:
+            defn = None
+        if defn is not None:
+            old_raw = r.old_value.get("v") if isinstance(r.old_value, dict) else r.old_value
+            new_raw = r.new_value.get("v") if isinstance(r.new_value, dict) else r.new_value
+            old_val = _mask_if_sensitive(defn, old_raw, can_read)
+            new_val = _mask_if_sensitive(defn, new_raw, can_read)
+        else:
+            old_val = r.old_value.get("v") if isinstance(r.old_value, dict) else r.old_value
+            new_val = r.new_value.get("v") if isinstance(r.new_value, dict) else r.new_value
+        out.append(
+            SettingHistoryOut(
+                id=r.id,
+                setting_id=r.setting_id,
+                key=r.key,
+                scope=r.scope,
+                scope_id=r.scope_id,
+                old_value=old_val,
+                new_value=new_val,
+                action=r.action,
+                changed_by=r.changed_by,
+                change_reason=r.change_reason,
+                source=r.source,
+                created_at=r.created_at.isoformat() if r.created_at else "",
+            )
         )
-        for r in rows
-    ]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -534,18 +600,30 @@ async def rollback_setting(
     """Roll back a setting to a previous revision's value.
 
     Creates a NEW revision with the restored value — does not delete history.
+    For APPROVAL_REQUIRED settings, a change request is created instead.
     """
     if "settings:write" not in ctx.permission_codes:
         raise PermissionDeniedError("rollback requires settings:write")
     svc = SettingsService(ctx.session, ctx.tenant_id)
-    row = await svc.rollback(
+    result = await svc.rollback(
         body.history_id,
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        bypass_approval=body.bypass_approval,
     )
-    if row is None:
+    if result is None:
         return {"deleted": True, "message": "Setting reverted to inherited value"}
+    # A change request was created for APPROVAL_REQUIRED settings.
+    from app.modules.settings.models import SettingChangeRequest
+
+    if isinstance(result, SettingChangeRequest):
+        return {
+            "change_request_id": str(result.id),
+            "status": result.status,
+            "message": "Rollback submitted as a change request for approval",
+        }
+    row = result
     return TenantSettingOut(
         id=row.id,
         key=row.key,
@@ -640,6 +718,7 @@ async def restore_snapshot(
         user_id=ctx.user.id,
         reason=body.reason,
         permissions=ctx.permission_codes,
+        bypass_approval=body.bypass_approval,
     )
     # Audit the restore operation itself.
     await write_audit_row(

@@ -62,6 +62,7 @@ still binds (`decision`), or a snapshot of a moment that has passed (`history`).
 | [settings/registry-specification.md](settings/registry-specification.md) | Settings registry: every key with type, default, scopes, sensitivity, apply mode, bounds, allowed values, segments, and storage. | live |
 | [settings/frontend-specification.md](settings/frontend-specification.md) | Settings frontend: screen map, navigation by P1–P3, `/settings/effective` consumption, per-screen implementation status. | live |
 | [settings/runtime-testing-specification.md](settings/runtime-testing-specification.md) | Settings runtime: workers, outbox, scheduler, settings→runtime wiring map, testing strategy, CI checks, run commands. | live |
+| [settings/rls-migration-proposal.md](settings/rls-migration-proposal.md) | RLS migration proposal for platform & visitor tables (visitor_events, platform_announcements, dismissals, plan_prices, tax_rates). | proposal |
 | [CONTRACT_AUDIT.md](CONTRACT_AUDIT.md) | "Defined, then bypassed" audit. | history |
 | [ROADMAP_TO_90.md](ROADMAP_TO_90.md), [PATH_BREAKDOWN.md](PATH_BREAKDOWN.md) | Plan and work-package split. | history |
 

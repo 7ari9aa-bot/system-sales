@@ -316,7 +316,7 @@
     "key": "print.barcode_format",
     "domain": "print",
     "type": "enum",
-    "enforced": false,
+    "enforced": true,
     "scopes": [
       "tenant"
     ],
@@ -337,7 +337,7 @@
     "key": "print.invoice_prefix",
     "domain": "print",
     "type": "string",
-    "enforced": false,
+    "enforced": true,
     "scopes": [
       "tenant",
       "branch"

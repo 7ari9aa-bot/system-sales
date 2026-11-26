@@ -12,6 +12,7 @@ from app.modules.imports import lookup
 from app.modules.imports.validation import Existing
 from app.modules.inventory.models import Warehouse
 from app.modules.inventory.service import InventoryService
+from app.modules.settings.service import SettingsService
 
 
 async def _warehouse(db, tenant_id, code: str, *, active: bool = True) -> Warehouse:
@@ -72,6 +73,9 @@ async def test_another_shops_data_is_never_visible(db, tenant_ctx):
 async def test_more_keys_than_one_chunk_are_all_found(db, tenant_ctx):
     t = tenant_ctx.tenant_id
     n = lookup.CHUNK + 37
+    # catalog.max_variants_per_product caps variants at 100 by default; this test is about
+    # reading more SKUs than one chunk, so it lifts the cap instead of shrinking the chunk.
+    await SettingsService(db, t).set("catalog.max_variants_per_product", 0, scope="tenant")
     product = await CatalogService.create_product(db, t, title="Bulk", slug="bulk")
     for i in range(n):
         await CatalogService.add_variant(db, t, product.id, sku=f"B-{i:04d}", price="1.00")

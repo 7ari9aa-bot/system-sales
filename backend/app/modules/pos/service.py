@@ -5077,6 +5077,13 @@ class PosService(PosReceiptReads):
                 "direction": "refunded",
                 "amount": to_money(-net, "amount"),
             }
+        elif net != 0:
+            # A till that records no payments still moves goods and invoice value, so the gap is
+            # real: it stays on the new invoice unpaid. Reporting it as ``exchange_only`` told the
+            # cashier "no difference" while the customer owed 50 — the invoice and the screen
+            # disagreed. ``record_only`` with the amount uncollected is what actually happened.
+            settlement["mode"] = "record_only"
+            settlement["uncollected"] = str(max(net, to_money(0, "uncollected")))
 
         if shelved:
             for entry in return_entries:

@@ -50,6 +50,9 @@ class VariantServiceMixin:
         price: object,
         product_checked: bool = False,
         sku_checked: bool = False,
+        max_variants: int | None = None,
+        variants_now: int | None = None,
+        auto_barcode: bool | None = None,
     ) -> ProductVariant:
         """Add a variant to a product; SKU (when given) is unique per tenant.
 
@@ -65,22 +68,29 @@ class VariantServiceMixin:
         unit_price = _positive_decimal(price, "price")
 
         # Enforce the per-product variant limit (catalog.max_variants_per_product).
-        from app.modules.settings.service import SettingsService
+        # ``max_variants`` / ``variants_now`` are the same two facts read once for a whole import
+        # batch: the limit is the shop's setting, not a per-row one, and the count only moves by
+        # the rows this batch adds.
+        if max_variants is None:
+            from app.modules.settings.service import SettingsService
 
-        max_variants = await SettingsService(session, tenant_id).value(
-            "catalog.max_variants_per_product"
-        )
+            max_variants = await SettingsService(session, tenant_id).value(
+                "catalog.max_variants_per_product"
+            )
         if max_variants and max_variants > 0:
-            current = (
-                await session.execute(
-                    select(func.count())
-                    .select_from(ProductVariant)
-                    .where(
-                        ProductVariant.tenant_id == tenant_id,
-                        ProductVariant.product_id == product_id,
+            if variants_now is None:
+                current = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(ProductVariant)
+                        .where(
+                            ProductVariant.tenant_id == tenant_id,
+                            ProductVariant.product_id == product_id,
+                        )
                     )
-                )
-            ).scalar_one()
+                ).scalar_one()
+            else:
+                current = variants_now
             if current >= max_variants:
                 raise ValidationError(
                     f"this product already has the maximum of {max_variants} variants"
@@ -122,15 +132,18 @@ class VariantServiceMixin:
         # §179: every variant write also writes the relational option graph —
         # the JSONB dict never becomes the only representation again.
         await CatalogService._sync_variant_option_links(
-            session, tenant_id, variant.id, product_id, option_values or {}
+            session, tenant_id, variant.id, product_id, option_values or {}, is_new=True
         )
 
         # §settings: catalog.barcode_auto_generate — auto-generate a barcode
         # identifier for variants that don't have a manually entered one.
-        auto_barcode = await SettingsService(session, tenant_id).value(
-            "catalog.barcode_auto_generate"
-        )
+        if auto_barcode is None:
+            auto_barcode = await SettingsService(session, tenant_id).value(
+                "catalog.barcode_auto_generate"
+            )
         if auto_barcode:
+            from app.core.sequences import next_sequence
+            from app.modules.catalog.apparel.barcode import internal_ean13
             from app.modules.catalog.models import ProductIdentifier
 
             existing = (
@@ -143,8 +156,10 @@ class VariantServiceMixin:
                 )
             ).scalar_one_or_none()
             if existing is None:
-                # Use the variant's UUID-based short hash as a barcode value.
-                barcode_val = str(variant.id.int & 0xFFFFFFFFFFFFF)
+                # Generate a proper EAN-13 from the shop's gap-free counter (same
+                # path as POST /products/{id}/barcodes), not a UUID-derived hash.
+                seq = await next_sequence(session, tenant_id, "BC", 0)
+                barcode_val = internal_ean13(seq)
                 session.add(
                     ProductIdentifier(
                         tenant_id=tenant_id,

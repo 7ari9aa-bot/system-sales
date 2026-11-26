@@ -45,6 +45,7 @@ from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 from app.workers.platform_workers import NotificationWorker, WebhookWorker
 from app.workers.pos_worker import PosWorker
 from app.workers.scheduler_worker import SchedulerWorker
+from app.workers.settings_consumer import SettingsConsumer
 
 #: The worker process's log format. The `correlation_id=` field is the point
 #: (O10): a worker line that names no message cannot be tied to the request
@@ -76,6 +77,12 @@ POOLS: dict[str, type[StreamWorker]] = {
     # event-fed consolidation) and queued receipt email — rides
     # pos_session.events. One pool because both jobs are cold-path and rare.
     "pos": PosWorker,
+    # Settings cache invalidation + security audit consumer. Listens on
+    # ``settings.events`` for ``settings.changed`` events: clears the
+    # in-process settings cache for the changed (tenant, key) and, for
+    # ``security.*`` keys, stages a ``security.setting_changed`` audit
+    # event in the outbox.
+    "settings": SettingsConsumer,
     # `RetentionWorker` is deliberately absent. It is not a pool: nothing can
     # wake it. Its `handle()` only acts on a payload whose event_type is
     # `retention.run`, and a stream name is derived from the aggregate type

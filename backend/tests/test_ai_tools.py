@@ -921,7 +921,10 @@ class _CapturingSession:
         # statement and every shape assertion saw the plumbing instead.
         if isinstance(statement, TextClause):
             return _NoRows()
-        self.statement = statement
+        # Keep the FIRST statement: the handler builds its catalog SELECT before it reads the
+        # customer_agent.* settings, and only that SELECT carries the LIKE pattern under test.
+        if self.statement is None:
+            self.statement = statement
         return _NoRows()
 
 
@@ -930,7 +933,9 @@ class _NoRows:
         return []
 
     def scalars(self):
-        return self._rows
+        # The settings lookups the handler now performs call .scalars().all(); this fake is a
+        # result object, so it answers both shapes with "no rows" instead of raising.
+        return self
 
     def scalar_one(self) -> int:
         return 0

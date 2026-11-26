@@ -49,6 +49,7 @@ from app.core.observability import (
 )
 from app.core.profit_report import router as profit_report_router
 from app.core.redis import close_redis, get_redis
+from app.core.routing import CommitBeforeResponseRoute
 from app.core.season_markdown import router as season_markdown_router
 from app.core.sell_through_report import router as sell_through_router
 from app.core.shop_type import router as shop_type_router
@@ -477,7 +478,8 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(SecurityHeadersMiddleware)
 
-    api_v1 = APIRouter(prefix="/api/v1")
+    # CommitBeforeResponseRoute: a write is durable before the client is told it succeeded.
+    api_v1 = APIRouter(prefix="/api/v1", route_class=CommitBeforeResponseRoute)
     for router in (
         identity_router,
         google_auth_router,

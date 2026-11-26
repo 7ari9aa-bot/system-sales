@@ -82,6 +82,13 @@ def writer_on_the_test_session(db, monkeypatch):
 
 async def _thread_with_question(db, tenant_ctx):
     agent = await _seed(db, tenant_ctx.tenant_id)
+    # Tests enable the analytics agent explicitly rather than relying on the default,
+    # so a change to analytics_agent.enabled's default never silently flips these tests.
+    from app.modules.settings.service import SettingsService
+
+    await SettingsService(db, tenant_ctx.tenant_id).set(
+        "analytics_agent.enabled", True, bypass_approval=True
+    )
     thread = AIChatThread(
         tenant_id=tenant_ctx.tenant_id,
         agent_id=agent.id,

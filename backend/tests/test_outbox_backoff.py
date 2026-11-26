@@ -49,7 +49,15 @@ import re
 import uuid
 from typing import Any
 
+#: Every test in this file claims rows from the SHARED outbox_events table. Under
+#: xdist another worker running a different file can claim the row in between, which
+#: is what left a row at ('publishing', attempts=1) and made the second claim find
+#: nothing (shard 3, runs 45770924359 and 45765384969). One worker, in order.
+import pytest
+
 from app.core.events.outbox import OutboxRelay
+
+pytestmark = pytest.mark.xdist_group("outbox")
 
 # --------------------------------------------------------------- harness -----
 

@@ -19,6 +19,7 @@ from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import Agent, AgentTool
 from app.modules.ai.providers import ChatCompletionResult
+from app.modules.settings.service import SettingsService
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +33,10 @@ def _quiet_model(monkeypatch):
 
 
 async def _agent(db, tenant_id, kind: str, tools: tuple[str, ...]) -> Agent:
+    # The analytics agent is gated by analytics_agent.enabled (§settings), default off: a tenant
+    # that never switched it on gets "disabled" before the model is reached. These tests are about
+    # what the model is handed, so the tenant switches the feature on first.
+    await SettingsService(db, tenant_id).set("analytics_agent.enabled", True, scope="tenant")
     agent = Agent(tenant_id=tenant_id, name="A", model="fast", system_prompt="p", kind=kind)
     db.add(agent)
     await db.flush()

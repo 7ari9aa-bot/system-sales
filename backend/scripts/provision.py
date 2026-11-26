@@ -443,26 +443,6 @@ REFERENCE_PLANE_READ_POLICIES: tuple[str, ...] = (
         "FOR SELECT TO sales_app USING (true); "
         "END IF; END $$;"
     ),
-    (
-        "DO $$ BEGIN "
-        "IF EXISTS (SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'plan_prices') "
-        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
-        "AND tablename = 'plan_prices' AND policyname = 'sales_app_read') "
-        "THEN CREATE POLICY sales_app_read ON public.plan_prices "
-        "FOR SELECT TO sales_app USING (true); "
-        "END IF; END $$;"
-    ),
-    (
-        "DO $$ BEGIN "
-        "IF EXISTS (SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = 'tax_rates') "
-        "AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' "
-        "AND tablename = 'tax_rates' AND policyname = 'sales_app_read') "
-        "THEN CREATE POLICY sales_app_read ON public.tax_rates "
-        "FOR SELECT TO sales_app USING (true); "
-        "END IF; END $$;"
-    ),
 )
 
 
@@ -497,11 +477,28 @@ EXTRA_PERMISSIONS = [
     # supplier balances to every manager. They start owner-only; the owner grants them on.
     ("finance", "read", "finance:read"),
     ("purchasing", "read", "purchasing:read"),
+    # Sensitive settings (team.require_2fa, security.*, billing.*) are masked in
+    # read/history/override endpoints unless the caller holds this. Owner-only
+    # by default so a manager with settings:read still sees the key but not the value.
+    ("settings", "read_sensitive", "settings:read_sensitive"),
+    # Emergency bypass for the approval flow on rollback / restore / apply_preset.
+    # Without it those operations route APPROVAL_REQUIRED settings through a change
+    # request. With it an owner may bypass in a documented emergency; an independent
+    # audit row records every bypass.
+    ("settings", "emergency_bypass", "settings:emergency_bypass"),
 ]
 
 ROLE_MATRIX: dict[str, list[str]] = {
     "owner": [f"{r}:{a}" for r in RESOURCES for a in ACTIONS]
-    + ["ai:approve", "pos:override", "finance:read", "purchasing:read", "settings:branch_write"],
+    + [
+        "ai:approve",
+        "pos:override",
+        "finance:read",
+        "purchasing:read",
+        "settings:branch_write",
+        "settings:read_sensitive",
+        "settings:emergency_bypass",
+    ],
     "manager": [
         f"{r}:{a}"
         for r in RESOURCES

@@ -25,7 +25,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy import text as sa_text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.config import get_settings
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import PlatformAnnouncement, PlatformAnnouncementDismissal
@@ -71,9 +74,44 @@ def test_the_announcement_routes_are_membership_gated() -> None:
 # ---------------------------------------------------------------------------
 
 
+# fe2026112602 puts RLS on platform_announcements with a SELECT-only policy: the merchant app
+# role cannot write a notice, by design (the owner console does). So the fixtures plant them
+# through the admin DSN, the same way the plan fixtures do, and this registry removes them —
+# the per-test rollback cannot cover another connection.
+_PLANTED_ANNOUNCEMENT_IDS: list[uuid.UUID] = []
+
+
+def _admin_sessionmaker():
+    settings = get_settings()
+    if not settings.database_url_admin:
+        pytest.skip("planting announcements requires DATABASE_URL_ADMIN (the admin DSN)")
+    eng = create_async_engine(
+        settings.database_url_admin,
+        pool_pre_ping=True,
+        connect_args={"statement_cache_size": 0},
+    )
+    return eng, async_sessionmaker(eng, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_planted_announcements():
+    yield
+    if not _PLANTED_ANNOUNCEMENT_IDS:
+        return
+    ids, _PLANTED_ANNOUNCEMENT_IDS[:] = list(_PLANTED_ANNOUNCEMENT_IDS), []
+    eng, factory = _admin_sessionmaker()
+    try:
+        async with factory() as session, session.begin():
+            await session.execute(
+                sa_text("DELETE FROM platform_announcements WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(i) for i in ids]},
+            )
+    finally:
+        await eng.dispose()
+
+
 async def _make_announcement(
     db,
-    *,
     kind: str = "info",
     title: str = "Deployment tonight",
     body: str = "The platform updates at 22:00.",
@@ -81,6 +119,7 @@ async def _make_announcement(
     is_active: bool = True,
     starts_delta: timedelta | None = None,
     ends_delta: timedelta | None = None,
+    dismissible: bool = True,
 ) -> PlatformAnnouncement:
     now = datetime.now(UTC)
     row = PlatformAnnouncement(
@@ -89,11 +128,18 @@ async def _make_announcement(
         body=body,
         audience=audience,
         is_active=is_active,
+        dismissible=dismissible,
         starts_at=now + starts_delta if starts_delta is not None else now - timedelta(minutes=5),
         ends_at=now + ends_delta if ends_delta is not None else None,
     )
-    db.add(row)
-    await db.flush()
+    eng, factory = _admin_sessionmaker()
+    try:
+        async with factory() as admin, admin.begin():
+            admin.add(row)
+            await admin.flush()
+            _PLANTED_ANNOUNCEMENT_IDS.append(row.id)
+    finally:
+        await eng.dispose()
     return row
 
 
@@ -159,9 +205,10 @@ async def test_dismissal_hides_for_that_user_only_and_is_idempotent(db, tenant_c
 
 
 async def test_a_non_dismissible_announcement_refuses_the_tombstone(db, tenant_ctx) -> None:
-    row = await _make_announcement(db)
-    row.dismissible = False
-    await db.flush()
+    # The row is planted through the admin DSN, so it is detached from ``db``: setting a
+    # column on it afterwards would never reach the database and the guard would look
+    # broken while the notice stayed dismissible. The value has to go in at insert.
+    row = await _make_announcement(db, dismissible=False)
 
     dismissed = await dismiss(db, row.id, tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id)
 

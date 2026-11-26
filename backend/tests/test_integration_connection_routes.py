@@ -537,11 +537,14 @@ async def test_connect_writes_an_audit_entry_without_secrets(db, tenant_ctx, mon
     )  # noqa: E501
     ctx = _settings_ctx(db, tenant_ctx)
 
+    # Not WhatsApp: a pasted WhatsApp token is refused on purpose (Embedded Signup is the only
+    # way in, so Meta records the coexistence mode and starts the history sync). What this test
+    # pins is the audit trail, which is provider-agnostic — Facebook still takes a credential.
     result = await connect_integration(
         IntegrationConnectBody(
-            provider="whatsapp",
-            credentials={"access_token": "submitted-secret"},
-            config={"phone_number_id": "123456789"},
+            provider="facebook",
+            credentials={"page_access_token": "submitted-secret"},
+            config={"page_id": "123456789"},
         ),
         ctx,
     )

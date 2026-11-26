@@ -66,7 +66,7 @@ class TestRegistryExtensions:
     def test_customer_agent_enabled_is_bool(self):
         defn = get_definition("customer_agent.enabled")
         assert defn.type == SettingType.BOOL
-        assert defn.default is False
+        assert defn.default is True
 
     def test_customer_agent_dialect_has_allowed_values(self):
         defn = get_definition("customer_agent.dialect")

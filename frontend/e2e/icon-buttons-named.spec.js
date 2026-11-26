@@ -81,5 +81,9 @@ test("the help button names itself and opens its menu", async ({ page }) => {
   const help = page.getByRole("button", { name: "Help", exact: true });
   await expect(help).toHaveAttribute("aria-expanded", "false");
   await help.click();
-  await expect(help).toHaveAttribute("aria-expanded", "true");
+  // The menu is modal, so Radix marks the trigger aria-hidden while it is open — the trigger
+  // is no longer in the accessibility tree and `getByRole` cannot see it. The contract this
+  // test states is "names itself and opens its menu", so the open state is asserted on the
+  // menu itself (and the menu is what a screen reader announces).
+  await expect(page.getByRole("menu")).toBeVisible();
 });

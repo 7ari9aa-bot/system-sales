@@ -1,7 +1,7 @@
 # Settings Frontend Specification
 
 > **Status:** specification derived from actual frontend code.
-> **Last updated:** 2026-11-25 · **Source:** `frontend/src/pages/settings/`, `frontend/src/components/settings/`, `frontend/src/cashier/components/settings/`
+> **Last updated:** 2026-11-26 · **Source:** `frontend/src/pages/settings/`, `frontend/src/components/settings/`, `frontend/src/cashier/components/settings/`
 
 ## 0. Purpose
 
@@ -54,6 +54,22 @@ The `/settings/all` route (`UnifiedSettings`) is the single page that consumes t
 `/settings/effective` endpoint for ALL domains at once, grouped by domain from the registry.
 It uses the shared `useSettings` hook and replaces the need for per-domain API calls.
 
+The `useSettings` hook (rev. 2026-11-26) now supports:
+* **Scope selector** — `scope` and `scopeId` opts replace the old hardcoded `scope: "tenant"`.
+  The UI renders a `ScopeSelector` dropdown (tenant, workspace, branch, warehouse, pos_profile,
+  register, channel, user) and a free-text scope-id field for non-tenant scopes.
+* **Segment filtering** — the active segment (retail, fnb, services, wholesale) is passed to
+  both `/settings/definitions` and `/settings/effective` queries.
+* **APPROVAL_REQUIRED handling** — settings whose `apply_mode` is `approval_required` show a
+  badge and a "Request Change" button. Instead of silently failing in a bulk save, the hook
+  calls `POST /settings/change-requests` and exposes `changeRequests` state (pending/approved/
+  rejected) with inline approve/reject buttons for a second admin.
+* **Preview / dry-run before save** — a `PreviewPanel` component shows each dirty key's current
+  vs. new value, the active scope, and whether it needs approval — modelled on the preset
+  `preview_preset` dry-run shape.
+* **Optimistic concurrency (409)** — `expected_history_ids` are sent with every bulk save. A
+  409 response surfaces a `conflict` banner ("someone edited before you, refresh to update").
+
 ---
 
 ## 2. API consumption patterns
@@ -76,7 +92,7 @@ A growing number of components consume the unified endpoint directly:
 
 | Component | Call | Keys/Domain |
 |---|---|---|
-| `components/settings/useSettings.js` | `api("/settings/definitions")` + `api("/settings/effective")` | ALL domains (shared hook) |
+| `components/settings/useSettings.js` | `api("/settings/definitions")` + `api("/settings/effective")` + `api("/settings/change-requests")` | ALL domains (shared hook) |
 | `components/settings/BrandColorCard.jsx` | `api("/settings/effective/organization.brand_color")` | Single key |
 | `components/settings/AnalyticsAgentCard.jsx` | `api("/settings/effective?domain=analytics_agent")` | Domain |
 | `components/settings/OrganizationBranchCard.jsx` | `api("/settings/effective?domain=organization")` + `?domain=branch` | Two domains |
@@ -236,3 +252,9 @@ manual responsibility (no CI guard yet).
 | No CI guard for frontend settings API consumption | P3 | ❌ missing |
 | `security.audit_retention_days` has no frontend screen | P3 | ✅ resolved — visible on `/settings/all` |
 | No frontend screen for `notifications.email_enabled` / `push_enabled` toggles | P3 | ✅ resolved — visible on `/settings/all` |
+| Settings page hardcoded to `scope: "tenant"` | P3 | ✅ resolved — `ScopeSelector` component added (2026-11-26) |
+| No segment filtering in unified settings | P3 | ✅ resolved — segment dropdown added to `UnifiedSettings` (2026-11-26) |
+| APPROVAL_REQUIRED settings silently rejected in bulk save | P3 | ✅ resolved — "Request Change" button + `ChangeRequestList` with approve/reject (2026-11-26) |
+| No preview before save | P3 | ✅ resolved — `PreviewPanel` shows current/new values, scope, approval flag (2026-11-26) |
+| No 409 conflict handling | P3 | ✅ resolved — `conflict` banner with refresh prompt (2026-11-26) |
+| Component tests for settings UI | P3 | ✅ resolved — 14 tests across 3 files (2026-11-26) |

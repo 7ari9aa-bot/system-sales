@@ -49,10 +49,13 @@ class ResolvedSettingOut(BaseModel):
     scope_id: uuid.UUID | None = None
     is_inherited: bool
     is_default: bool
+    # The latest history row id for this key+scope, for optimistic-concurrency
+    # checks on write (§81). None when no history exists yet.
+    latest_history_id: uuid.UUID | None = None
     definition: SettingDefOut
 
 
-_SCOPE_PATTERN = "^(tenant|branch|warehouse|pos_profile|register|channel|user)$"
+_SCOPE_PATTERN = "^(tenant|workspace|branch|warehouse|pos_profile|register|channel|user)$"
 
 
 class SetSettingRequest(BaseModel):
@@ -74,6 +77,9 @@ class BulkSetSettingsRequest(BaseModel):
     scope: str = Field(default="tenant", pattern=_SCOPE_PATTERN)
     scope_id: uuid.UUID | None = None
     reason: str | None = Field(default=None, max_length=255)
+    # Optimistic concurrency (§81): per-key history ids the caller last saw.
+    # If another write landed in between for any key, the server returns 409.
+    expected_history_ids: dict[str, uuid.UUID] | None = None
 
 
 class ResetSettingRequest(BaseModel):
@@ -150,6 +156,8 @@ class RollbackInput(BaseModel):
 
     history_id: uuid.UUID
     reason: str | None = Field(default=None, max_length=255)
+    # Emergency bypass for APPROVAL_REQUIRED settings (requires settings:emergency_bypass).
+    bypass_approval: bool = False
 
 
 class RestoreSnapshotInput(BaseModel):
@@ -160,6 +168,8 @@ class RestoreSnapshotInput(BaseModel):
         description="ISO 8601 timestamp — settings are restored to their state before this moment",
     )
     reason: str | None = Field(default=None, max_length=255)
+    # Emergency bypass for APPROVAL_REQUIRED settings (requires settings:emergency_bypass).
+    bypass_approval: bool = False
 
 
 class MigrationLogOut(BaseModel):
@@ -177,3 +187,25 @@ class RunMigrationsOut(BaseModel):
 
     applied: list[str]
     current_version: str
+
+
+class SettingPreviewEntryOut(BaseModel):
+    """What would happen to one key — the answer a dry run exists to give."""
+
+    key: str
+    current: Any | None = None
+    proposed: Any | None = None
+    # change | unchanged | invalid
+    action: str
+    needs_approval: bool = False
+    error: str | None = None
+
+
+class SettingsPreviewOut(BaseModel):
+    """A whole save, checked and not written."""
+
+    scope: str
+    scope_id: uuid.UUID | None = None
+    keys: list[SettingPreviewEntryOut]
+    # changes / unchanged / needs_approval / invalid — the counts the banner reads.
+    summary: dict[str, int]

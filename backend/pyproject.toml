@@ -46,6 +46,8 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",  # safety net: a hung test fails instead of stalling CI for hours
+    "pytest-xdist>=3.5",   # parallel test execution (--dist loadgroup)
     "ruff>=0.5",
     "fakeredis[lua]>=2.21",  # Lua script tests (sliding-window ratelimit) need lupa
     "pglast>=6.0",  # real PostgreSQL parser: validates generated migration SQL offline
@@ -86,7 +88,10 @@ extend-immutable-calls = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # The live model evaluation costs money; it only runs when asked for with `-m live_eval`.
-addopts = "-m 'not live_eval'"
+# pytest-timeout: a per-test ceiling of 300s — the suite has 11k+ tests; one hang
+# should fail, not stall the runner for hours. Individual tests can override with
+# @pytest.mark.timeout(N).
+addopts = "-m 'not live_eval' --timeout=300 --timeout-method=thread"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [

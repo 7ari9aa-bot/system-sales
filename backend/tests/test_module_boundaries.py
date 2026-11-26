@@ -336,6 +336,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # These are service-level reads, not table imports, and the only new cycle
 # (settings joining {billing,identity,platform}) was broken by reading
 # organization settings via raw SQL in identity/services/hierarchy.py.
+# 335 -> 335 on 2026-11-26 (جولة 15): the SLO metric call in
+# notifications/service.py was inlined to app.core.metrics.increment,
+# removing the notifications -> settings.slo edge that had drifted the
+# count to 336 without a documented reason. The count is back to 335.
 BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 335
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of

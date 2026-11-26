@@ -271,7 +271,7 @@ async def test_owner_offboarding_with_the_password_transitions(
 ):
     """The happy path: password verified, the tenant moves to offboarding."""
     body = LifecycleTransitionRequest(
-        state="offboarding", reason="closing shop", password="secret-password"
+        state="offboarding", reason="closing shop", password="secret-password-1"
     )
     out = await transition_tenant_lifecycle(tenant_ctx.tenant_id, body, _owner_ctx(db, tenant_ctx))
     assert out.lifecycle_state == "offboarding"

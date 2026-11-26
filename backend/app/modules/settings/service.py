@@ -47,6 +47,7 @@ from app.modules.settings.models import (
 )
 from app.modules.settings.policy import authorize_write
 from app.modules.settings.registry import (
+    REGISTRY,
     ApplyMode,
     Scope,
     SettingDef,
@@ -67,6 +68,10 @@ class ResolvedSetting:
     is_inherited: bool  # True if the value comes from a parent scope or the default
     is_default: bool  # True if the value is the registry default
     definition: SettingDef
+    # The latest history row id for this key+scope, for optimistic-concurrency
+    # checks on write (§81). None when no history exists yet. Populated by
+    # ``resolve_many`` so the frontend can pass it back on save.
+    latest_history_id: uuid.UUID | None = None
 
 
 def _s(value: uuid.UUID | None) -> str | None:
@@ -122,8 +127,14 @@ class SettingsService:
         *,
         scope: Scope | str = Scope.TENANT,
         scope_id: uuid.UUID | None = None,
+        with_history: bool = True,
     ) -> dict[str, ResolvedSetting]:
-        """Resolve several settings with one chain lookup and one override query."""
+        """Resolve several settings with one chain lookup and one override query.
+
+        ``with_history`` adds the query that loads each setting's latest history id, which only a
+        WRITE needs (optimistic concurrency). A read-only ``value()`` call was paying for it on
+        every single call — three queries where two answers the question.
+        """
         scope_enum = _scope(scope)
         defs = {k: _definition(k) for k in keys}
         chain = await resolve_chain(self._session, self._tenant_id, scope_enum, scope_id)
@@ -132,6 +143,26 @@ class SettingsService:
         out: dict[str, ResolvedSetting] = {}
         for key, defn in defs.items():
             out[key] = self._pick(key, defn, chain, rows)
+
+        # Batch-load the latest history ids for optimistic-concurrency (§81).
+        history_ids = (
+            await self._latest_history_ids(list(defs), scope_enum.value, scope_id)
+            if with_history
+            else {}
+        )
+        out = {
+            k: ResolvedSetting(
+                key=r.key,
+                value=r.value,
+                scope=r.scope,
+                scope_id=r.scope_id,
+                is_inherited=r.is_inherited,
+                is_default=r.is_default,
+                latest_history_id=history_ids.get(k),
+                definition=r.definition,
+            )
+            for k, r in out.items()
+        }
         return out
 
     async def resolve_domain(
@@ -153,7 +184,10 @@ class SettingsService:
         scope_id: uuid.UUID | None = None,
     ) -> Any:
         """The effective value only. The call operational code makes."""
-        return (await self.resolve(key, scope=scope, scope_id=scope_id)).value
+        resolved = await self.resolve_many(
+            [key], scope=scope, scope_id=scope_id, with_history=False
+        )
+        return resolved[key].value
 
     @staticmethod
     def _pick(
@@ -245,21 +279,24 @@ class SettingsService:
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
         self._authorize(defn, scope_enum, scope_id, user_id, permissions)
 
-        # Optimistic concurrency: check that no newer write landed since the caller
-        # last read (§81).
-        if expected_history_id is not None:
-            latest = await self._latest_history_id(key, scope_enum.value, scope_id)
-            if latest is not None and latest != expected_history_id:
-                raise ConflictError(
-                    f"{key}: settings changed by another user; reload and try again"
-                )
-
         validated = _validate(defn, value)
         new_value = {"v": validated}
 
         # Lock the existing row (if any) so two concurrent writers serialise and the
         # history's "old value" is the value this write really replaced.
         existing = await self._find_override(key, scope_enum.value, scope_id, for_update=True)
+
+        # Optimistic concurrency: re-check AFTER acquiring the row lock (§81).
+        # The check must happen here — not before the lock — so that two concurrent
+        # writers serialise: the first acquires the lock, writes, commits; the second
+        # waits, then sees the new history id and gets a 409 instead of overwriting.
+        if expected_history_id is not None:
+            latest = await self._latest_history_id(key, scope_enum.value, scope_id)
+            if latest is not None and latest != expected_history_id:
+                raise ConflictError(
+                    f"{key}: settings changed by another user; reload and try again",
+                    details={"conflicting_keys": [key]},
+                )
         if existing is not None:
             if existing.value == new_value:
                 return existing  # nothing changed, nothing to record
@@ -370,11 +407,15 @@ class SettingsService:
         permissions: Collection[str] | None = None,
         bypass_approval: bool = False,
         source: str = "api",
+        expected_history_ids: dict[str, uuid.UUID] | None = None,
     ) -> list[TenantSetting]:
         """Set several settings. All-or-nothing: every key is checked before any write.
 
         The caller owns the transaction, so a failure part-way would roll back anyway;
         validating first means the error names the bad key without touching the database.
+
+        ``expected_history_ids`` maps each key to the history id the caller last saw;
+        if any key has been changed since, a ``ConflictError`` is raised (§81).
         """
         scope_enum = _scope(scope)
         await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
@@ -390,6 +431,20 @@ class SettingsService:
             _validate(defn, value)
             checked[key] = defn
 
+        # The write loop raises on the FIRST stale key, so a save that lost two keys made the
+        # owner fix one, reload and hit a second 409 for the next. One read of the batch names
+        # every key that moved, and the per-key check inside `set` stays as the race guard.
+        if expected_history_ids:
+            expected = {k: expected_history_ids[k] for k in checked if expected_history_ids.get(k)}
+            if expected:
+                latest = await self._latest_history_ids(list(expected), scope_enum.value, scope_id)
+                stale = sorted(k for k, h in expected.items() if latest.get(k) not in (None, h))
+                if stale:
+                    raise ConflictError(
+                        "settings changed by another user: " + ", ".join(stale),
+                        details={"conflicting_keys": stale},
+                    )
+
         results = []
         for key, value in settings.items():
             results.append(
@@ -403,9 +458,80 @@ class SettingsService:
                     permissions=permissions,
                     bypass_approval=bypass_approval,
                     source=source,
+                    expected_history_id=(
+                        expected_history_ids.get(key) if expected_history_ids else None
+                    ),
                 )
             )
         return results
+
+    async def preview(
+        self,
+        settings: dict[str, Any],
+        *,
+        scope: Scope | str = Scope.TENANT,
+        scope_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
+        permissions: Collection[str] | None = None,
+    ) -> dict[str, Any]:
+        """What ``bulk_set`` would do, with nothing written.
+
+        Same checks in the same order — definition, scope, authorisation, value — but every
+        key is reported instead of the first bad one raising: the point of a dry run is to
+        see the whole diff, including which keys need approval, before anything is saved.
+        Reads the current effective values and writes nothing.
+        """
+        scope_enum = _scope(scope)
+        await require_scope_entity(self._session, self._tenant_id, scope_enum, scope_id)
+        # Resolve only the keys the registry knows: an unknown key is one row of the report
+        # ("invalid: unknown setting"), not a 400 that hides the other 20 keys in the batch.
+        known = [k for k in settings if k in REGISTRY]
+        current = (
+            await self.resolve_many(known, scope=scope_enum, scope_id=scope_id) if known else {}
+        )
+        entries: list[dict[str, Any]] = []
+        summary = {"changes": 0, "unchanged": 0, "needs_approval": 0, "invalid": 0}
+        for key, value in settings.items():
+            resolved = current.get(key)
+            entry: dict[str, Any] = {
+                "key": key,
+                "current": resolved.value if resolved is not None else None,
+                "proposed": value,
+                "action": "change",
+                "needs_approval": False,
+                "error": None,
+            }
+            try:
+                defn = _definition(key)
+                entry["needs_approval"] = defn.apply_mode == ApplyMode.APPROVAL_REQUIRED
+                if not defn.scope_allowed(scope_enum):
+                    raise ValidationError(
+                        f"{key}: scope {scope_enum.value!r} not allowed "
+                        f"(allowed: {[s.value for s in defn.scopes]})"
+                    )
+                self._authorize(defn, scope_enum, scope_id, user_id, permissions)
+                # The coerced value, so the preview shows what would actually be stored.
+                entry["proposed"] = _validate(defn, value)
+            except ValidationError as exc:
+                entry["error"] = str(exc)
+                entry["action"] = "invalid"
+            if entry["action"] == "change" and entry["current"] == entry["proposed"]:
+                entry["action"] = "unchanged"
+            if entry["action"] == "change":
+                summary["changes"] += 1
+            elif entry["action"] == "unchanged":
+                summary["unchanged"] += 1
+            else:
+                summary["invalid"] += 1
+            if entry["needs_approval"] and entry["action"] == "change":
+                summary["needs_approval"] += 1
+            entries.append(entry)
+        return {
+            "scope": scope_enum.value,
+            "scope_id": scope_id,
+            "keys": entries,
+            "summary": summary,
+        }
 
     # ------------------------------------------------------------------
     # LIST: overrides at a scope, history
@@ -706,17 +832,23 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         permissions: Collection[str] | None = None,
         only_missing: bool = False,
-    ) -> list[TenantSetting]:
-        """Apply a named preset at tenant scope. Returns the rows now holding its values.
+        bypass_approval: bool = False,
+    ) -> dict[str, Any]:
+        """Apply a named preset at tenant scope.
 
         ``only_missing`` fills in just the keys the owner has never set and leaves every key that
         already has an owner row exactly as it is. The first-run setup uses it, so choosing a
         preset can never overwrite a choice the owner made; the preset screen keeps the default
         (replace everything) because there the owner is asking for exactly that.
 
-        Atomic: ``bulk_set`` validates every key before any write, and the caller's
-        transaction rolls back on failure. Audit: each key writes a history row with
-        ``reason=preset:<name>``, and one audit-log row records the preset application.
+        APPROVAL_REQUIRED settings in the preset go through a change request (the
+        same path every other write takes) unless ``bypass_approval=True`` is passed
+        with the ``settings:emergency_bypass`` permission. The exception is the
+        change-request application itself (``_apply_change_request``), which keeps
+        its internal ``bypass_approval=True`` because approval has already been obtained.
+
+        Returns a dict with ``applied`` (the immediately-applied rows) and
+        ``pending_approval`` (the keys that need a change request).
         """
         from app.modules.settings.presets import PRESETS, resolve_preset
 
@@ -726,15 +858,79 @@ class SettingsService:
         if only_missing:
             resolved = await self.resolve_many(list(merged))
             merged = {k: v for k, v in merged.items() if resolved[k].is_default}
-        rows = await self.bulk_set(
-            merged,
-            scope=Scope.TENANT,
-            user_id=user_id,
-            reason=f"preset:{preset_name}",
-            permissions=permissions,
-            bypass_approval=True,
-            source="preset",
-        )
+
+        # Split keys: APPROVAL_REQUIRED settings need a change request (unless bypass).
+        immediate: dict[str, Any] = {}
+        needs_approval: dict[str, Any] = {}
+        for key, value in merged.items():
+            defn = _definition(key)
+            if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+                needs_approval[key] = value
+            else:
+                immediate[key] = value
+
+        if bypass_approval and needs_approval:
+            # Emergency path: requires settings:emergency_bypass and independent audit.
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
+                from app.modules.errors import PermissionDeniedError
+
+                raise PermissionDeniedError(
+                    "emergency bypass requires settings:emergency_bypass permission"
+                )
+            rows = await self.bulk_set(
+                {**immediate, **needs_approval},
+                scope=Scope.TENANT,
+                user_id=user_id,
+                reason=f"preset:{preset_name}",
+                permissions=permissions,
+                bypass_approval=True,
+                source="preset",
+            )
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                user_id,
+                "settings.emergency_bypass",
+                "tenant_settings",
+                str(self._tenant_id),
+                before={"operation": "apply_preset", "preset": preset_name},
+                after={"bypassed_keys": list(needs_approval.keys())},
+            )
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                user_id,
+                "settings.preset_applied",
+                "tenant_settings",
+                str(self._tenant_id),
+                before={"preset": preset_name, "keys": list(merged.keys())},
+                after={"preset": preset_name, "applied_count": len(rows)},
+            )
+            return {"applied": rows, "pending_approval": []}
+
+        # Normal path: apply immediate keys, create a change request for the rest.
+        rows = []
+        if immediate:
+            rows = await self.bulk_set(
+                immediate,
+                scope=Scope.TENANT,
+                user_id=user_id,
+                reason=f"preset:{preset_name}",
+                permissions=permissions,
+                bypass_approval=False,
+                source="preset",
+            )
+        pending: list[str] = []
+        if needs_approval:
+            await self.create_change_request(
+                needs_approval,
+                scope=Scope.TENANT,
+                user_id=user_id,
+                reason=f"preset:{preset_name}",
+                permissions=permissions,
+            )
+            pending = list(needs_approval.keys())
         # One audit row for the preset application as a whole (§170).
         await write_audit_row(
             self._session,
@@ -744,9 +940,13 @@ class SettingsService:
             "tenant_settings",
             str(self._tenant_id),
             before={"preset": preset_name, "keys": list(merged.keys())},
-            after={"preset": preset_name, "applied_count": len(rows)},
+            after={
+                "preset": preset_name,
+                "applied_count": len(rows),
+                "pending_approval": pending,
+            },
         )
-        return rows
+        return {"applied": rows, "pending_approval": pending}
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -850,7 +1050,8 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
-    ) -> TenantSetting | None:
+        bypass_approval: bool = False,
+    ) -> TenantSetting | SettingChangeRequest | None:
         """Restore a setting to the value a previous revision held (§34).
 
         Rollback does NOT delete history or undo the last change. It reads the
@@ -858,8 +1059,14 @@ class SettingsService:
         writes a NEW override — so the audit trail is a forward-only chain and
         every state is recoverable.
 
-        Returns the new ``TenantSetting`` row, or ``None`` if the target was a
-        reset (the override is deleted, reverting to inherited).
+        For APPROVAL_REQUIRED settings the rollback goes through a change
+        request (the same path every other write takes) unless
+        ``bypass_approval=True`` is passed with the ``settings:emergency_bypass``
+        permission.
+
+        Returns the new ``TenantSetting`` row (or a ``SettingChangeRequest`` if
+        approval is needed), or ``None`` if the target was a reset (the override
+        is deleted, reverting to inherited).
         """
         stmt = select(TenantSettingHistory).where(
             TenantSettingHistory.tenant_id == self._tenant_id,
@@ -869,7 +1076,8 @@ class SettingsService:
         if target is None:
             raise ValidationError(f"history revision {history_id} not found")
 
-        if not get_definition(target.key).rollback_supported:
+        defn = get_definition(target.key)
+        if not defn.rollback_supported:
             raise ValidationError(f"{target.key}: rollback not supported for this setting")
 
         # The target was a reset: delete the current override if any.
@@ -879,7 +1087,7 @@ class SettingsService:
             )
             if existing is not None:
                 await self._record(
-                    get_definition(target.key),
+                    defn,
                     row_id=existing.id,
                     scope=Scope(target.scope),
                     scope_id=target.scope_id,
@@ -898,6 +1106,38 @@ class SettingsService:
 
         # The target was a set: restore its value.
         restore_value = target.new_value.get("v") if target.new_value else None
+
+        # APPROVAL_REQUIRED settings go through a change request unless bypass.
+        if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
+            return await self.create_change_request(
+                {target.key: restore_value},
+                scope=Scope(target.scope),
+                scope_id=target.scope_id,
+                user_id=user_id,
+                reason=reason or f"rollback:{history_id}",
+                permissions=permissions,
+            )
+
+        if bypass_approval and defn.apply_mode == ApplyMode.APPROVAL_REQUIRED:
+            # Emergency path: requires settings:emergency_bypass and independent audit.
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
+                from app.modules.errors import PermissionDeniedError
+
+                raise PermissionDeniedError(
+                    "emergency bypass requires settings:emergency_bypass permission"
+                )
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                user_id,
+                "settings.emergency_bypass",
+                "tenant_settings",
+                str(self._tenant_id),
+                before={"operation": "rollback", "history_id": str(history_id)},
+                after={"key": target.key, "value": restore_value},
+            )
+
         return await self.set(
             target.key,
             restore_value,
@@ -906,7 +1146,7 @@ class SettingsService:
             user_id=user_id,
             reason=reason or f"rollback:{history_id}",
             permissions=permissions,
-            bypass_approval=True,
+            bypass_approval=bypass_approval,
             source="rollback",
         )
 
@@ -929,6 +1169,38 @@ class SettingsService:
         else:
             stmt = stmt.where(TenantSettingHistory.scope_id == scope_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def _latest_history_ids(
+        self, keys: list[str], scope: str, scope_id: uuid.UUID | None
+    ) -> dict[str, uuid.UUID]:
+        """Batch-load the latest history row id per key for one scope (§81)."""
+        if not keys:
+            return {}
+        cond = [
+            TenantSettingHistory.tenant_id == self._tenant_id,
+            TenantSettingHistory.key.in_(keys),
+            TenantSettingHistory.scope == scope,
+        ]
+        if scope_id is None:
+            cond.append(TenantSettingHistory.scope_id.is_(None))
+        else:
+            cond.append(TenantSettingHistory.scope_id == scope_id)
+
+        # ROW_NUMBER() picks the newest row per key in one query.
+        sub = (
+            select(
+                TenantSettingHistory.key,
+                TenantSettingHistory.id,
+                func.row_number()
+                .over(
+                    partition_by=TenantSettingHistory.key,
+                    order_by=TenantSettingHistory.created_at.desc(),
+                )
+                .label("rn"),
+            ).where(*cond)
+        ).subquery()
+        rows = (await self._session.execute(select(sub.c.key, sub.c.id).where(sub.c.rn == 1))).all()
+        return {r[0]: r[1] for r in rows}
 
     async def _load_overrides(
         self, keys: list[str], chain: list[ScopeLink]
@@ -954,6 +1226,7 @@ class SettingsService:
         user_id: uuid.UUID | None = None,
         reason: str | None = None,
         permissions: Collection[str] | None = None,
+        bypass_approval: bool = False,
     ) -> dict[str, int]:
         """Restore ALL tenant-level settings to their state before ``snapshot_before``.
 
@@ -963,9 +1236,23 @@ class SettingsService:
         back in line. Settings that didn't exist at the snapshot are reset
         (override deleted). Keys no longer in the registry are skipped.
 
-        Returns ``{"restored": N, "reset": M, "skipped": K}``.
+        Returns ``{"restored": N, "reset": M, "skipped": K, "pending_approval": P}``.
+
+        APPROVAL_REQUIRED settings are skipped when ``bypass_approval=False``
+        (the default): they must go through the change-request flow. With
+        ``bypass_approval=True`` (requires ``settings:emergency_bypass``) every
+        setting is restored and an independent audit row records the bypass.
         """
         from sqlalchemy import func as sa_func
+
+        if bypass_approval:
+            # Fail-closed: permissions=None means no authenticated caller, so reject.
+            if permissions is None or "settings:emergency_bypass" not in permissions:
+                from app.modules.errors import PermissionDeniedError
+
+                raise PermissionDeniedError(
+                    "emergency bypass requires settings:emergency_bypass permission"
+                )
 
         # 1. Reconstruct the target state from history.
         #    For each (key, scope='tenant', scope_id=None), find the latest
@@ -1038,13 +1325,19 @@ class SettingsService:
         restored = 0
         reset = 0
         skipped = 0
+        pending_approval = 0
 
         # 3. For each target, apply the change if different from current.
         for (key, scope, scope_id), target_value in target.items():
             try:
-                get_definition(key)
+                defn = get_definition(key)
             except KeyError:
                 skipped += 1
+                continue
+
+            # APPROVAL_REQUIRED settings are skipped unless bypass (§172).
+            if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
+                pending_approval += 1
                 continue
 
             scope_enum = _scope(scope)
@@ -1070,7 +1363,7 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
-                    bypass_approval=True,
+                    bypass_approval=bypass_approval,
                     source="restore",
                 )
                 restored += 1
@@ -1085,7 +1378,7 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
-                    bypass_approval=True,
+                    bypass_approval=bypass_approval,
                     source="restore",
                 )
                 reset += 1
@@ -1095,9 +1388,12 @@ class SettingsService:
         for (key, scope, scope_id), _row in current_map.items():
             if (key, scope, scope_id) not in target_keys:
                 try:
-                    get_definition(key)
+                    defn = get_definition(key)
                 except KeyError:
                     skipped += 1
+                    continue
+                if defn.apply_mode == ApplyMode.APPROVAL_REQUIRED and not bypass_approval:
+                    pending_approval += 1
                     continue
                 await self.reset(
                     key,
@@ -1106,12 +1402,32 @@ class SettingsService:
                     user_id=user_id,
                     reason=reason or f"restore:{snapshot_before.isoformat()}",
                     permissions=permissions,
-                    bypass_approval=True,
+                    bypass_approval=bypass_approval,
                     source="restore",
                 )
                 reset += 1
 
-        return {"restored": restored, "reset": reset, "skipped": skipped}
+        if bypass_approval:
+            await write_audit_row(
+                self._session,
+                self._tenant_id,
+                user_id,
+                "settings.emergency_bypass",
+                "tenant_settings",
+                str(self._tenant_id),
+                before={
+                    "operation": "restore_to_snapshot",
+                    "snapshot_before": snapshot_before.isoformat(),
+                },
+                after={"restored": restored, "reset": reset, "skipped": skipped},
+            )
+
+        return {
+            "restored": restored,
+            "reset": reset,
+            "skipped": skipped,
+            "pending_approval": pending_approval,
+        }
 
     async def _find_override(
         self, key: str, scope: str, scope_id: uuid.UUID | None, *, for_update: bool = False

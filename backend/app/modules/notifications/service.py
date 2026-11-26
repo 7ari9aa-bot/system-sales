@@ -354,9 +354,14 @@ class NotificationService:
             delivery_ok = False
             raise
         finally:
-            from app.modules.settings.slo import record_notification_delivery
+            from app.core.metrics import increment
 
-            await record_notification_delivery(succeeded=delivery_ok)
+            await increment(
+                "notification_delivery_total",
+                value=1,
+                strict=False,
+                outcome="delivered" if delivery_ok else "failed",
+            )
 
         return notif
 

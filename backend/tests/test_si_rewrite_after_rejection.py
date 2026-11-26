@@ -22,6 +22,7 @@ from app.modules.ai.agents.sales_intelligence.coverage import (
 from app.modules.ai.gateway import AIGateway
 from app.modules.ai.models import AgentRun
 from app.modules.ai.providers import ChatCompletionResult
+from app.modules.settings.service import SettingsService
 from tests.test_si_agent import _seed
 
 STOCK = "مفيش نتيجة واضحة"
@@ -47,6 +48,12 @@ def _model(monkeypatch, replies, *, explode_on: int | None = None):
 
 
 async def _ask(db, tenant_ctx):
+    # The analytics agent is gated by analytics_agent.enabled (§settings), default off: a tenant
+    # that never switched it on gets "disabled" before the model is reached. These tests are about
+    # what the model is handed, so the tenant switches the feature on first.
+    await SettingsService(db, tenant_ctx.tenant_id).set(
+        "analytics_agent.enabled", True, scope="tenant"
+    )
     agent = await _seed(db, tenant_ctx.tenant_id)
     return agent, await run_sales_analysis(
         db, tenant_ctx.tenant_id, agent_id=agent.id, question="عندي كام عميل؟"

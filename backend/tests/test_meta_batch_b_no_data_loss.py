@@ -46,7 +46,14 @@ def _subscription_graph(*, already: str, posted: list[dict]):
         params = dict(request.url.params)
         if "/subscribed_apps" in url:
             if request.method == "GET":
-                data = [{"id": "app", "subscribed_fields": already.split(",")}] if already else []
+                # Meta lists every app on the Page and the code keeps only OUR app id, so the
+                # fixture must answer with the id the code will actually look for. Hardcoding
+                # "app" made the read look like "this app has no fields", the merge then posted
+                # the Messenger fields alone and dropped `feed` (shard 6, run 45770924359).
+                from app.core.config import get_settings
+
+                app_id = str(get_settings().meta_app_id or "")
+                data = [{"id": app_id, "subscribed_fields": already.split(",")}] if already else []
                 return httpx.Response(200, json={"data": data})
             posted.append(params)
             return httpx.Response(200, json={"success": True})
@@ -124,8 +131,14 @@ async def test_a_first_link_subscribes_exactly_the_channels_own_fields(
 async def test_an_unreadable_existing_subscription_never_blocks_the_link(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ):
-    """Reading what is already there is a courtesy. If that read fails the link still has to
-    work, and it falls back to the channel's own fields."""
+    """A read of what is already there that FAILS refuses the link, and writes nothing.
+
+    The earlier reading of this case called the read "a courtesy" and linked anyway with the
+    channel's own fields. Meta replaces the whole subscribed_fields list on every POST, so
+    linking "anyway" is not a courtesy: a Page Facebook already linked for its comments loses
+    `feed` the moment a guessed list is written, silently, with no error anywhere. The flow now
+    retries the read once and then refuses with a retryable message, so the operator tries again
+    instead of quietly losing the other channel's webhooks."""
     _config_patch(monkeypatch)
     posted: list[dict] = []
     base = _subscription_graph(already="", posted=posted)
@@ -148,8 +161,10 @@ async def test_an_unreadable_existing_subscription_never_blocks_the_link(
             params={"code": "auth-code-1", "state": state},
             follow_redirects=False,
         )
-    assert "connected" in _popup_result(response)
-    assert posted, "the subscription must still be written"
+    result = _popup_result(response)
+    assert "connected" not in result, f"a blind write must not be linked: {result}"
+    assert result["error"].startswith("meta_unavailable:")
+    assert not posted, "nothing may be written when the existing fields could not be read"
 
 
 # --------------------------------------------------------------------------- A2 ---------
@@ -186,7 +201,7 @@ async def _refreshable_after_link(
                             "id": PAGE_ID,
                             "name": "P",
                             "access_token": PAGE_TOKEN,
-                            "tasks": ["MESSAGING"],
+                            "tasks": ["MANAGE", "MESSAGING"],
                             "instagram_business_account": {"id": "17841400000000001"},
                         }
                     ]

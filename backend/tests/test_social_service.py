@@ -15,6 +15,16 @@ from app.modules.conversations.social_service import SocialService
 CREDS = {"api_key": "t", "account_id": "ig1"}
 
 
+def _ago(hours: int) -> str:
+    """A provider timestamp relative to now, in the format Meta sends.
+
+    These were written out as fixed dates, so every one of them eventually fell outside
+    Meta's 7-day private-reply window and the provider-rejection test started hitting our
+    own window rule instead of the provider. A fake that ages is a fake that lies.
+    """
+    return (datetime.now(UTC) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+
+
 class FakeInstagram:
     """Records every call and can be told to fail, like a provider that rejects."""
 
@@ -28,7 +38,7 @@ class FakeInstagram:
                 "media_type": "IMAGE",
                 "media_product_type": "FEED",
                 "permalink": "https://ig/p1",
-                "timestamp": "2026-11-17T10:00:00+0000",
+                "timestamp": _ago(30),
                 "like_count": 4,
                 "comments_count": 2,
             },
@@ -37,7 +47,7 @@ class FakeInstagram:
                 "caption": "reel",
                 "media_type": "VIDEO",
                 "media_product_type": "REELS",
-                "timestamp": "2026-11-16T10:00:00+0000",
+                "timestamp": _ago(54),
             },
         ]
         self.comments = [
@@ -45,7 +55,7 @@ class FakeInstagram:
                 "id": "c1",
                 "text": "price?",
                 "username": "sara",
-                "timestamp": "2026-11-17T11:00:00+0000",
+                "timestamp": _ago(20),
                 "from": {"id": "u1", "username": "sara"},
                 "replies": {
                     "data": [
@@ -53,7 +63,7 @@ class FakeInstagram:
                             "id": "c2",
                             "text": "dm me",
                             "username": "omar",
-                            "timestamp": "2026-11-17T12:00:00+0000",
+                            "timestamp": _ago(19),
                             "from": {"id": "u2"},
                         }
                     ]
@@ -64,7 +74,7 @@ class FakeInstagram:
                 "text": "spam",
                 "username": "bot",
                 "hidden": True,
-                "timestamp": "2026-11-17T13:00:00+0000",
+                "timestamp": _ago(18),
             },
         ]
 

@@ -47,6 +47,11 @@ class _Result:
     def scalar_one(self):
         return self._value
 
+    def all(self):
+        # Settings reads (settings_read.py) call .all() on the result; the mock
+        # returns no rows so defaults are used, which is what these tests expect.
+        return self._value if isinstance(self._value, list) else []
+
 
 class _FakeTxn:
     async def __aenter__(self):

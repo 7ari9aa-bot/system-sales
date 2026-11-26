@@ -24,6 +24,8 @@ from app.modules.ai.models import Agent, AgentRun, AgentTool
 from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.modules.customers.models import Customer
 from app.modules.orders.models import Order
+from app.modules.settings.registry import Scope
+from app.modules.settings.service import SettingsService
 
 
 def _patch_gateway(monkeypatch, results) -> dict:
@@ -59,6 +61,10 @@ async def _run_row(db, run_id) -> AgentRun:
 
 
 async def _seed(db, tenant_id, agent_with_tools: bool = True):
+    # run_sales_analysis answers "disabled" before it ever reaches the model while
+    # analytics_agent.enabled is off (its default), so a test that asserts what the model does
+    # must switch the feature on exactly as an owner does. Every SI test seeds through here.
+    await SettingsService(db, tenant_id).set("analytics_agent.enabled", True, scope=Scope.TENANT)
     # The agent always exists (the run is addressed to it); ``agent_with_tools`` only decides
     # whether the si_* tools are granted to it.
     agent = Agent(

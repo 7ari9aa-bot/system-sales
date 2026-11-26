@@ -89,7 +89,13 @@ class TestAuditRetentionSweep:
 
         # Set retention to 30 days.
         await SettingsService(db, tenant.id).set(
-            "security.audit_retention_days", 30, scope=Scope.TENANT
+            "security.audit_retention_days",
+            30,
+            scope=Scope.TENANT,
+            # security.* is APPROVAL_REQUIRED (§172): the API path is a change
+            # request. This test is about the sweep, so it seeds the value the
+            # way an approved request would leave it.
+            bypass_approval=True,
         )
         await db.flush()
 
@@ -135,7 +141,10 @@ class TestAuditRetentionSweep:
         await db.flush()
 
         await SettingsService(db, tenant.id).set(
-            "security.audit_retention_days", 0, scope=Scope.TENANT
+            "security.audit_retention_days",
+            0,
+            scope=Scope.TENANT,
+            bypass_approval=True,
         )
         await db.flush()
 
@@ -172,7 +181,7 @@ class TestAuditRetentionSweep:
         )
         await db.flush()
         await SettingsService(db, tenant_a.id).set(
-            "security.audit_retention_days", 30, scope=Scope.TENANT
+            "security.audit_retention_days", 30, scope=Scope.TENANT, bypass_approval=True
         )
         await db.flush()
 
@@ -188,7 +197,7 @@ class TestAuditRetentionSweep:
         )
         await db.flush()
         await SettingsService(db, tenant_b.id).set(
-            "security.audit_retention_days", 30, scope=Scope.TENANT
+            "security.audit_retention_days", 30, scope=Scope.TENANT, bypass_approval=True
         )
         await db.flush()
 

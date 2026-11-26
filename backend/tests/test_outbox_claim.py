@@ -64,6 +64,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.db import bind_tenant
 from app.core.events.outbox import OutboxRelay
 
+#: Every test in this file claims rows from the SHARED outbox_events table. Under
+#: xdist another worker running a different file can claim the row in between, which
+#: is what left a row at ('publishing', attempts=1) and made the second claim find
+#: nothing (shard 3, runs 45770924359 and 45765384969). One worker, in order.
+pytestmark = pytest.mark.xdist_group("outbox")
+
 
 class RelayProcessDied(BaseException):
     """A relay killed mid-publish.
@@ -98,6 +104,11 @@ class RecordingBus:
             raise RelayProcessDied("relay process died")
         self.published.append({"outbox_id": (meta or {}).get("outbox_id"), "stream": stream})
         return f"{self._calls}-0"
+
+    @property
+    def calls(self) -> int:
+        """Publishes attempted, including the call that raised."""
+        return self._calls
 
     def ids(self) -> list[str]:
         return [p["outbox_id"] for p in self.published]
@@ -350,8 +361,22 @@ async def relay_env(engine):
                 await s.execute(_INSERT_OUTBOX_SQL, values)
         return ids
 
+    async def purge() -> None:
+        """Empty the outbox before staging.
+
+        The claim has no tenant predicate — one relay drains every tenant — so a
+        test asserting a global invariant must own EVERY row, not only the
+        statuses it stages. Clearing just 'pending'/'publishing' left earlier
+        tests' rows behind: the reclaim requeued their 'failed' rows and the
+        drain published a FOREIGN event as bus call 1 (CI published_ids held an
+        id the test never staged), shifting the call numbering the die-on-call
+        tests depend on.
+        """
+        async with factory() as s, s.begin():
+            await s.execute(text("DELETE FROM outbox_events"))
+
     try:
-        yield {"tenant_id": tenant_id, "stage": stage, "factory": factory}
+        yield {"tenant_id": tenant_id, "stage": stage, "factory": factory, "purge": purge}
     finally:
         async with factory() as clean, clean.begin():
             if made_ids:
@@ -422,6 +447,35 @@ async def _statuses(factory: async_sessionmaker, ids: list[str]) -> dict[str, st
         return {r.id: r.status for r in rows}
 
 
+async def _details(factory: async_sessionmaker, ids: list[str]) -> dict[str, dict]:
+    """The columns that explain a status, for failure messages.
+
+    A bare status cannot distinguish "never claimed" from "claimed, published,
+    mark lost" from "requeued by another relay". These four columns can, so the
+    assertion messages carry them instead of a string that hides the cause.
+    """
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                text(
+                    "SELECT id::text AS id, status, attempts, published_at, not_before, "
+                    "last_error FROM outbox_events WHERE id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": ids},
+            )
+        ).mappings()
+        return {
+            r.id: {
+                "status": r.status,
+                "attempts": r.attempts,
+                "published_at": str(r.published_at),
+                "not_before": str(r.not_before),
+                "last_error": (r.last_error or "")[:160],
+            }
+            for r in rows
+        }
+
+
 def _sessions_per_task():
     """Route ``outbox.SessionLocal`` to a per-task sessionmaker.
 
@@ -465,13 +519,12 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
     # The claim takes the OLDEST pending row with no tenant predicate, and a
     # shared CI database holds outbox residue from earlier tests whose own
     # cleanups only covered rolled-back transactions. Residue claimed first
-    # consumes bus call 1 and flips the die-on-call numbering, so clear the
-    # reclaimable statuses before staging — CI runs one worker, so nothing
-    # concurrent owns these rows.
+    # consumes bus call 1 and flips the die-on-call numbering, so clear EVERY
+    # row before staging: the drain's reclaim requeues leftover 'failed' rows
+    # and the claim has no tenant predicate, so a leftover event is published
+    # as this test's first call (observed in CI on 7578bd8).
     async with factory() as purge, purge.begin():
-        await purge.execute(
-            text("DELETE FROM outbox_events WHERE status IN ('pending', 'publishing')")
-        )
+        await purge.execute(text("DELETE FROM outbox_events"))
     [first, second] = await relay_env["stage"](2, age_seconds=60)
 
     bus = RecordingBus()
@@ -479,10 +532,21 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
 
     relay_on_own_connection.set(async_sessionmaker(engine, expire_on_commit=False))
     relay = OutboxRelay(bus)
-    with pytest.raises(RelayProcessDied):
+    # The requirement is unchanged (the drain must die); the try/else exists so
+    # the failure message can say whether the second row was ever claimed.
+    died = False
+    try:
         await relay._drain_once(batch=BATCH, max_attempts=MAX_ATTEMPTS)
 
     # The dead relay's unpublished row is NOT stranded in 'publishing'.
+    except RelayProcessDied:
+        died = True
+    assert died, (
+        "the relay did not die on the second row",
+        await _details(factory, [first, second]),
+        {"calls": bus.calls, "published_ids": bus.ids()},
+    )
+
     statuses = await _statuses(factory, [first, second])
     assert statuses[first] == "published", "the completed publish was rolled back"
     assert statuses[second] == "pending", (
@@ -515,6 +579,7 @@ async def test_two_concurrent_relays_never_work_the_same_row(
     ``created_at``, so against a backlog of rows older than the lease it blocks
     on (and after the first batch commit, steals) A's in-flight rows.
     """
+    await relay_env["purge"]()
     ids = await relay_env["stage"](2, age_seconds=900)  # 15 min: past any lease
 
     bus_a = RecordingBus()
@@ -544,7 +609,15 @@ async def test_two_concurrent_relays_never_work_the_same_row(
 
         factory = relay_env["factory"]
         statuses = await _statuses(factory, ids)
-        assert statuses == {i: "published" for i in ids}, statuses
+        assert statuses == {i: "published" for i in ids}, (
+            await _details(factory, ids),
+            {
+                "published_a": published_a,
+                "published_b": published_b,
+                "calls_a": bus_a.calls,
+                "calls_b": bus_b.calls,
+            },
+        )
         # Both relays did real work while the other was in flight (B returned
         # inside its timeout instead of blocking on A's claim).
         assert published_a >= 1 and published_b >= 1, (published_a, published_b)
@@ -665,6 +738,7 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
     definition, so the assertion is the invariant itself, not a behavior.
     """
     factory = relay_env["factory"]
+    await relay_env["purge"]()
     at_cap = await relay_env["stage"](1, age_seconds=900, status="pending", attempts=MAX_ATTEMPTS)
     publishing_at_cap = await relay_env["stage"](
         1, age_seconds=900, status="publishing", attempts=MAX_ATTEMPTS
@@ -700,5 +774,7 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
         f"{ {i: state[i] for i in stranded_rows} }"
     )
     assert sorted(i for i in bus.ids() if i in set(ids)) == sorted(ids), (
-        f"a stranded row never reached the stream: {state}"
+        f"a stranded row never reached the stream: {state}",
+        await _details(factory, ids),
+        {"published_calls": bus.calls},
     )

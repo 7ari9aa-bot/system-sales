@@ -152,6 +152,14 @@ describe("what the screen says about the settlement", () => {
     expect(refunded).toContain("اترد فرق 50.00");
     expect(refunded).toContain("بطاقة 50.00");
     expect(settlementSummary({ settlement: "exchange_only" })).toContain("بدون فرق");
+  });
+
+  it("names the difference a no-payment till leaves on the invoice", () => {
+    // A till that records no payments still moves goods and invoice value: the gap is on the
+    // invoice, so the confirmation has to say how much, not just that nothing was collected.
+    const text = settlementSummary({ settlement: "record_only", uncollected: "50.00" });
+    expect(text).toContain("50.00");
+    expect(text).toContain("الفاتورة");
     expect(settlementSummary({ settlement: "record_only" })).toContain("مش بيسجّل مدفوعات");
     expect(
       settlementSummary({ settlement: "refunded", settled_amount: "20.00", uncollected: "30.00" }),

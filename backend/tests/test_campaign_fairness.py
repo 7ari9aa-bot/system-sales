@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from app.core.events.schemas import DOMAIN_EVENT_TYPES
+from app.core.events.schemas import EVENT_TYPES
 from app.modules.marketing.campaign import CampaignExecutionService, CampaignRunStatus
 from app.modules.marketing.service import MarketingService
 from app.modules.platform.models import OutboxEvent
@@ -100,7 +100,11 @@ def test_every_literal_event_type_is_registered():
             if kw.arg == "event_type" and isinstance(kw.value, ast.Constant):
                 assert isinstance(kw.value.value, str)
                 literals.add(kw.value.value)
-    unregistered = sorted(literals - set(DOMAIN_EVENT_TYPES))
+    # Check against the runtime registry (EVENT_TYPES), not just the static
+    # DOMAIN_EVENT_TYPES tuple: some types (e.g. settings.changed) register a
+    # custom envelope class via @register_event, so they are NOT in the tuple
+    # but ARE in the registry that actually gates publication.
+    unregistered = sorted(literals - set(EVENT_TYPES))
     assert unregistered == [], f"event types staged but never registered: {unregistered}"
 
 

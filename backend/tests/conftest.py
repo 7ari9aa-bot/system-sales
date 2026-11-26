@@ -32,6 +32,14 @@ os.environ.setdefault("ENVIRONMENT", "local")
 # Keep token primitives realistic in tests without reusing a deployment key.
 os.environ.setdefault("JWT_SECRET", "pytest-only-hmac-key-longer-than-thirty-two-bytes")
 
+# The platform delivers SECRETS_MASTER_KEY via /run/base44/app.env for the API,
+# but that value may not be a valid base64 key.  In local/test the
+# EnvelopeSecretStore falls back to a published dev key when the setting is
+# empty, so clear the env var to trigger that fallback instead of crashing
+# with SecretKeyError (the suite is hermetic — see PYTEST_DOTENV_DISABLED).
+if not os.environ.get("PYTEST_ALLOW_DOTENV"):
+    os.environ.pop("SECRETS_MASTER_KEY", None)
+
 # The suite is HERMETIC: a developer's `backend/.env` must never leak into a
 # test run, because tests that read settings (CORS origins, secrets envelope,
 # integration verify routes) then depend on THIS machine's file, not on the
@@ -55,6 +63,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Ensure @register_event decorators in module event files run in every worker.
+# With pytest-xdist, a worker that only imports app.core.events.schemas never
+# imports app.modules.settings, so "settings.changed" would be missing from
+# the runtime EVENT_TYPES registry — the test_every_literal_event_type_is_registered
+# guard catches it, but only if the import happens before collection.
+import app.modules.settings.events  # noqa: F401
 from app.core.config import get_settings
 from app.core.db import bind_tenant
 from app.core.security import hash_password
