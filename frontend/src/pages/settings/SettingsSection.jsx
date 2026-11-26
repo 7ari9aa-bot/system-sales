@@ -26,6 +26,7 @@ import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
 import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
 import { MetricsPanel, OverviewPanel, ReportsPanel } from "@/components/settings/AnalyticsPanels";
+import ExecutionsPanel from "@/components/settings/AutomationPanels";
 import InventoryRecordsPanel from "@/components/settings/InventoryRecordsPanel";
 import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import PriceListsPanel from "@/components/settings/PriceListsPanel";
@@ -201,6 +202,12 @@ const PANEL_PAGES = new Set([
   "analytics/dashboards",
   "analytics/metrics-and-indicators",
   "analytics/reports",
+  // Section 15: the automation engine keeps workflows, versions and executions. A "rule" here is a
+  // workflow with a trigger event, so the pages read the engine rather than inventing a rule table.
+  "automation/rules",
+  "automation/workflows",
+  "automation/triggers-and-events",
+  "automation/execution-attempts",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -669,6 +676,63 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "analytics/metrics-and-indicators" && <MetricsPanel />}
 
       {`${section}/${page}` === "analytics/reports" && <ReportsPanel />}
+
+      {/* Section 15: automation. The engine's own rows — workflows with their trigger event, status
+          and version, plus the executions it recorded — so nothing here claims a capability the
+          engine does not have. */}
+
+      {`${section}/${page}` === "automation/rules" && (
+        <InventoryRecordsPanel
+          endpoint="/automation"
+          titleKey="settings.automation.rules.title"
+          descKey="settings.automation.rules.desc"
+          emptyKey="settings.automation.rules.empty"
+          loadingKey="settings.automation.rules.loading"
+          loadErrorKey="settings.automation.rules.loadError"
+          footerKey="settings.automation.rules.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "trigger_event", kind: "badge" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "automation/workflows" && (
+        <InventoryRecordsPanel
+          endpoint="/automation"
+          titleKey="settings.automation.workflows.title"
+          descKey="settings.automation.workflows.desc"
+          emptyKey="settings.automation.workflows.empty"
+          loadingKey="settings.automation.workflows.loading"
+          loadErrorKey="settings.automation.workflows.loadError"
+          footerKey="settings.automation.workflows.whereToEdit"
+          columns={[
+            { key: "name" },
+            { key: "status", kind: "badge" },
+            { key: "current_version", kind: "num" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "automation/triggers-and-events" && (
+        <InventoryRecordsPanel
+          endpoint="/automation"
+          titleKey="settings.automation.triggers.title"
+          descKey="settings.automation.triggers.desc"
+          emptyKey="settings.automation.triggers.empty"
+          loadingKey="settings.automation.triggers.loading"
+          loadErrorKey="settings.automation.triggers.loadError"
+          footerKey="settings.automation.triggers.whereToEdit"
+          columns={[
+            { key: "trigger_event", kind: "badge" },
+            { key: "name" },
+            { key: "status", kind: "badge" },
+          ]}
+        />
+      )}
+
+      {`${section}/${page}` === "automation/execution-attempts" && <ExecutionsPanel />}
 
       {`${section}/${page}` === "inventory/warehouses" && (
         <InventoryRecordsPanel

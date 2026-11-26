@@ -193,6 +193,7 @@ const DashboardRoutes = () => (
           <Route path="/settings/ai" element={<AI />} />
           <Route path="/settings/ai/:page" element={<SettingsSection section="ai" />} />
           <Route path="/settings/analytics/:page" element={<SettingsSection section="analytics" />} />
+          <Route path="/settings/automation/:page" element={<SettingsSection section="automation" />} />
           <Route path="/settings/usage" element={<Usage />} />
           {/* Section 08 owns /settings/pos. The old wrapper's slugs that now have a canonical
               home forward to it, so an old bookmark lands on the single place that edits the

@@ -80,6 +80,12 @@ warehouse and several registers; they are not the same entity and must not share
 | 14 Analysis settings | pending | There is no analysis configuration to edit: periods, groupings and thresholds are arguments of the analytics calls, not stored settings. `GET /analytics/retention` and its per-class policies are real but belong to section 17 |
 | 14 Report permissions | pending | Report visibility is not modelled: there is no per-report or per-dashboard grant, so the page would be a second, weaker copy of the team roles in section 02 |
 | 14 | **Analytics & reports** | Dashboards · Metrics and indicators · Reports · Scheduled reports · Analysis settings · Report permissions |
+| 15 Rules | done | `/settings/automation/rules` — a rule IS a workflow with a trigger event, so the page reads `GET /automation` (name, trigger event, state) instead of inventing a second rule table computed alongside the engine |
+| 15 Workflows | done | `/settings/automation/workflows` — every workflow with its state and current version; a running execution stays on the version it started with |
+| 15 Triggers and events | done | `/settings/automation/triggers-and-events` — the trigger events the engine really fires (`trigger_event`, e.g. `order.created`), not a list of theoretical events |
+| 15 Schedules | pending | The engine triggers on events only: there is no time-based trigger and no stored schedule, so a schedule editor here would write rows no worker reads. Needs a scheduled trigger type in the engine first |
+| 15 Approvals | pending | The automation engine has no approval step: a workflow's definition is steps and conditions, with no gate that waits for a person. The approvals that DO exist are the settings change workflow's, and they belong to section 18 |
+| 15 Execution attempts | done | `/settings/automation/execution-attempts` — `GET /automation/{id}/executions` per workflow: state, version, start time and the stored `error`, because "it failed" without the reason is not an attempt record |
 | 15 | **Automation & workflows** | Rules · Workflows · Triggers and events · Schedules · Approvals · Execution attempts |
 | 16 | **Notifications** — workspace rules, where 01 holds the person's preferences | Notification channels · Notification rules · Message templates · Recipients · Alerts and escalation |
 
