@@ -107,7 +107,7 @@ async def person_local_time(
 class NotificationPreferencesService:
     """The person's own notification settings: which channels, and when to be quiet.
 
-    One row per person (migration fe2026112607). Reading CREATES the row when it is
+    One row per person (migration fe2026112611). Reading CREATES the row when it is
     missing, because the screen has to show real state — "no row yet" and "email is
     on" are the same thing, and a screen that renders neither is a screen the person
     cannot reason about. The defaults are the model's: email on, push off, no quiet

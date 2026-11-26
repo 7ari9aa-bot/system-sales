@@ -154,8 +154,8 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 01 Profile | done | `/settings` — photo, name, email, phone, job title, verification, account closure |
 | 01 Sign-in | done | `/settings/login` — password change, sign-in method, recovery |
 | 01 Personal security | done | `/settings/security` — two-step verification, signed-in devices |
-| 01 Preferences | done | `/settings/preferences` — language, appearance, the person's own timezone, date format, landing page; stored on the account (migration fe2026112606) |
-| 01 Personal notifications | done | `/settings/notifications` — email/push switches (in-app locked as the record), quiet hours as real times read in the person's own zone; `GET`/`PUT /users/me/notification-preferences`; one row per person (migration fe2026112607) and the dispatcher now honours it |
+| 01 Preferences | done | `/settings/preferences` — language, appearance, the person's own timezone, date format, landing page; stored on the account (migration fe2026112610) |
+| 01 Personal notifications | done | `/settings/notifications` — email/push switches (in-app locked as the record), quiet hours as real times read in the person's own zone; `GET`/`PUT /users/me/notification-preferences`; one row per person (migration fe2026112611) and the dispatcher now honours it |
 | 02 Workspace overview | done | `/settings/workspace` — the container, its state, your role in it, member count, region |
 | 02 Workspace data | done | `/settings/workspace/data` — name (editable), identifier (read-only: other systems address it), country/currency/timezone; brand logo stays in Store & business, where the identity belongs |
 | 02 Ownership and administration | done | `/settings/workspace/ownership` — owner and administrators from `GET /workspaces/current/admins` (settings read); transfer is explained, not offered, because no transfer endpoint exists behind it |
@@ -165,7 +165,7 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 03 Invitations | done | `/settings/team/invitations` — create through `POST /tenants/{id}/invitations`, copy the one-time link, list and revoke; seat limits still enforced server-side |
 | 03 Roles | done | `/settings/team/roles` — the seeded roles and the permission count each actually carries, from `GET /roles/matrix`; read-only because the guards are written against these codes |
 | 03 Permission matrix | done | `/settings/team/matrix` — every real permission row against every role, read/write/approve shown as distinct actions; ticks come from `role_permissions`, so no cell can promise an unchecked action |
-| 03 Teams and departments | done | `/settings/team/groups` — real teams (migration fe2026112608, tenant RLS on both tables) with add/remove members; a team grants nothing by design and the page says so |
+| 03 Teams and departments | done | `/settings/team/groups` — real teams (migration fe2026112612, tenant RLS on both tables) with add/remove members; a team grants nothing by design and the page says so |
 | 03 Access scope | done | `/settings/team/access` — per-branch grants through `/hierarchy/locations/{id}/access`; warehouses and tills stay on their own pages |
 | 02–20 | pending | see the tables above |
 

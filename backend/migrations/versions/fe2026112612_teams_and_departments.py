@@ -33,8 +33,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "fe2026112608"
-down_revision: str | None = "fe2026112607"
+revision: str = "fe2026112612"
+down_revision: str | None = "fe2026112611"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

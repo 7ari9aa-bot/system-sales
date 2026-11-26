@@ -32,9 +32,30 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+_GRANT_SQL = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+        EXECUTE 'GRANT DELETE ON public.audit_logs TO sales_app';
+    END IF;
+END
+$$;
+"""
+
+_REVOKE_SQL = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+        EXECUTE 'REVOKE DELETE ON public.audit_logs FROM sales_app';
+    END IF;
+END
+$$;
+"""
+
+
 def upgrade() -> None:
-    op.execute("GRANT DELETE ON public.audit_logs TO sales_app")
+    op.execute(_GRANT_SQL)
 
 
 def downgrade() -> None:
-    op.execute("REVOKE DELETE ON public.audit_logs FROM sales_app")
+    op.execute(_REVOKE_SQL)

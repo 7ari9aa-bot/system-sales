@@ -129,7 +129,7 @@ class User(TimestampMixin, Base):
     # filling these in can never move an account or reach another one.
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     job_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    # The person's own presentation choices (migration fe2026112606). They used to
+    # The person's own presentation choices (migration fe2026112610). They used to
     # live in localStorage, which meant they followed the BROWSER rather than the
     # account: the same person on the till and on a phone could disagree, and
     # clearing site data reset them. NULL means "follow the default", so a fresh
