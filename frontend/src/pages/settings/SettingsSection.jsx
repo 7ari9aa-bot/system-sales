@@ -655,10 +655,12 @@ export default function SettingsSection({ section }) {
       )}
 
       {`${section}/${page}` === "data/export" && (
-        <StaticNotePanel
+        <GenericListPanel
+          endpoint="/privacy/data-requests?request_type=export"
           titleKey="settings.data.export.title"
           descKey="settings.data.export.desc"
-          bodyKey="settings.data.export.body"
+          footerKey="settings.data.export.whereToEdit"
+          emptyKey="settings.data.export.empty"
         />
       )}
 

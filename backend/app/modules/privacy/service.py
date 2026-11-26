@@ -7,6 +7,8 @@ Deletion chain (EVERY step, never a bare DELETE):
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -16,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.core.events.writer import add_outbox_event
-from app.modules.privacy.models import DataSubjectRequest
+from app.modules.privacy.models import Consent, DataSubjectRequest
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +234,139 @@ class DeletionService:
 
 
 class DataRequestService:
+    @staticmethod
+    async def execute_export(
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        request: DataSubjectRequest,
+        requested_by_user_id: uuid.UUID | None = None,
+    ) -> dict | None:
+        """Run an access/export request and return the customer's own data.
+
+        The row already carries ``result_ref`` ("export file key"), so an export
+        that produces a payload records what it produced instead of leaving the
+        request pending forever: an export request the system can create but
+        never complete is a dead end, not a feature.
+
+        The payload is built generically (column names are read off the rows, not
+        hard-coded) so a column added to customers or orders appears in the export
+        without a second list to keep in step. Returns None when the customer does
+        not exist for this tenant.
+        """
+        from sqlalchemy import select as _select
+
+        from app.core.audit import write_audit_row
+        from app.modules.customers.models import Customer
+        from app.modules.orders.models import Order
+
+        customer = (
+            await session.execute(
+                _select(Customer).where(
+                    Customer.tenant_id == tenant_id, Customer.id == request.customer_id
+                )
+            )
+        ).scalar_one_or_none()
+        if customer is None:
+            return None
+
+        consents = (
+            (
+                await session.execute(
+                    _select(Consent).where(
+                        Consent.tenant_id == tenant_id, Consent.customer_id == customer.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        orders = (
+            (
+                await session.execute(
+                    _select(Order).where(
+                        Order.tenant_id == tenant_id, Order.customer_id == customer.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        requests = (
+            (
+                await session.execute(
+                    _select(DataSubjectRequest).where(
+                        DataSubjectRequest.tenant_id == tenant_id,
+                        DataSubjectRequest.customer_id == customer.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        def plain(row) -> dict:
+            out: dict = {}
+            for key, value in vars(row).items():
+                if key.startswith("_"):
+                    continue
+                if value is None or isinstance(value, (str, int, float, bool)):
+                    out[key] = value
+                elif isinstance(value, (uuid.UUID,)):
+                    out[key] = str(value)
+                elif hasattr(value, "isoformat"):
+                    out[key] = value.isoformat()
+                elif isinstance(value, dict):
+                    out[key] = value
+            return out
+
+        payload = {
+            "request_id": str(request.id),
+            "request_type": request.request_type,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "customer": plain(customer),
+            "consents": [plain(c) for c in consents],
+            "orders": [plain(o) for o in orders],
+            "data_requests": [plain(r) for r in requests],
+            "counts": {
+                "consents": len(consents),
+                "orders": len(orders),
+                "data_requests": len(requests),
+            },
+        }
+
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, default=str).encode()
+        ).hexdigest()[:32]
+        request.status = "completed"
+        request.completed_at = datetime.now(UTC)
+        # The payload is delivered in the response, so the row records what was
+        # produced (an inline reference plus its digest), never a key to a file
+        # nothing wrote.
+        request.result_ref = f"inline:{digest}"
+        request.error = None
+
+        await write_audit_row(
+            session,
+            tenant_id,
+            requested_by_user_id,
+            action="privacy.data_exported",
+            resource_type="customer",
+            resource_id=str(customer.id),
+            after={"request_id": str(request.id), "digest": digest, **payload["counts"]},
+        )
+        await add_outbox_event(
+            session,
+            aggregate_type="customer",
+            aggregate_id=customer.id,
+            event_type="privacy.data_exported",
+            tenant_id=tenant_id,
+            payload={"request_id": str(request.id), "digest": digest},
+            aggregate_version=customer.version,
+        )
+        await session.flush()
+        return payload
+
     @staticmethod
     async def create(
         session: AsyncSession,

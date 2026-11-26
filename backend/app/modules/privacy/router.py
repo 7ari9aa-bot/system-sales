@@ -196,11 +196,16 @@ async def get_data_request(ctx: ReadCtx, request_id: uuid.UUID):
 
 @router.post("/data-requests/{request_id}/execute")
 async def execute_data_request(ctx: WriteCtx, request_id: uuid.UUID):
-    """DESTRUCTIVE — run the §172 deletion-propagation chain for a delete request.
+    """Execute a data-subject request.
 
-    Only ``delete`` requests can be executed. This tombstones the customer,
-    hard-deletes derived AI memories, closes pending data-subject requests and
-    writes an audit record + outbox event. It cannot be undone.
+    ``delete`` runs the §172 deletion-propagation chain: it tombstones the
+    customer, hard-deletes derived AI memories, closes pending data-subject
+    requests and writes an audit record + outbox event. It cannot be undone.
+
+    ``access`` and ``export`` are the non-destructive half: the customer's own
+    record, consents, orders and request history are returned as one payload and
+    the request is marked completed with a digest of what was produced. Without
+    this branch those two request types could be created and never completed.
     """
     request = (
         await ctx.session.execute(
@@ -212,8 +217,18 @@ async def execute_data_request(ctx: WriteCtx, request_id: uuid.UUID):
     ).scalar_one_or_none()
     if request is None:
         raise NotFoundError("data subject request not found")
+    if request.request_type not in ("delete", "access", "export"):
+        raise ValidationError("only access, export and delete requests can be executed")
     if request.request_type != "delete":
-        raise ValidationError("only delete requests can be executed")
+        payload = await DataRequestService.execute_export(
+            ctx.session,
+            ctx.tenant_id,
+            request=request,
+            requested_by_user_id=ctx.user.id,
+        )
+        if payload is None:
+            raise NotFoundError("customer not found")
+        return {"request_id": str(request.id), "data": payload}
     report = await DeletionService.propagate_customer_deletion(
         ctx.session,
         ctx.tenant_id,
