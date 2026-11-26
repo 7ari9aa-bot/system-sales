@@ -18,6 +18,29 @@ const SALE_INVOICE_NO = /POS-\d{4}-\d{4,}/;
  * in run 45735131391). Esc is one of the documented skip paths, so this walks the flow the way a
  * real owner who wants to configure everything by hand would.
  */
+/** Open /settings/pos and return the POS settings page root.
+ *
+ * The bare locator timed out with "waiting for main:has(.cashier-root)" and nothing else, which
+ * says a page is missing but not WHICH page the browser was on. This fails with the URL and the
+ * first line of what was actually on screen, so the next red run diagnoses itself.
+ */
+async function openPosSettings(page) {
+  await page.goto("/settings/pos", { waitUntil: "networkidle" });
+  const root = page.locator(".cashier-root");
+  if ((await root.count()) === 0) {
+    const body = (
+      await page
+        .locator("body")
+        .innerText()
+        .catch(() => "")
+    ).replace(/\s+/g, " ");
+    throw new Error(
+      `/settings/pos rendered no POS settings page. url=${page.url()} body=${body.slice(0, 300)}`,
+    );
+  }
+  return root;
+}
+
 async function dismissActivitySetup(page) {
   const dialog = page.getByTestId("activity-setup");
   // The dialog is FETCHED after the shell paints, so at the instant the dashboard URL settles it
@@ -2346,8 +2369,7 @@ test("backup export on the screen: the downloaded file holds the real expense an
     payment_method: "cash",
   });
 
-  await page.goto("/settings/pos", { waitUntil: "networkidle" });
-  const main = page.locator(".cashier-root");
+  const main = await openPosSettings(page);
   await main.getByRole("tab", { name: /النسخ|الاحتياطي/ }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -2466,8 +2488,7 @@ test("print settings on the screen are saved for real: the prefix the owner type
     })
   ).session;
 
-  await page.goto("/settings/pos", { waitUntil: "networkidle" });
-  const main = page.locator(".cashier-root");
+  const main = await openPosSettings(page);
   await main.getByRole("tab", { name: /الفاتورة|الباركود|الطباعة/ }).click();
 
   // This screen used to be a notice: nothing was stored, no field, no save. Both settings the
