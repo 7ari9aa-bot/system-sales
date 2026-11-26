@@ -173,7 +173,13 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 04 Legal data | done | `/settings/store/legal-data` — legal name, tax ID, commercial register, terms acceptance; all four already reach the receipt read model |
 | 04 Working hours | done | `/settings/store/working-hours` — publishes the `hours` store policy, the text the customer agent answers "when are you open" from. Not a registry key: the promise is prose the agent quotes, and it lives in one row of `knowledge_items` |
 | 04 Business policies | done | `/settings/store/business-policies` — the enforced windows (`pos.return_max_days`, `pos.exchange_max_days`, both high impact) plus the published exchange, return, warranty, cancellation, shipping and ordering policies and the deposit rules |
-| 05–20 | pending | see the tables above |
+| 05 All branches | done | `/settings/locations/all-branches` — the branches that exist, read from the hierarchy (`workspaces` → `locations`) beside the keys that limit how many there may be |
+| 05 Branch settings | done | `/settings/locations/branch-settings` — the four `branch.*` keys at branch scope |
+| 05 Branch data | pending | a `locations` row carries name, code and active only; editing them needs a form over `PATCH /hierarchy/locations/{id}` |
+| 05 Branch hours | pending | no column holds per-branch hours yet; it needs a migration before a page can offer them |
+| 05 Branch staff | pending | the data exists (`user_location_access`) but the grant/revoke UI is not built |
+| 05 Operating scopes | pending | needs a read-only view of the resolved scope chain for one branch |
+| 06–20 | pending | see the tables above |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

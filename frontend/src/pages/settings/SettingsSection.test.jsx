@@ -60,6 +60,8 @@ const DEFS_BY_PAGE = {
   "contact-details": [PHONE],
   "business-policies": [POLICY_DEF],
   "working-hours": [],
+  "all-branches": [],
+  "branch-settings": [],
 };
 
 const useSettingsMock = vi.fn(() => ({
@@ -100,6 +102,12 @@ vi.mock("@/components/settings/DepositPolicySettings", () => ({
   default: () => null,
 }));
 
+const branchesPanelMock = vi.fn(() => null);
+
+vi.mock("@/components/settings/BranchesPanel", () => ({
+  default: (props) => branchesPanelMock(props),
+}));
+
 vi.mock("@/components/settings/useSettings", () => ({
   useSettings: (opts) => {
     const defs = DEFS_BY_PAGE[opts.page] ?? [];
@@ -127,6 +135,7 @@ function renderAt(path) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
+          <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -137,6 +146,7 @@ describe("SettingsSection", () => {
   beforeEach(() => {
     useSettingsMock.mockClear();
     policyEditorMock.mockClear();
+    branchesPanelMock.mockClear();
   });
 
   test("asks the settings hook for its own section and page", () => {
@@ -197,5 +207,22 @@ describe("SettingsSection", () => {
     renderAt("/settings/store/legal-data");
     const opts = useSettingsMock.mock.calls.at(-1)[0];
     expect(opts.page).toBe("legal-data");
+  });
+
+  test("all branches shows the real branches, not a second editor for them", () => {
+    renderAt("/settings/locations/all-branches");
+    expect(branchesPanelMock).toHaveBeenCalled();
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("locations");
+    expect(opts.page).toBe("all-branches");
+  });
+
+  test("branch settings asks for the branch page of the locations section", () => {
+    renderAt("/settings/locations/branch-settings");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("locations");
+    expect(opts.page).toBe("branch-settings");
+    // The branches list belongs to the page that owns the branch count, not this one.
+    expect(branchesPanelMock).not.toHaveBeenCalled();
   });
 });

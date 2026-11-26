@@ -204,6 +204,8 @@ const DashboardRoutes = () => (
               each page renders only the keys whose registry home is that section+page. */}
           <Route path="/settings/store" element={<Navigate to="/settings/store/business-profile" replace />} />
           <Route path="/settings/store/:page" element={<SettingsSection section="store" />} />
+          <Route path="/settings/locations" element={<Navigate to="/settings/locations/all-branches" replace />} />
+          <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
         </Route>
       </Route>
     </Route>

@@ -21,6 +21,7 @@ import { useI18n, useT } from "@/lib/i18n";
 import SettingsShell, { SettingCard } from "@/components/settings/SettingsShell";
 import { SettingField } from "@/components/settings/SettingField";
 import StorePolicyEditor from "@/components/settings/StorePolicyEditor";
+import BranchesPanel from "@/components/settings/BranchesPanel";
 import DepositPolicySettings from "@/components/settings/DepositPolicySettings";
 import { useSettings } from "@/components/settings/useSettings";
 import ScopeSelector from "@/components/settings/ScopeSelector";
@@ -83,6 +84,7 @@ const SECTION_PAGES = {
     "business-policies",
     "legal-data",
   ],
+  locations: ["all-branches", "branch-settings"],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -275,6 +277,8 @@ export default function SettingsSection({ section }) {
           ))}
         </SettingCard>
       ))}
+
+      {`${section}/${page}` === "locations/all-branches" && <BranchesPanel />}
 
       {POLICY_KEYS_BY_PAGE[`${section}/${page}`] && (
         <div className="space-y-2 pt-2">
