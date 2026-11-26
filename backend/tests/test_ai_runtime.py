@@ -481,11 +481,20 @@ class _StubResult:
     def __init__(self, rows):
         self._rows = list(rows)
 
+    def __iter__(self):
+        # A ScalarResult is iterable as well as .all()-able: the catalog search iterates the
+        # variants and SettingsService._load_overrides calls .all() on the same object.
+        return iter(self._rows)
+
     def all(self):
         return self._rows
 
     def scalars(self):
-        return self._rows
+        # SQLAlchemy's Result.scalars() returns a ScalarResult, not a list: callers go on to
+        # .all() it (SettingsService._load_overrides does exactly that now that the catalog
+        # search reads the shop's settings). Returning the rows directly made every one of
+        # those calls raise "'list' object has no attribute 'all'".
+        return self
 
     def scalar_one(self):
         return 0

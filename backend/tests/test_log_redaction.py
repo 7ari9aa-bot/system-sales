@@ -36,8 +36,35 @@ def test_other_shapes_are_redacted(text):
     assert FAKE not in redact(text)
 
 
+#: A real authorization code: long, mixed alphanumeric, no underscore (Meta's are
+#: ~100 characters, Google's ~40). The short value this test used before was not a
+#: credential at all, it was the reason every ``code=`` was being blanked.
+OAUTH_CODE = "AQD8k2Lm4Np7Qr1St5Uv9Wx3Yz6Bc0Df2Gh4Jk8Mn1Pq5Rs"
+
+
 def test_oauth_code_is_redacted():
-    assert "abc123" not in redact("callback?code=abc123&state=s")
+    out = redact(f"callback?code={OAUTH_CODE}&state=s")
+    assert OAUTH_CODE not in out
+    assert f"code={REDACTED}" in out
+
+
+def test_an_alert_code_stays_readable():
+    """The value an operator needs must survive: 'code=' is not only a credential."""
+    line = "platform.monitor_tripped code=scheduler_jobs_failed severity=critical"
+    assert redact(line) == line
+    assert "scheduler_jobs_failed" in redact(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "error code=VALIDATION_ERROR key=pos.return_max_days",
+        "code=telemetry_silence severity=critical",
+        "provider returned code=rate_limited",
+    ],
+)
+def test_snake_case_codes_are_not_mistaken_for_credentials(line):
+    assert redact(line) == line
 
 
 @pytest.mark.parametrize(

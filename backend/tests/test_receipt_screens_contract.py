@@ -53,10 +53,28 @@ def test_the_industry_choice_is_not_on_the_shop_profile() -> None:
     assert "business.vertical" not in PROFILE
 
 
+POS_PAGE = Path(__file__).resolve().parents[2] / "frontend/src/pages/settings/PosSettings.jsx"
+
+
+def _policy_tab_offers_the_whole_pos_domain() -> set[str]:
+    """The keys the shop-policy tab can edit: it renders the engine's whole ``pos`` domain.
+
+    The tab is ``<ShopPolicySettings />`` with no ``keys`` prop, and the component reads that as
+    "every enforced setting of the domain" — so a pos key is offered there without any file
+    naming it. That is how the return and exchange windows are editable even though no screen
+    lists them, and it is why this check has to read the tab rather than a key array.
+    """
+    text = POS_PAGE.read_text(encoding="utf-8")
+    assert re.search(r"render:\s*\(\)\s*=>\s*<ShopPolicySettings\s*/>", text), (
+        "the shop-policy tab no longer renders the whole pos domain"
+    )
+    return {key for key in ENFORCED_KEYS if REGISTRY[key].domain == "pos"}
+
+
 def test_no_receipt_setting_is_missing_from_the_screens() -> None:
-    """A key the receipt reads must be editable somewhere, apart from the ones set elsewhere."""
-    set_elsewhere = {"pos.exchange_max_days"}  # the returns and exchange policy screen
-    missing = set(RECEIPT_KEYS) - set(PROFILE) - set(PRINT) - set_elsewhere
+    """A key the receipt reads must be editable somewhere."""
+    offered = set(PROFILE) | set(PRINT) | _policy_tab_offers_the_whole_pos_domain()
+    missing = set(RECEIPT_KEYS) - offered
     assert not missing, f"the receipt reads {sorted(missing)} but no screen offers them"
 
 

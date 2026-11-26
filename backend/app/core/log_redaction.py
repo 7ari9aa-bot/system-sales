@@ -26,7 +26,6 @@ _SECRET_KEYS = (
     "api_key",
     "apikey",
     "password",
-    "code",
     "secret",
     "token",
 )
@@ -37,9 +36,32 @@ _PAIR = re.compile(
     rf"(?P<key>(?<![A-Za-z0-9_])(?:{_KEYS}))(?P<sep>[\"']?\s*[=:]\s*[\"']?)(?P<val>[^&\s\"',}}\]\)]+)",
     re.IGNORECASE,
 )
+#: ``code`` is both an OAuth authorization code (a credential) and the field every
+#: structured log line uses for an error or alert code. Blanket redaction hid the
+#: one value an operator needs — ``platform.monitor_tripped code=[REDACTED]`` — so
+#: only high-entropy values are rewritten: an authorization code is long, mixed
+#: alphanumeric and has no underscore; an application code is a snake_case word.
+_AUTH_CODE = re.compile(
+    r"(?P<key>(?<![A-Za-z0-9_])code)(?P<sep>[\"']?\s*[=:]\s*[\"']?)"
+    r"(?P<val>[A-Za-z0-9._~+/=\-]{16,})",
+    re.IGNORECASE,
+)
 _BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{8,}")
 #: A Meta token that shows up with no key in front of it.
 _META_TOKEN = re.compile(r"\bEA[A-Za-z0-9]{20,}\b")
+
+
+def _redact_authorization_code(match: re.Match[str]) -> str:
+    """Redact ``code=`` only when the value is an OAuth code, not a log code."""
+    value = match.group("val")
+    looks_like_oauth = (
+        "_" not in value
+        and re.search(r"\d", value) is not None
+        and re.search(r"[A-Za-z]", value) is not None
+    )
+    if looks_like_oauth:
+        return f"{match.group('key')}{match.group('sep')}{REDACTED}"
+    return match.group(0)
 
 
 def redact(text: str) -> str:
@@ -47,6 +69,7 @@ def redact(text: str) -> str:
     if not text:
         return text
     text = _PAIR.sub(lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text)
+    text = _AUTH_CODE.sub(_redact_authorization_code, text)
     text = _BEARER.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
     return _META_TOKEN.sub(REDACTED, text)
 

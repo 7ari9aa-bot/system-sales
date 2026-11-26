@@ -117,7 +117,7 @@ async def _load_target(session, user_id, tenant_id):
 
 
 def _safe_target(claims_next: str | None) -> str:
-    """Same-site relative paths only (security review F5): `//evil.com` AND
+    r"""Same-site relative paths only (security review F5): `//evil.com` AND
     `/\evil.com` both normalize to an authority in browsers, and an absolute
     URL is an open redirect — anything but a leading-slash path is refused."""
     candidate = claims_next or "/dashboard"
