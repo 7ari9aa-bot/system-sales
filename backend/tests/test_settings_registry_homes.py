@@ -47,6 +47,27 @@ def test_every_home_names_a_real_section() -> None:
     assert not unknown, f"home section not in the map: {unknown}"
 
 
+def test_every_home_names_a_page_the_map_really_has() -> None:
+    """A page that exists only in the registry is a key nobody can reach.
+
+    ``_PAGE_OVERRIDES`` accepts either a page or a "section/page" pair. A bare page keeps the
+    domain's default section, so a sales page named without its section silently landed on the
+    store — every other assertion passed, and the fiscal year setting was unreachable in the UI.
+    The map is the contract, so the page has to be in it.
+    """
+    from pathlib import Path
+
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "settings" / "center-map.md").read_text()
+    absent = sorted(
+        {
+            f"{section}/{page}"
+            for section, page in (d.home for d in list_definitions())
+            if f"{section}/{page}" not in doc
+        }
+    )
+    assert not absent, f"home page not in the center map: {absent}"
+
+
 def test_a_key_is_never_listed_on_two_pages() -> None:
     seen: dict[str, tuple[str, str]] = {}
     for d in list_definitions():

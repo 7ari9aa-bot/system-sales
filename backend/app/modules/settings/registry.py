@@ -2648,6 +2648,9 @@ _PAGE_OVERRIDES: dict[str, str] = {
     # Structure, not identity: the branch limits belong with the branches themselves.
     "organization.multi_branch": "locations/all-branches",
     "organization.max_branches": "locations/all-branches",
+    # The financial year is a rule of selling: it decides the period annual reports close on, so
+    # it sits with the sales settings rather than on the store's profile.
+    "organization.fiscal_year_start_month": "sales/sales-settings",
 }
 
 
@@ -2666,35 +2669,6 @@ def _with_home(d: SettingDef) -> SettingDef:
 
 
 _DEFINITIONS = [_with_home(d) for d in _DEFINITIONS]
-
-# Keys whose domain spans several pages, so the domain default above is not where they belong.
-# The business domain is the clearest case: contact facts, brand facts and legal facts are three
-# different pages with three different audiences, and the map keeps them apart on purpose.
-_PAGE_OVERRIDES: dict[str, str] = {
-    # Brand identity: what the customer meets as the shop's face.
-    "business.trade_name": "brand-identity",
-    "organization.brand_color": "brand-identity",
-    # Contact details: how to reach the shop.
-    "business.phone": "contact-details",
-    "business.email": "contact-details",
-    "business.website": "contact-details",
-    "business.address.line1": "contact-details",
-    "business.address.city": "contact-details",
-    "business.address.postal_code": "contact-details",
-    # Legal data: what a tax inspector or a court reads.
-    "business.legal_name": "legal-data",
-    "business.tax_id": "legal-data",
-    "business.commercial_register": "legal-data",
-    "business.terms_accepted_at": "legal-data",
-    # The structure of the business belongs with the branches, not the profile.
-    "organization.multi_branch": "all-branches",
-    "organization.max_branches": "all-branches",
-    # The financial year is a rule of selling.
-    "organization.fiscal_year_start_month": "sales-settings",
-}
-_DEFINITIONS = [
-    replace(d, page=_PAGE_OVERRIDES[d.key]) if d.key in _PAGE_OVERRIDES else d for d in _DEFINITIONS
-]
 # A page override must name a key that exists: a typo here would silently leave the key at its
 # domain default and the page it was meant to fill would render empty.
 _missing_overrides = sorted(set(_PAGE_OVERRIDES) - {d.key for d in _DEFINITIONS})

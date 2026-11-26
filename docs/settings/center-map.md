@@ -233,7 +233,7 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 06 SKU and barcode | done | `/settings/catalog/sku-and-barcode` — `catalog.sku_format` and `catalog.barcode_auto_generate`: the FORMAT, never a product's own barcode |
 | 06 Product states | done | `/settings/catalog/product-states` — `catalog.show_out_of_stock` |
 | 06 Images and media | pending | no media rule exists to edit (limits, ordering, placeholders are per-product data today); a page here would be switches wired to nothing |
-| 07 Sales settings | done | `/settings/sales/sales-settings` — `orders.reserve_on`, `orders.deduct_stock_on`, `orders.allow_backorder` |
+| 07 Sales settings | done | `/settings/sales/sales-settings` — `orders.reserve_on`, `orders.deduct_stock_on`, `orders.allow_backorder`, and `organization.fiscal_year_start_month` (the month annual reports close on, which belongs with the rules of selling rather than with the store's profile) |
 | 07 Taxes and fees | done | `/settings/sales/taxes-and-fees` — the fifteen `einvoice.*` keys, with `vat_category` and `prices_include_vat` marked high impact because they change what the customer is charged |
 | 07 Exchange and returns | done | `/settings/sales/exchange-and-returns` — reads the windows in force (`GET /settings/effective`) and LINKS to their single home on `/settings/store/business-policies`; it offers no second editor |
 | 07 Price lists | done | `/settings/sales/price-lists` — `pricing.price_lists_enabled` plus a panel over the new `price_lists` / `price_list_items` tables (`GET/POST /pricing/price-lists`, archive, items). Migration `fe2026112614` |
