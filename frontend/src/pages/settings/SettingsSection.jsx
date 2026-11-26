@@ -453,6 +453,18 @@ export default function SettingsSection({ section }) {
         </div>
       )}
 
+      {/* A refusal from the server is the one message the owner must not miss: without it a
+          rejected save looks like a save that did nothing. The server's own wording is shown,
+          because "which permission is missing" is the useful part. */}
+      {s.error && (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive"
+        >
+          {s.error}
+        </div>
+      )}
+
       {s.conflict && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12.5px]">
           {isAr

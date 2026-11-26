@@ -88,13 +88,18 @@ test("the profile is the person: picture, name and email, and nothing about the 
   // the shop's name is not a personal setting either: no row, no link to it from here
   await expect(page.getByRole("link", { name: "Workspace settings" })).toHaveCount(0);
 
-  // the person's own preferences live here: interface language and theme
-  await expect(page.getByTestId("profile-language")).toBeVisible();
-  await expect(page.getByTestId("profile-theme")).toBeVisible();
-  await page.getByTestId("profile-theme").getByRole("radio", { name: "Dark" }).click();
+  // the person's own preferences are one click away, on the one page that owns them
+  const preferences = page.getByRole("link", { name: "Open preferences" });
+  await expect(preferences).toBeVisible();
+  await preferences.click();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+
+  // and they really are the person's: theme applies to the screen, language to the whole app
+  await expect(page.getByTestId("prefs-language")).toBeVisible();
+  await page.getByTestId("prefs-theme").getByRole("radio", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.getByTestId("profile-language").getByRole("radio", { name: "Arabic" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "الملف الشخصي" })).toBeVisible();
+  await page.getByTestId("prefs-language").getByRole("radio", { name: "العربية" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "التفضيلات" })).toBeVisible();
 });
 
 test("a renamed profile saves once, and the page shows what the server stored", async ({ page }) => {
@@ -135,7 +140,8 @@ test("uploading a picture from the profile writes the avatar and confirms", asyn
 
 test("the workspace owns the shop's name, currency and time zone — and not the person", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/settings/workspace");
+  // the overview is a hub; the name, currency and zone are edited on its Workspace data page
+  await page.goto("/settings/workspace/data");
 
   await expect(page.getByTestId("workspace-name")).toHaveValue("Shop");
   await expect(page.getByRole("heading", { name: "Regional settings" })).toBeVisible();
@@ -179,10 +185,9 @@ test("Arabic: the profile and the workspace speak Arabic", async ({ page }) => {
 
   await expect(page.getByRole("heading", { level: 1, name: "الملف الشخصي" })).toBeVisible();
   await expect(page.getByRole("button", { name: "إضافة صورة شخصية" })).toBeVisible();
-  await expect(page.getByTestId("profile-language")).toBeVisible();
+  await expect(page.getByRole("link", { name: "افتح التفضيلات" })).toBeVisible();
 
-  await page.goto("/settings/workspace");
-  await expect(page.getByRole("heading", { level: 1, name: "مساحة العمل" })).toBeVisible();
+  await page.goto("/settings/workspace/data");
   await expect(page.getByTestId("workspace-name-save")).toContainText("حفظ");
 });
 
@@ -190,9 +195,10 @@ test("mobile: neither page scrolls sideways", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page);
 
-  for (const path of ["/settings", "/settings/workspace"]) {
+  for (const path of ["/settings", "/settings/workspace", "/settings/workspace/data"]) {
     await page.goto(path);
-    await page.getByTestId("profile-name").or(page.getByTestId("workspace-name")).first().waitFor();
+    await page.getByRole("heading", { level: 1 }).first().waitFor();
+    await page.waitForLoadState("networkidle");
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

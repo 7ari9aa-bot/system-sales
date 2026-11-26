@@ -262,6 +262,8 @@ export default function ProfileSettings() {
               variant="outline"
               disabled={savingField === "phone" || phone === (user?.phone || "")}
               onClick={() => void saveContact("phone")}
+              aria-label={t("profile.phone.save")}
+              title={t("profile.phone.save")}
               data-testid="profile-phone-save"
             >
               {savingField === "phone" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -284,6 +286,8 @@ export default function ProfileSettings() {
               variant="outline"
               disabled={savingField === "job_title" || jobTitle === (user?.job_title || "")}
               onClick={() => void saveContact("job_title")}
+              aria-label={t("profile.jobTitle.save")}
+              title={t("profile.jobTitle.save")}
               data-testid="profile-job-title-save"
             >
               {savingField === "job_title" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

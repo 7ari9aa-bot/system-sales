@@ -100,18 +100,26 @@ test("members shows the real roster and the invitations still waiting", async ({
 
 test("billing is money only and points at usage instead of repeating it", async ({ page }) => {
   await setup(page);
+  // section 19 owns the plan: the old single billing screen now lands on its first page
   await page.goto("/settings/billing");
+  await expect(page).toHaveURL(/\/settings\/billing\/current-plan$/);
 
-  await expect(page.getByTestId("subscription-status")).toBeVisible();
+  // the real subscription row: status and the period it actually ends
+  const plan = page.locator("section").filter({ has: page.getByRole("heading", { name: "Subscription and plan", exact: true }) });
+  await expect(plan.getByText("Trialing")).toBeVisible();
+  await expect(plan.getByText("1 Dec 2026")).toBeVisible();
+
   // the token totals belong to Usage; nothing on this page may print them
   await expect(page.getByText("Token usage")).toHaveCount(0);
   await expect(page.getByText("2,000")).toHaveCount(0);
+  // no upgrade button that would do nothing: the page says why there is none
+  await expect(page.getByText(/no payment provider is configured/i)).toBeVisible();
 
-  await page.getByTestId("billing-usage-link").click();
-  await expect(page).toHaveURL(/\/settings\/usage$/);
-  // ...and Usage does not repeat the subscription card either
-  await expect(page.getByText("Current subscription")).toHaveCount(0);
-  await expect(page.getByText("2,000")).toBeVisible();
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/billing\/usage$/);
+  // ...and this usage page counts plan limits, not the AI token totals the usage screen owns
+  await expect(page.getByText(/same service that refuses a request past its limit/i)).toBeVisible();
+  await expect(page.getByText("2,000")).toHaveCount(0);
 });
 
 test("security reads the real two-step state instead of apologising for it", async ({ page }) => {
@@ -132,13 +140,14 @@ test("security reads the real two-step state instead of apologising for it", asy
   await expect(page.getByTestId("mfa-status")).toHaveText("On");
 });
 
-test("security can send a password reset link and never claims the mail arrived", async ({ page }) => {
+test("login can send a password reset link and never claims the mail arrived", async ({ page }) => {
   const state = await setup(page);
-  await page.goto("/settings/security");
+  // recovery is a sign-in concern, so it lives on the sign-in page, not on the security screen
+  await page.goto("/settings/login");
 
-  await page.getByTestId("password-reset").click();
+  await page.getByTestId("login-reset-link").click();
 
-  await expect(page.getByTestId("password-reset-notice")).toContainText("If owner@example.com is a known account");
+  await expect(page.getByTestId("login-reset-notice")).toContainText("If owner@example.com is a known account");
   expect(state.resetRequests).toEqual([{ email: "owner@example.com" }]);
   await expect(page.getByText(/delivered|sent to your inbox/i)).toHaveCount(0);
 });
@@ -183,13 +192,14 @@ test("mobile: the four pages fit 390px without sideways scrolling", async ({ pag
 
   const anchors = [
     ["/settings/members", "members-table"],
-    ["/settings/billing", "subscription-status"],
+    ["/settings/billing/current-plan", null],
     ["/settings/security", "mfa-status"],
     ["/settings/danger", "workspace-state"],
   ];
   for (const [path, anchor] of anchors) {
     await page.goto(path);
-    await page.getByTestId(anchor).waitFor();
+    if (anchor) await page.getByTestId(anchor).waitFor();
+    else await page.getByRole("heading", { level: 1 }).first().waitFor();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

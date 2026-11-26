@@ -35,6 +35,9 @@ export function isProtectedValue(value) {
 export function SettingField({ defn, value, onChange, isAr }) {
   const label = isAr ? defn.label_ar || defn.key : defn.label_en || defn.key;
   const desc = isAr ? defn.description_ar : defn.description_en;
+  // A key the engine does not enforce is a promise nothing keeps: the row still says what it is
+  // (and that it is not active), but it must not offer a control that looks like it saves.
+  const inert = defn.enforced === false;
 
   const renderControl = () => {
     if (isProtectedValue(value)) {
@@ -59,7 +62,9 @@ export function SettingField({ defn, value, onChange, isAr }) {
     if (defn.type === "bool") {
       return (
         <Switch
+          aria-label={label}
           checked={Boolean(value)}
+          disabled={inert}
           onCheckedChange={(checked) => onChange(defn.key, checked)}
         />
       );
@@ -68,7 +73,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
     if (defn.type === "enum" && defn.allowed_values) {
       return (
         <Select value={String(value ?? "")} onValueChange={(v) => onChange(defn.key, v)}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px]" aria-label={label} disabled={inert}>
             <SelectValue placeholder={isAr ? "اختر…" : "Select…"} />
           </SelectTrigger>
           <SelectContent>
@@ -85,6 +90,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
         <Input
           type="number"
           className="w-[140px]"
+          disabled={inert}
           aria-label={label}
           value={value ?? ""}
           min={defn.min_value ?? undefined}
@@ -98,9 +104,19 @@ export function SettingField({ defn, value, onChange, isAr }) {
       return (
         <Input
           className="w-[260px]"
+          disabled={inert}
           aria-label={label}
           value={Array.isArray(value) ? value.join(", ") : String(value ?? "")}
-          onChange={(e) => onChange(defn.key, e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+          onChange={(e) =>
+            onChange(defn.key, [
+              ...new Set(
+                e.target.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              ),
+            ])
+          }
         />
       );
     }
@@ -109,6 +125,7 @@ export function SettingField({ defn, value, onChange, isAr }) {
     return (
       <Input
         className="w-[260px]"
+        disabled={inert}
         aria-label={label}
         value={String(value ?? "")}
         maxLength={defn.max_length ?? undefined}
