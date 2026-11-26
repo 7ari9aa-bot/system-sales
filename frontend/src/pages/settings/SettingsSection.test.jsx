@@ -133,6 +133,12 @@ vi.mock("@/components/settings/ReturnWindowPanel", () => ({
   default: (props) => returnWindowMock(props),
 }));
 
+const devicesSectionMock = vi.fn(() => null);
+
+vi.mock("@/pages/settings/pos/DevicesSection", () => ({
+  default: (props) => devicesSectionMock(props),
+}));
+
 vi.mock("@/components/settings/BranchPanels", () => ({
   BranchDataPanel: (props) => branchDataMock(props),
   BranchHoursPanel: (props) => branchHoursMock(props),
@@ -170,6 +176,7 @@ function renderAt(path) {
           <Route path="/settings/locations/:page" element={<SettingsSection section="locations" />} />
           <Route path="/settings/catalog/:page" element={<SettingsSection section="catalog" />} />
           <Route path="/settings/sales/:page" element={<SettingsSection section="sales" />} />
+          <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
         </Routes>
       </MemoryRouter>
     </I18nProvider>,
@@ -184,6 +191,7 @@ describe("SettingsSection", () => {
     categoriesPanelMock.mockClear();
     apparelPanelMock.mockClear();
     returnWindowMock.mockClear();
+    devicesSectionMock.mockClear();
     branchDataMock.mockClear();
     branchHoursMock.mockClear();
     branchStaffMock.mockClear();
@@ -318,5 +326,22 @@ describe("SettingsSection", () => {
   test("the returns panel is only on its own page", () => {
     renderAt("/settings/sales/sales-settings");
     expect(returnWindowMock).not.toHaveBeenCalled();
+  });
+
+  test("the till section owns the cash pages", () => {
+    renderAt("/settings/pos/cash-movement");
+    const opts = useSettingsMock.mock.calls.at(-1)[0];
+    expect(opts.section).toBe("pos");
+    expect(opts.page).toBe("cash-movement");
+  });
+
+  test("registers and devices reuses the till's own devices screen", () => {
+    renderAt("/settings/pos/registers-and-devices");
+    expect(devicesSectionMock).toHaveBeenCalled();
+  });
+
+  test("the devices screen is not drawn on the plain settings page", () => {
+    renderAt("/settings/pos/pos-settings");
+    expect(devicesSectionMock).not.toHaveBeenCalled();
   });
 });

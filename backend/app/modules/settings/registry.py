@@ -940,6 +940,7 @@ _reg(
             "The largest single drawer movement (pay-in or pay-out) a cashier may record. "
             "Zero means no limit."
         ),
+        impact_level="high",
     )
 )
 
@@ -958,6 +959,7 @@ _reg(
         label_en="Max Discount %",
         description_ar="أقصى خصم يمكن للكاشير تطبيقه (% من الإجمالي).",
         description_en="Maximum discount a cashier can apply (% of total).",
+        impact_level="high",
     )
 )
 _reg(
@@ -1126,6 +1128,7 @@ _reg(
             "used (card, wallet, transfer), not just cash, and stores expected vs counted vs the "
             "difference per method. When off, non-cash methods are shown but not settled."
         ),
+        impact_level="high",
     )
 )
 _reg(
@@ -1241,6 +1244,7 @@ _reg(
             "A drawer variance larger than this amount (short or over) can only close with a "
             "manager's approval, recorded with their name and time. Zero means no limit."
         ),
+        impact_level="high",
     )
 )
 # ============================== INVENTORY =================================
@@ -2468,6 +2472,15 @@ _PAGE_OVERRIDES: dict[str, str] = {
     "catalog.sku_format": "sku-and-barcode",
     "catalog.barcode_auto_generate": "sku-and-barcode",
     "catalog.show_out_of_stock": "product-states",
+    # The till domain is fourteen keys over five pages. What a new product defaults to is not the
+    # same question as who may take money, so the payment, variance and cash keys name their pages.
+    "pos.take_payments": "collection-methods",
+    "pos.settle_payment_methods": "collection-methods",
+    "pos.allow_sale_on_account": "collection-methods",
+    "pos.reference_required_methods": "collection-methods",
+    "pos.variance_reason_required": "shifts",
+    "pos.variance_approval_threshold": "shifts",
+    "pos.cash_movement_limit": "cash-movement",
     # Structure, not identity: the branch limits belong with the branches themselves.
     "organization.multi_branch": "locations/all-branches",
     "organization.max_branches": "locations/all-branches",

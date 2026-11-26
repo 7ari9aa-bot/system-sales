@@ -159,3 +159,29 @@ def test_the_return_windows_have_exactly_one_editing_home() -> None:
     assert "pos.exchange_max_days" not in sales_keys
     policies = {d.key for d in list_definitions(section="store", page="business-policies")}
     assert {"pos.return_max_days", "pos.exchange_max_days"} <= policies
+
+
+def test_the_till_keys_are_split_by_what_they_decide() -> None:
+    """Taking money, closing a drawer and moving cash are three different decisions."""
+    homes = {d.key: d.home[1] for d in list_definitions(section="pos")}
+    assert homes["pos.take_payments"] == "collection-methods"
+    assert homes["pos.settle_payment_methods"] == "collection-methods"
+    assert homes["pos.allow_sale_on_account"] == "collection-methods"
+    assert homes["pos.reference_required_methods"] == "collection-methods"
+    assert homes["pos.variance_reason_required"] == "shifts"
+    assert homes["pos.variance_approval_threshold"] == "shifts"
+    assert homes["pos.cash_movement_limit"] == "cash-movement"
+    # The rest stay on the page that describes how the till behaves.
+    assert homes["pos.max_discount_pct"] == "pos-settings"
+    assert homes["pos.allow_hold_cart"] == "pos-settings"
+
+
+def test_the_cash_and_authority_keys_are_high_impact() -> None:
+    by_key = {d.key: d for d in list_definitions()}
+    for key in (
+        "pos.cash_movement_limit",
+        "pos.max_discount_pct",
+        "pos.variance_approval_threshold",
+        "pos.settle_payment_methods",
+    ):
+        assert by_key[key].impact_level == "high", key

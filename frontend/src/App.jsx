@@ -187,8 +187,20 @@ const DashboardRoutes = () => (
           <Route path="/settings/channels/:channel" element={<ChannelsSettings />} />
           <Route path="/settings/ai" element={<AI />} />
           <Route path="/settings/usage" element={<Usage />} />
-          <Route path="/settings/pos" element={<PosSettings />} />
-          <Route path="/settings/pos/:section" element={<PosSettings />} />
+          {/* Section 08 owns /settings/pos. The old wrapper's slugs that now have a canonical
+              home forward to it, so an old bookmark lands on the single place that edits the
+              setting instead of a second editor. The tool screens that are not settings (receipts
+              tracking, team access, backup) stay reachable under /settings/pos/tools. */}
+          <Route path="/settings/pos" element={<Navigate to="/settings/pos/pos-settings" replace />} />
+          <Route path="/settings/pos/legacy/:section" element={<PosSettings />} />
+          <Route path="/settings/pos/shop" element={<Navigate to="/settings/store/business-profile" replace />} />
+          <Route path="/settings/pos/policy" element={<Navigate to="/settings/store/business-policies" replace />} />
+          <Route path="/settings/pos/einvoice" element={<Navigate to="/settings/sales/taxes-and-fees" replace />} />
+          <Route path="/settings/pos/print" element={<Navigate to="/settings/pos/invoices-and-receipts" replace />} />
+          <Route path="/settings/pos/lists" element={<Navigate to="/settings/catalog/categories" replace />} />
+          <Route path="/settings/pos/devices" element={<Navigate to="/settings/pos/registers-and-devices" replace />} />
+          <Route path="/settings/pos/tools/:section" element={<PosSettings />} />
+          <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
           <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
           <Route path="/settings/billing" element={<BillingSettings />} />
           <Route path="/settings/members" element={<MembersSettings />} />

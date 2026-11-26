@@ -25,6 +25,7 @@ import BranchesPanel from "@/components/settings/BranchesPanel";
 import ApparelOptionsPanel from "@/components/settings/ApparelOptionsPanel";
 import CategoriesPanel from "@/components/settings/CategoriesPanel";
 import ReturnWindowPanel from "@/components/settings/ReturnWindowPanel";
+import DevicesSection from "@/pages/settings/pos/DevicesSection";
 import {
   BranchDataPanel,
   BranchHoursPanel,
@@ -312,6 +313,10 @@ export default function SettingsSection({ section }) {
       {`${section}/${page}` === "catalog/attributes-and-specs" && <ApparelOptionsPanel />}
 
       {`${section}/${page}` === "sales/exchange-and-returns" && <ReturnWindowPanel />}
+
+      {/* The till's devices screen is the real implementation; this page reuses it rather than
+          growing a second register editor beside it. */}
+      {`${section}/${page}` === "pos/registers-and-devices" && <DevicesSection />}
       {`${section}/${page}` === "locations/branch-data" && <BranchDataPanel />}
       {`${section}/${page}` === "locations/branch-hours" && <BranchHoursPanel />}
       {`${section}/${page}` === "locations/branch-staff" && <BranchStaffPanel />}
