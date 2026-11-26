@@ -274,7 +274,12 @@ defect. See [registry-specification.md](registry-specification.md) for the keys 
 | 19 Billing details | done | `/settings/billing/billing-details` — a link page, not an editor: the legal name, tax number, commercial register and address that print on an invoice are section 04's legal data, and a second copy here would be two tax numbers that can disagree |
 | 19 Payment methods | pending | No payment instrument is stored anywhere: `invoices.provider` records who billed, never a card, and no provider is configured. A page of payment methods would be a form writing rows nothing charges |
 | 19 Renewal and upgrade | pending | An upgrade is a checkout session, and the billing module has no checkout path until a payment provider is configured. What does exist — the auto-renew switch and the reminder window — is on `current-plan`, so this page would only repeat it |
-| 20 | pending | see the table below |
+| 20 API keys | pending | There is no key store: nothing in the schema issues, lists or revokes a developer API key, so the page would show a button that mints nothing. What DOES exist is the rotation policy (`security.api_key_rotation_days`, edited in section 18) and provider credentials rotated from the integration screen, so the page names both instead of inventing a third place |
+| 20 Webhooks | done | `/settings/developers/webhooks` — the tenant's own outbound endpoints (`GET /webhook-endpoints`) plus a new delivery log (`GET /webhook-endpoints/deliveries`: status, attempts, response code, last error; the payload is never echoed back) |
+| 20 Connected apps | done | `/settings/developers/connected-apps` — a link page: the connected services are the integration rows owned by section 12, and a second editor here would be the duplicate the map forbids |
+| 20 Rate limits | done | `/settings/developers/rate-limits` — new `GET /platform/rate-limits` reports the middleware's own bucket table and window, and whether enforcement is on; a shop cannot raise its own ceiling, so the page reads and never edits |
+| 20 API logs | done | `/settings/developers/api-logs` — `GET /platform/audit-logs?source=integration`: what changed without a person clicking. Request-level HTTP logs are not stored, and the page says so rather than presenting audit rows as traffic |
+| 20 Developer environment | done | `/settings/developers/developer-environment` — the live API contract: the base URL this deployment serves and a link to its OpenAPI schema. There is no separate sandbox environment, and the page does not pretend there is |
 
 The remaining sections are built one at a time, each with the page anatomy in §3, its bilingual
 copy, its tests, and the gates in [runtime-testing-specification.md](runtime-testing-specification.md).

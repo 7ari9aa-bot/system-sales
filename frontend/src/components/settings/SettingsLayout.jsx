@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, KeyRound, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, Sparkles, Gauge, Store, MapPin, Package, Receipt, Truck, Boxes, SlidersHorizontal, Bell,
+  ArrowLeft, LogOut, User, MessageSquare, Wallet, Users, ShieldCheck, KeyRound, AlertTriangle, Menu, X, ChevronDown, Settings2, ScanLine, Sparkles, Gauge, Store, MapPin, Package, Receipt, Truck, Boxes, SlidersHorizontal, Bell, Code2,
 } from "lucide-react";
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
+import { activeTenant } from "@/lib/activeTenant";
+import { DEVELOPER_ROLES } from "@/lib/developerAccess";
 import Logo from "@/components/dashboard/Logo";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import {
@@ -79,6 +81,15 @@ const NAV_GROUPS = [
         icon: ShieldCheck,
         labelKey: "settings.nav.governance",
       },
+      // Section 20 is the one group entry that is hidden by ROLE. `roles` is read by the
+      // filter below, and the route guard in SettingsSection enforces the same list, so a
+      // typed address cannot open what the sidebar hides.
+      {
+        to: "/settings/developers/webhooks",
+        icon: Code2,
+        labelKey: "settings.nav.developers",
+        roles: DEVELOPER_ROLES,
+      },
     ],
   },
 ];
@@ -92,6 +103,13 @@ export default function SettingsLayout() {
   const [open, setOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = user?.full_name || user?.email?.split("@")[0] || "—";
+  // The role of the membership this person holds in the ACTIVE workspace decides which nav
+  // entries exist at all. An item with no `roles` is shown to everyone.
+  const roleCode = activeTenant(user)?.role_code || null;
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.roles || item.roles.includes(roleCode)),
+  })).filter((group) => group.items.length > 0);
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
   async function handleLogout() {
@@ -134,7 +152,7 @@ export default function SettingsLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-3">
-          {NAV_GROUPS.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.key}>
               <div className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {t(group.key)}

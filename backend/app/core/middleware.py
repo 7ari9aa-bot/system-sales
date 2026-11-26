@@ -79,6 +79,24 @@ AUTH_SESSION_LIMIT = 60
 DEFAULT_LIMIT = 300  # per window, per IP — everything else
 PUBLIC_LIMIT = 120  # per window, per IP — webchat/webhook ingress
 PUBLIC_TELEMETRY_LIMIT = 30  # per window, per IP — anonymous telemetry writes
+
+#: The window every bucket is measured over. One constant, because the middleware and the
+#: read surface that reports it must not be able to disagree about what "per window" means.
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+#: Every bucket the middleware enforces, in one table.
+#:
+#: ``_bucket_for`` maps a path onto one of these names; the ``GET /platform/rate-limits``
+#: read model reports this table. Keeping the limits in a tuple rather than only in the
+#: ``if`` branches means a screen cannot drift from what the middleware actually does, and
+#: ``tests/test_rate_limit_read_model.py`` pins the two together.
+RATE_LIMIT_BUCKETS: tuple[tuple[str, int], ...] = (
+    ("auth", AUTH_LIMIT),
+    ("auth_session", AUTH_SESSION_LIMIT),
+    ("public", PUBLIC_LIMIT),
+    ("public_telemetry", PUBLIC_TELEMETRY_LIMIT),
+    ("api", DEFAULT_LIMIT),
+)
 API_PREFIX = "/api/v1"
 
 # /auth/* subpaths that hand out or rotate credentials. EVERYTHING under

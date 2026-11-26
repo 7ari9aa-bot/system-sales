@@ -51,6 +51,12 @@ import {
   SubscriptionPanel,
 } from "@/components/settings/BillingPanels";
 import {
+  ConnectedAppsPanel,
+  DeveloperEnvironmentPanel,
+  RateLimitsPanel,
+  WebhooksPanel,
+} from "@/components/settings/DeveloperPanels";
+import {
   SecurityPosturePanel,
   SensitiveSettingsPanel,
   SettingsRestorePanel,
@@ -198,6 +204,16 @@ const SECTION_PAGES = {
   // instrument and no checkout path, so they stay named in the map with the reason instead
   // of opening a screen of dead buttons.
   billing: ["current-plan", "usage", "invoices", "billing-details"],
+  // Section 20. API keys get no tab: no API key table exists in the product, so a page of
+  // keys would be a form writing rows nothing authenticates. The rotation policy that DOES
+  // exist is security.api_key_rotation_days, whose home is section 18.
+  developers: [
+    "webhooks",
+    "connected-apps",
+    "rate-limits",
+    "api-logs",
+    "developer-environment",
+  ],
 };
 
 /** Pages that also publish store policies — the promises the customer agent answers from.
@@ -280,6 +296,13 @@ const PANEL_PAGES = new Set([
   "billing/usage",
   "billing/invoices",
   "billing/billing-details",
+  // Section 20: webhooks, the delivery log and the request ceilings are rows/config the
+  // platform already keeps; connected-apps links to section 12 rather than listing them twice.
+  "developers/webhooks",
+  "developers/connected-apps",
+  "developers/rate-limits",
+  "developers/api-logs",
+  "developers/developer-environment",
 ]);
 
 /** Domains whose keys may be set below the workspace, so the scope picker is worth showing. */
@@ -719,6 +742,25 @@ export default function SettingsSection({ section }) {
           descKey="settings.billing.billingDetails.desc"
           bodyKey="settings.billing.billingDetails.body"
         />
+      )}
+
+      {/* Section 20: developers and API. Every panel reads a row or a constant the platform
+          already keeps; the two pages with nothing behind them (API keys) get no tab and are
+          named in the map with the reason. */}
+      {`${section}/${page}` === "developers/webhooks" && <WebhooksPanel />}
+      {`${section}/${page}` === "developers/connected-apps" && <ConnectedAppsPanel />}
+      {`${section}/${page}` === "developers/rate-limits" && <RateLimitsPanel />}
+      {`${section}/${page}` === "developers/api-logs" && (
+        <GenericListPanel
+          endpoint="/platform/audit-logs?source=integration"
+          titleKey="settings.developers.apiLogs.title"
+          descKey="settings.developers.apiLogs.desc"
+          emptyKey="settings.developers.apiLogs.empty"
+          footerKey="settings.developers.apiLogs.whereToEdit"
+        />
+      )}
+      {`${section}/${page}` === "developers/developer-environment" && (
+        <DeveloperEnvironmentPanel />
       )}
       {/* Section 13: AI and agents. The boundaries are design, not prompt detail, and every row
           below is the AI module's own record — an agent, a knowledge item, a provider policy, an

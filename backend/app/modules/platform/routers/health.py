@@ -311,6 +311,30 @@ async def health(ctx: TenantCtxDep):
     return build_health_response(subsystems)
 
 
+@router.get("/rate-limits")
+async def read_rate_limits(ctx: TenantCtxDep) -> dict[str, object]:
+    """The request limits this deployment enforces, per bucket.
+
+    Section 20's "rate limits" page asks a question the code answers in one place: how many
+    requests a caller may make before a 429. The numbers are module constants in
+    ``app.core.middleware`` (``RATE_LIMIT_BUCKETS``), not tenant settings — a shop cannot
+    raise its own ceiling — so this route REPORTS them rather than offering an editor that
+    would write a row nothing reads.
+
+    ``enforced`` is the middleware's own switch: it is off only when ``ENVIRONMENT`` is
+    exactly ``test``. Reporting it matters, because a page that showed limits while the
+    limiter was disabled would describe a system that is not running.
+    """
+    from app.core.config import get_settings
+    from app.core.middleware import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOW_SECONDS
+
+    return {
+        "enforced": get_settings().environment != "test",
+        "window_seconds": RATE_LIMIT_WINDOW_SECONDS,
+        "buckets": [{"bucket": bucket, "limit": limit} for bucket, limit in RATE_LIMIT_BUCKETS],
+    }
+
+
 @router.get("/diagnostics", response_model=schemas.FullDiagnosticsOut)
 async def system_diagnostics(ctx: TenantCtxDep) -> schemas.FullDiagnosticsOut:
     """Comprehensive system-wide diagnostic suite with root-cause analysis for every subsystem."""

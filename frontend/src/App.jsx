@@ -51,6 +51,7 @@ const Usage = lazy(() => import('@/pages/Usage'));
 // «My Website» — a pointer to the standalone Fihrist Sites platform (Fihrist no longer builds sites).
 const Websites = lazy(() => import('@/pages/Websites'));
 import SettingsLayout from '@/components/settings/SettingsLayout';
+import DeveloperSectionGate from '@/components/settings/DeveloperSectionGate';
 const ProfileSettings = lazy(() => import('@/pages/settings/ProfileSettings'));
 const WorkspaceSettings = lazy(() => import('@/pages/settings/WorkspaceSettings'));
 const MembersSettings = lazy(() => import('@/pages/settings/MembersSettings'));
@@ -218,6 +219,16 @@ const DashboardRoutes = () => (
               answering "what am I paying" in a second place. */}
           <Route path="/settings/billing" element={<Navigate to="/settings/billing/current-plan" replace />} />
           <Route path="/settings/billing/:page" element={<SettingsSection section="billing" />} />
+          {/* Section 20 is role-gated on the ROUTE, not only in the sidebar: the address is
+              guessable and a cashier must not land on the webhook delivery log. */}
+          <Route
+            path="/settings/developers/:page"
+            element={
+              <DeveloperSectionGate>
+                <SettingsSection section="developers" />
+              </DeveloperSectionGate>
+            }
+          />
           <Route path="/settings/members" element={<MembersSettings />} />
           <Route path="/settings/team" element={<TeamSettings />} />
           <Route path="/settings/team/:section" element={<TeamSettings />} />

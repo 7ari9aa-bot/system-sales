@@ -111,6 +111,55 @@ async def list_webhook_endpoints(ctx: TenantContext = Depends(require_permission
     ]
 
 
+_DELIVERY_STATUSES = frozenset({"queued", "delivered", "failed", "dead"})
+
+
+@webhooks_router.get("/deliveries")
+async def list_webhook_deliveries(
+    ctx: TenantContext = Depends(require_permission("settings:read")),
+    status: str | None = None,
+    limit: int = 25,
+    offset: int = 0,
+):
+    """What this tenant's endpoints actually received, newest first.
+
+    Declared before the parameterised routes on purpose. Today they differ by method, so
+    nothing shadows anything — but FastAPI matches in declaration order, and the day someone
+    adds ``GET /webhook-endpoints/{endpoint_id}`` a static ``/deliveries`` declared after it
+    would be read as an id. The payload is never returned: it is the event body the caller's
+    own systems produced, and echoing it would put customer data on a settings page.
+    """
+    if status is not None and status not in _DELIVERY_STATUSES:
+        raise ValidationError(
+            "unknown delivery status",
+            details={"status": status, "allowed": sorted(_DELIVERY_STATUSES)},
+        )
+    if limit < 1 or limit > 100:
+        raise ValidationError("limit must be between 1 and 100", details={"limit": limit})
+    if offset < 0:
+        raise ValidationError("offset must not be negative", details={"offset": offset})
+    rows = await WebhookService.list_deliveries(
+        ctx.session, ctx.tenant_id, limit=limit, offset=offset, status=status
+    )
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "webhook_id": str(row.webhook_id),
+                "event_name": row.event_name,
+                "status": row.status,
+                "attempts": row.attempts,
+                "response_code": row.response_code,
+                "last_error": row.last_error,
+                "next_retry_at": row.next_retry_at.isoformat() if row.next_retry_at else None,
+                "delivered_at": row.delivered_at.isoformat() if row.delivered_at else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+    }
+
+
 @webhooks_router.post("/{endpoint_id}/rotate", response_model=WebhookEndpointRotated)
 async def rotate_webhook_secret(
     endpoint_id: uuid.UUID,
