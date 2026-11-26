@@ -1,7 +1,7 @@
 """merge the pricing/offers line with the w7a wiring line
 
 Revision ID: fe2026112615
-Revises: fe2026112614, f8a1c2d3e4b5
+Revises: fe2026112614, f8a1c2d3e4b5, fe2026112609
 Create Date: 2026-11-26
 
 The branch that built sections 18-20 also merged main, which had added f8a1c2d3e4b5 on its own
@@ -17,7 +17,7 @@ migrations and then lands here; a fresh database runs both lines and joins them 
 from collections.abc import Sequence
 
 revision: str = "fe2026112615"
-down_revision: tuple[str, str] = ("fe2026112614", "f8a1c2d3e4b5")
+down_revision: tuple[str, str, str] = ("fe2026112614", "f8a1c2d3e4b5", "fe2026112609")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
