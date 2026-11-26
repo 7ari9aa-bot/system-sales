@@ -355,8 +355,22 @@ async def relay_env(engine):
                 await s.execute(_INSERT_OUTBOX_SQL, values)
         return ids
 
+    async def purge() -> None:
+        """Empty the outbox before staging.
+
+        The claim has no tenant predicate — one relay drains every tenant — so a
+        test asserting a global invariant must own EVERY row, not only the
+        statuses it stages. Clearing just 'pending'/'publishing' left earlier
+        tests' rows behind: the reclaim requeued their 'failed' rows and the
+        drain published a FOREIGN event as bus call 1 (CI published_ids held an
+        id the test never staged), shifting the call numbering the die-on-call
+        tests depend on.
+        """
+        async with factory() as s, s.begin():
+            await s.execute(text("DELETE FROM outbox_events"))
+
     try:
-        yield {"tenant_id": tenant_id, "stage": stage, "factory": factory}
+        yield {"tenant_id": tenant_id, "stage": stage, "factory": factory, "purge": purge}
     finally:
         async with factory() as clean, clean.begin():
             if made_ids:
@@ -499,13 +513,12 @@ async def test_relay_that_dies_mid_batch_does_not_strand_its_other_rows(
     # The claim takes the OLDEST pending row with no tenant predicate, and a
     # shared CI database holds outbox residue from earlier tests whose own
     # cleanups only covered rolled-back transactions. Residue claimed first
-    # consumes bus call 1 and flips the die-on-call numbering, so clear the
-    # reclaimable statuses before staging — CI runs one worker, so nothing
-    # concurrent owns these rows.
+    # consumes bus call 1 and flips the die-on-call numbering, so clear EVERY
+    # row before staging: the drain's reclaim requeues leftover 'failed' rows
+    # and the claim has no tenant predicate, so a leftover event is published
+    # as this test's first call (observed in CI on 7578bd8).
     async with factory() as purge, purge.begin():
-        await purge.execute(
-            text("DELETE FROM outbox_events WHERE status IN ('pending', 'publishing')")
-        )
+        await purge.execute(text("DELETE FROM outbox_events"))
     [first, second] = await relay_env["stage"](2, age_seconds=60)
 
     bus = RecordingBus()
@@ -560,6 +573,7 @@ async def test_two_concurrent_relays_never_work_the_same_row(
     ``created_at``, so against a backlog of rows older than the lease it blocks
     on (and after the first batch commit, steals) A's in-flight rows.
     """
+    await relay_env["purge"]()
     ids = await relay_env["stage"](2, age_seconds=900)  # 15 min: past any lease
 
     bus_a = RecordingBus()
@@ -718,6 +732,7 @@ async def test_no_committed_row_is_left_pending_at_the_attempt_cap(
     definition, so the assertion is the invariant itself, not a behavior.
     """
     factory = relay_env["factory"]
+    await relay_env["purge"]()
     at_cap = await relay_env["stage"](1, age_seconds=900, status="pending", attempts=MAX_ATTEMPTS)
     publishing_at_cap = await relay_env["stage"](
         1, age_seconds=900, status="publishing", attempts=MAX_ATTEMPTS
