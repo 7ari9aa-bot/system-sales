@@ -280,7 +280,8 @@ class SettingsService:
             latest = await self._latest_history_id(key, scope_enum.value, scope_id)
             if latest is not None and latest != expected_history_id:
                 raise ConflictError(
-                    f"{key}: settings changed by another user; reload and try again"
+                    f"{key}: settings changed by another user; reload and try again",
+                    details={"conflicting_keys": [key]},
                 )
         if existing is not None:
             if existing.value == new_value:
@@ -415,6 +416,20 @@ class SettingsService:
             self._authorize(defn, scope_enum, scope_id, user_id, permissions)
             _validate(defn, value)
             checked[key] = defn
+
+        # The write loop raises on the FIRST stale key, so a save that lost two keys made the
+        # owner fix one, reload and hit a second 409 for the next. One read of the batch names
+        # every key that moved, and the per-key check inside `set` stays as the race guard.
+        if expected_history_ids:
+            expected = {k: expected_history_ids[k] for k in checked if expected_history_ids.get(k)}
+            if expected:
+                latest = await self._latest_history_ids(list(expected), scope_enum.value, scope_id)
+                stale = sorted(k for k, h in expected.items() if latest.get(k) not in (None, h))
+                if stale:
+                    raise ConflictError(
+                        "settings changed by another user: " + ", ".join(stale),
+                        details={"conflicting_keys": stale},
+                    )
 
         results = []
         for key, value in settings.items():

@@ -273,9 +273,20 @@ export default function UnifiedSettings() {
         <div role="alert" className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-800">
           <RefreshCw className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1">
-            {isAr
-              ? "حد عدّل هذه الإعدادات قبلك. حدّث الصفحة لمشاهدة القيم الجديدة."
-              : "Someone edited these settings before you. Refresh to see the latest values."}
+            {(() => {
+              // The server names the keys that moved. Blaming the whole form made the owner
+              // re-check every field; naming them makes the reload decision an informed one.
+              const keys = s.conflict.keys || [];
+              const list = keys.join(isAr ? "، " : ", ");
+              if (!keys.length) {
+                return isAr
+                  ? "حد عدّل هذه الإعدادات قبلك. حدّث الصفحة لمشاهدة القيم الجديدة."
+                  : "Someone edited these settings before you. Refresh to see the latest values.";
+              }
+              return isAr
+                ? `حد عدّل ${list} قبلك. حدّث الصفحة لمشاهدة القيم الجديدة.`
+                : `Someone changed ${list} before you. Refresh to see the latest values.`;
+            })()}
           </span>
           <Button
             size="sm"
