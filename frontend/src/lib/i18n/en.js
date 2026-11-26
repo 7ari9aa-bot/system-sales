@@ -2176,4 +2176,11 @@ export default {
   "settings.developers.apiLogs.desc": "Audited actions with an integration source: what an outside system did rather than a person.",
   "settings.developers.apiLogs.empty": "No actions recorded from an external integration yet.",
   "settings.developers.apiLogs.whereToEdit": "The row is written by the action itself with its source; this page filters the audit log on the integration source.",
+
+  "settings.customers.templates.title": "Reply templates",
+  "settings.customers.templates.desc": "The templates the agent can actually send: their name, language and state, from the messages module itself.",
+  "settings.customers.templates.empty": "No reply templates yet.",
+  "settings.customers.templates.loading": "Loading templates…",
+  "settings.customers.templates.loadError": "Could not load the templates.",
+  "settings.customers.templates.whereToEdit": "The wording is written and edited in the reply template editor; this page reads the templates as the agent sees them.",
 };

@@ -2176,4 +2176,11 @@ export default {
   "settings.developers.apiLogs.desc": "الإجراءات المسجّلة بمصدر تكامل: اللي حصل من نظام خارجي مش من موظف.",
   "settings.developers.apiLogs.empty": "لسه مفيش إجراءات مسجّلة من تكامل خارجي.",
   "settings.developers.apiLogs.whereToEdit": "الصف بيتكتب من الإجراء نفسه بمصدره، والصفحة دي بتفلتر على مصدر التكامل في سجل التدقيق.",
+
+  "settings.customers.templates.title": "قوالب الرد",
+  "settings.customers.templates.desc": "القوالب اللي الوكيل بيقدر يرسلها فعلًا: اسمها ولغتها وحالتها، من وحدة الرسائل نفسها.",
+  "settings.customers.templates.empty": "لسه مفيش قوالب رد.",
+  "settings.customers.templates.loading": "بنحمّل القوالب…",
+  "settings.customers.templates.loadError": "مقدرناش نحمّل القوالب.",
+  "settings.customers.templates.whereToEdit": "الصياغة بتتكتب وتتعدّل من محرّر قوالب الرد؛ الصفحة دي بتقرا القوالب زي ما الوكيل شايفها.",
 };
