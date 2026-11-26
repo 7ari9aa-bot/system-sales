@@ -170,6 +170,29 @@ def _rls_statements() -> list[str]:
 # integrations.config never leave the table. search_path is pinned — mandatory
 # for SECURITY DEFINER. Kept identical to the LATEST migration that
 # redefines it (fe2026101711, which added facebook) so an already-provisioned database converges.
+# Invitation accept runs before the caller has a tenant, and `invitations` is
+# FORCE RLS with only `tenant_isolation` — so the token possession read lives in
+# a function (migration fe2026112609) instead of a second permissive policy.
+# Kept byte-identical to that migration's function: it runs in either order.
+INVITATION_TENANT_FN_SQL = """
+CREATE OR REPLACE FUNCTION public.invitation_tenant_by_token(p_token text)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+    SELECT i.tenant_id
+      FROM public.invitations i
+     WHERE i.token = p_token
+     LIMIT 1
+$fn$;
+"""
+
+INVITATION_TENANT_FN_REVOKE = (
+    "REVOKE ALL ON FUNCTION public.invitation_tenant_by_token(text) FROM PUBLIC;"
+)
+
 CHANNEL_TENANT_FN_SQL = """
 CREATE OR REPLACE FUNCTION public.resolve_channel_tenant(p_provider text, p_key text)
 RETURNS uuid
@@ -804,6 +827,11 @@ async def main() -> None:
         await conn.execute(META_DELETION_STATUS_FN_REVOKE)
         await conn.execute(
             "GRANT EXECUTE ON FUNCTION public.meta_deletion_status(uuid) TO sales_app"
+        )
+        await conn.execute(INVITATION_TENANT_FN_SQL)
+        await conn.execute(INVITATION_TENANT_FN_REVOKE)
+        await conn.execute(
+            "GRANT EXECUTE ON FUNCTION public.invitation_tenant_by_token(text) TO sales_app"
         )
         # The ETA e-receipt callback key -> store lookup is created by migration fe2026112012.
         # That migration only grants it when sales_app already exists, which on a database built

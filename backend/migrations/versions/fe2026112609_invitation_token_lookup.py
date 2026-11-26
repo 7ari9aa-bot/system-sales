@@ -10,10 +10,11 @@ tenant table carrying a second policy — it is the same shape the phase-9 sweep
 
 The possession read belongs in a function, not in a policy: presenting the
 32-char secret grants the caller the *identity* of one row, and nothing else.
-``invitation_by_token`` runs as the table owner (RLS bypassed inside the
-function), returns ONLY ``id`` and ``tenant_id`` — never the email, role or
-status — and the endpoint then binds that tenant and reads the row through the
-normal ``tenant_isolation`` path. Same capability as before, no second policy.
+``invitation_tenant_by_token`` runs as the table owner (RLS bypassed inside the
+function) and returns ONLY the tenant the token belongs to — never the email,
+role or status — and the endpoint then binds that tenant and reads the row
+through the normal ``tenant_isolation`` path. Same capability as before, no
+second policy.
 
 Revision ID: fe2026112609
 Revises: fe2026112608
@@ -30,14 +31,14 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _INVITATION_TOKEN_FN = """
-CREATE OR REPLACE FUNCTION public.invitation_by_token(p_token text)
-RETURNS TABLE (id uuid, tenant_id uuid)
+CREATE OR REPLACE FUNCTION public.invitation_tenant_by_token(p_token text)
+RETURNS uuid
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
-    SELECT i.id, i.tenant_id
+    SELECT i.tenant_id
       FROM public.invitations i
      WHERE i.token = p_token
      LIMIT 1
@@ -45,14 +46,14 @@ $fn$;
 """
 
 _INVITATION_TOKEN_FN_REVOKE = (
-    "REVOKE ALL ON FUNCTION public.invitation_by_token(text) FROM PUBLIC;"
+    "REVOKE ALL ON FUNCTION public.invitation_tenant_by_token(text) FROM PUBLIC;"
 )
 
 _INVITATION_TOKEN_FN_GRANT = """
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
-        GRANT EXECUTE ON FUNCTION public.invitation_by_token(text) TO sales_app;
+        GRANT EXECUTE ON FUNCTION public.invitation_tenant_by_token(text) TO sales_app;
     END IF;
 END
 $$;
@@ -71,4 +72,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP FUNCTION IF EXISTS public.invitation_by_token(text)")
+    op.execute("DROP FUNCTION IF EXISTS public.invitation_tenant_by_token(text)")

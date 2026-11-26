@@ -139,30 +139,26 @@ class TenantService:
         # caller has a tenant, so a plain SELECT would match no row and every
         # invitation would answer "not found". Presenting the 32-char secret is
         # the whole authorization: the SECURITY DEFINER lookup returns ONLY the
-        # row's id and tenant, never its email, role or status, and the row is
-        # then read through the canonical tenant policy once the tenant is bound.
-        # (fe2026112609 — this replaced the permissive policy fe2026112607 added
-        # beside tenant_isolation, which OR-opened the table.)
-        found = (
-            (
-                await session.execute(
-                    sa.text("SELECT id, tenant_id FROM public.invitation_by_token(:token)"),
-                    {"token": token},
-                )
+        # tenant the token belongs to, never the email, role or status, and the
+        # row is then read through the canonical tenant policy once that tenant
+        # is bound. (fe2026112609 — this replaced the permissive policy
+        # fe2026112607 added beside tenant_isolation, which OR-opened the table.)
+        tenant_id = (
+            await session.execute(
+                sa.text("SELECT public.invitation_tenant_by_token(:token)"),
+                {"token": token},
             )
-            .mappings()
-            .first()
-        )
-        if found is None:
+        ).scalar_one_or_none()
+        if tenant_id is None:
             raise NotFoundError("invitation not found")
-        # The row is proven ours; bind its tenant so the read below and the
+        # The token is proven ours; bind its tenant so the read below and the
         # accept's UPDATE and membership INSERT run inside a tenant RLS context.
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-            {"tenant_id": str(found["tenant_id"])},
+            {"tenant_id": str(tenant_id)},
         )
         invitation = (
-            await session.execute(select(Invitation).where(Invitation.id == found["id"]))
+            await session.execute(select(Invitation).where(Invitation.token == token))
         ).scalar_one_or_none()
         if invitation is None:
             raise NotFoundError("invitation not found")
