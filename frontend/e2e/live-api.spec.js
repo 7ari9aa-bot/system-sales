@@ -2564,9 +2564,10 @@ test("print settings on the screen are saved for real: the prefix the owner type
     "the prefix the receipt prints is on the screen",
   ).toHaveValue("INV");
   await prefix.fill("LIVE");
-  await main.getByRole("button", { name: "حفظ", exact: true }).click();
-  // The center's own wording ("تم الحفظ"); the old wrapper said "تم حفظ".
-  await expect(main.getByText(/تم الحفظ|تم حفظ/)).toBeVisible({ timeout: 20_000 });
+  // The whole center follows the tenant's UI language, and this suite's tenant renders English:
+  // the button is "Save" and the notice "Saved", where the wrapper it replaced said Arabic.
+  await main.getByRole("button", { name: /^(حفظ|Save)$/ }).click();
+  await expect(main.getByText(/تم الحفظ|تم حفظ|^Saved$/)).toBeVisible({ timeout: 20_000 });
   // /settings/effective answers a MAP keyed by setting key, each value a resolved setting.
   const stored = await api("GET", "/settings/effective?domain=print");
   expect(

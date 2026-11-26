@@ -49,7 +49,7 @@ from app.core.observability import (
 )
 from app.core.profit_report import router as profit_report_router
 from app.core.redis import close_redis, get_redis
-from app.core.routing import CommitBeforeResponseRoute
+from app.core.routing import CommitBeforeResponseMiddleware, CommitBeforeResponseRoute
 from app.core.season_markdown import router as season_markdown_router
 from app.core.sell_through_report import router as sell_through_router
 from app.core.shop_type import router as shop_type_router
@@ -466,6 +466,10 @@ def create_app() -> FastAPI:
     # must short-circuit before they consume the rate budget (P6). RequestID
     # sits OUTSIDE the body cap so its 413 (emitted before any route runs) still
     # carries the request id the unified error contract promises.
+    # INNERMOST, closest to the router: it must see the session ``get_db`` published and commit
+    # before the first byte of the body leaves the process. See the class docstring for why the
+    # route-class form alone reached no endpoint.
+    app.add_middleware(CommitBeforeResponseMiddleware)
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
