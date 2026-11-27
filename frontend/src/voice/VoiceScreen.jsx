@@ -5,6 +5,8 @@
  */
 import React from "react";
 
+import VoiceOrb from "./orb/VoiceOrb";
+
 const RING = "voice-ring";
 const BLOB = "voice-blob";
 
@@ -50,6 +52,7 @@ export default function VoiceScreen({
   onClose = () => {},
   onInterrupt = () => {},
   labels = {},
+  meter = null,
 }) {
   const elapsed = useElapsed(open && state === "live");
   const view = screenView({ state, message, labels });
@@ -106,28 +109,11 @@ export default function VoiceScreen({
       </div>
 
       <div className="relative flex flex-1 flex-col items-center justify-center gap-8 px-6">
-        <div className="relative grid h-64 w-64 place-items-center sm:h-72 sm:w-72">
-          {/* حلقة متحركة حوالين الدايرة */}
-          <div
-            className={`${RING} voice-ring absolute inset-0 rounded-full`}
-            style={{
-              background: "conic-gradient(from 0deg, rgba(16,185,129,0), rgba(16,185,129,.55), rgba(99,102,241,.55), rgba(16,185,129,0))",
-              animation: `${RING} 6s linear infinite`,
-              mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px))",
-              WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px))",
-            }}
-          />
-          <div
-            className="voice-core absolute inset-4 rounded-full border border-white/10 bg-white/5 backdrop-blur-xl"
-            style={{ animation: state === "live" ? "voice-breathe 3.2s ease-in-out infinite" : "none" }}
-          />
-          <div className="absolute inset-10 rounded-full bg-gradient-to-br from-emerald-400/30 via-white/5 to-indigo-500/30 blur-md" />
-          <div className="relative grid h-24 w-24 place-items-center rounded-full bg-gradient-to-br from-emerald-400 to-indigo-500 shadow-[0_0_80px_-10px_rgba(16,185,129,.9)]">
-            <span className="text-3xl" aria-hidden>
-              {view.failed ? "!" : "●"}
-            </span>
-          </div>
-        </div>
+        <VoiceOrb
+          state={state}
+          meter={meter}
+          className="h-64 w-64 sm:h-72 sm:w-72"
+        />
 
         <div className="text-center">
           <p data-testid="voice-screen-state" className="text-lg font-semibold">

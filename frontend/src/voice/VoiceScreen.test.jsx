@@ -70,4 +70,17 @@ describe("VoiceScreen", () => {
     expect(formatElapsed(0)).toBe("00:00");
     expect(formatElapsed(75)).toBe("01:15");
   });
+  it("الكرة ثلاثية الأبعاد هي قلب الشاشة، وبتاخد حالتها من المكالمة", () => {
+    const live = renderToStaticMarkup(<VoiceScreen open state="live" />);
+    expect(live).toContain('data-testid="voice-orb"');
+    expect(live).toContain('data-mode="thinking"');
+
+    const failed = renderToStaticMarkup(<VoiceScreen open state="failed" />);
+    expect(failed).toContain('data-mode="failed"');
+
+    // العدّاد بيوصل للكرة: صوت المساعد العالي معناها إنه هو اللي بيتكلم.
+    const meter = { read: () => ({ mic: 0, assistant: 0.8 }) };
+    const speaking = renderToStaticMarkup(<VoiceScreen open state="live" meter={meter} />);
+    expect(speaking).toContain('data-testid="voice-orb"');
+  });
 });

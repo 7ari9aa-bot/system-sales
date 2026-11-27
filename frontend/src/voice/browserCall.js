@@ -1,4 +1,4 @@
-/** مكالمة صوت حقيقية من المتصفح: صوتك PCM رايح للسيرفر، وصوت المساعد راجع يتشغّل.
+/**
  *
  *  المتصفح ماسكش مفتاح الـgateway: السيرفر هو اللي فاتح سوكت GPT-Live، والمتصفح بياخد
  *  تذكرة عمرها 60 ثانية لجلسة واحدة بس. التذكرة بتتحوّل مرة واحدة، فحتى لو اتسربت مش
@@ -8,6 +8,7 @@
  *  شبكة ولا مايك حقيقي.
  */
 import { api, apiUrl } from "../lib/api";
+import { float32Level, pcm16Level } from "./orb/levels";
 
 export const STREAM_STATE = {
   IDLE: "idle",
@@ -119,7 +120,7 @@ export function createMicSource({ win = typeof window !== "undefined" ? window :
   let stream = null;
   let node = null;
 
-  async function start(onChunk) {
+  async function start(onChunk, onLevel = () => {}) {
     if (!win?.navigator?.mediaDevices?.getUserMedia) throw new Error("no microphone");
     stream = await win.navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -134,6 +135,7 @@ export function createMicSource({ win = typeof window !== "undefined" ? window :
 
     const flush = (samples) => {
       const pcm = floatToPcm16(resampleTo(samples, rate, 24000));
+      onLevel(float32Level(samples));
       onChunk(pcm.buffer);
     };
 
@@ -232,6 +234,7 @@ export async function startBrowserCall({
   onState = () => {},
   onSocket = () => {},
   onAudio = () => {},
+  onLevel = () => {},
   onNeedsGesture = () => {},
   openTimeoutMs = 8000,
 } = {}) {
@@ -304,6 +307,8 @@ export async function startBrowserCall({
       player.play(event.data);
     } finally {
       onAudio({ frames: audio.frames, bytes: audio.bytes });
+      // نفس الحزمة اللي بتتسمع هي اللي بتنوّر الكرة: مستوى الصوت الحقيقي مش مؤقّت.
+      onLevel({ assistant: pcm16Level(event.data) });
     }
   };
 
@@ -349,9 +354,12 @@ export async function startBrowserCall({
   }
 
   try {
-    await mic.start((chunk) => {
-      if (socket.readyState === 1) socket.send(chunk);
-    });
+    await mic.start(
+      (chunk) => {
+        if (socket.readyState === 1) socket.send(chunk);
+      },
+      (level) => onLevel({ mic: level })
+    );
   } catch {
     setState(STREAM_STATE.FAILED);
     cleanup();

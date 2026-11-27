@@ -10,6 +10,7 @@ import { ArrowUp, AudioLines, Mic, Plus, Square, VolumeX } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { openVoiceSession, startBrowserCall, STREAM_STATE } from "@/voice/browserCall";
 import VoiceScreen from "@/voice/VoiceScreen";
+import { createLevelMeter } from "@/voice/orb/levels";
 import { createCallController } from "./callControl";
 import { ATTACH_EXTENSIONS, checkAttachment, mergeAttachment } from "./fileAttach";
 import {
@@ -58,6 +59,11 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   const threadIdRef = React.useRef(threadId);
   threadIdRef.current = threadId;
 
+  // عدّاد صوت واحد للمكالمة: المايك وصوت المساعد بيكتبوا فيه، والكرة بتقرأ منه كل فريم.
+  // مش state — الصوت بيوصل 20 مرة في الثانية، وإعادة رسم الشجرة مع كل حزمة هتقتل الأداء.
+  const meterRef = React.useRef(null);
+  if (!meterRef.current) meterRef.current = createLevelMeter();
+
   if (!controllerRef.current) {
     controllerRef.current = createCallController({
       openSession: () =>
@@ -70,6 +76,11 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
           onAudio: ({ frames }) => {
             setMicPrompt(false);
             setAudioNote(`صوت المساعد: ${frames} حزمة`);
+          },
+          onLevel: (levels) => {
+            const meter = meterRef.current;
+            if (levels?.assistant != null) meter.setAssistant(levels.assistant);
+            if (levels?.mic != null) meter.setMic(levels.mic);
           },
           onNeedsGesture: () => setMicPrompt(true),
         }),
@@ -208,6 +219,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         open={screenOpen}
         state={callState}
         message={callError ?? ""}
+        meter={meterRef.current}
         note={micPrompt ? "اضغط على الشاشة لتشغيل الميكروفون" : audioNote || socketNote}
         onGesture={
           micPrompt
