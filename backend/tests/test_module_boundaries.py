@@ -350,7 +350,13 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # session ask for the same permission the text assistant asks for. It is the voice module's only
 # cross-module edge, and it is the right direction (voice -> identity, never identity -> voice).
 # Recorded as a deliberate ratchet step rather than absorbed silently.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 339
+# 339 -> 341: the voice module's conversation wiring (dc95b1f, 8424e17) imports the chat module in
+# two places and nowhere else: transcript_sync writes both sides of a spoken turn into
+# ai_chat_messages (the conversation stays the single record), and session_thread resolves or opens
+# the thread a voice session belongs to. Both edges point voice -> ai, which is the direction the
+# architecture asks for, and neither reaches ai internals: they use chat.service and the message
+# model, the same surfaces the text route uses. Recorded as a deliberate ratchet step.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 341
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

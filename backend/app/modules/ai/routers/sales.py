@@ -23,6 +23,8 @@ from app.modules.ai.agents.sales_intelligence.agent import (
     FindingOut,
     FindingStoredOut,
 )
+from app.modules.ai.assistant.contracts import TEXT, AssistantTurnInput
+from app.modules.ai.assistant.service import AssistantTurnService
 from app.modules.ai.chat import service as chat_service
 from app.modules.ai.chat.schemas import (
     MessageOut as SalesChatMessageOut,
@@ -40,7 +42,7 @@ from app.modules.ai.chat.schemas import (
 from app.modules.ai.chat.schemas import (
     ThreadUpdateRequest as SalesChatThreadUpdateRequest,
 )
-from app.modules.ai.chat.turns import retry_chat_turn, run_chat_turn, turn_session
+from app.modules.ai.chat.turns import retry_chat_turn, turn_session
 from app.modules.ai.routers._deps import AnalyticsAICtx, AnalyticsCtx
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -261,8 +263,16 @@ async def send_sales_chat_message(
             )
             if reply is not None:
                 return SalesChatMessageOut.model_validate(reply)
+        # One turn entry point, shared with the voice layer: the carrier is a
+        # field on the turn, not a second path with its own brain.
+        turn = await AssistantTurnService().run(
+            session,
+            ctx,
+            thread,
+            AssistantTurnInput(tenant_id=ctx.tenant_id, thread_id=thread.id, modality=TEXT),
+        )
         # Serialised INSIDE the session: the row is detached once it closes.
-        return SalesChatMessageOut.model_validate(await run_chat_turn(session, ctx, thread))
+        return SalesChatMessageOut.model_validate(turn.message)
 
 
 @router.post(
