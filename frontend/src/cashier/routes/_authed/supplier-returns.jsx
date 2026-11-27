@@ -21,6 +21,7 @@ import {
 } from "@/cashier/api/purchasingAdapter";
 import { useWorkingSession } from "@/cashier/api/useShifts";
 import { useCatalog } from "@/cashier/api/usePosSale";
+import { useWorkingSession } from "@/cashier/api/useShifts";
 import {
   useAcceptSupplierReturn,
   useCreateSupplierReturn,
