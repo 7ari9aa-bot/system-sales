@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Globe2, ArrowRight, Check } from 'lucide-react';
-import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG } from '@/lib/markets';
+import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG, isCountryLive } from '@/lib/markets';
 import { detectCountrySlug, rememberCountry } from '@/lib/country-detection';
 import { useCountry } from '@/lib/CountryContext';
 import { buildLocalizedRoute } from '@/lib/public-seo-routes.mjs';
@@ -250,4 +250,49 @@ export function RootRedirect() {
       </p>
     </div>
   );
+}
+
+
+/**
+ * Keeps a visitor on their own market's pages, whatever address they landed on.
+ *
+ * `/` already redirects by routing (307). This covers the rest: someone
+ * following a shared link to /eg/ar/pricing while sitting in Riyadh should see
+ * Saudi pricing, not Egyptian. It only acts when the detected market is LIVE and
+ * different — Egypt is the only live market today, so it is a no-op until
+ * another one launches — and it fires at most once per session so a wrong geo
+ * answer cannot start a redirect loop.
+ */
+export function MarketAutoSwitch() {
+  const { country, locale, basePath } = useCountry();
+
+  useEffect(() => {
+    let alive = true;
+    let alreadySwitched = false;
+    try {
+      alreadySwitched = window.sessionStorage.getItem('fihrist:market-switched') === '1';
+    } catch {
+      alreadySwitched = false;
+    }
+    if (alreadySwitched) return undefined;
+
+    detectCountrySlug()
+      .then((slug) => {
+        if (!alive || !slug || slug === country || !isCountryLive(slug)) return;
+        try {
+          window.sessionStorage.setItem('fihrist:market-switched', '1');
+        } catch {
+          /* private mode: the path check still prevents a loop below */
+        }
+        if (window.location.pathname.startsWith(`/${slug}/`)) return;
+        window.location.replace(`/${slug}/${locale}${basePath === '/' ? '' : basePath}`);
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+    };
+  }, [country, locale, basePath]);
+
+  return null;
 }

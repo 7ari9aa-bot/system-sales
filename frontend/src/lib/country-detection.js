@@ -39,22 +39,41 @@ export function rememberCountry(slug) {
   if (slug && isCountryLive(slug)) writeCache(slug);
 }
 
-async function fetchCountryCode() {
+async function fetchJson(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(apiUrl('/public/geo'), {
+    const response = await fetch(url, {
       signal: controller.signal,
       headers: { accept: 'application/json' },
     });
     if (!response.ok) return null;
-    const body = await response.json();
-    return typeof body?.country === 'string' ? body.country.toLowerCase() : null;
+    return await response.json();
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Two sources, cheapest first.
+ *
+ * 1. Our own `/public/geo`, which reads the edge's country header. It is the
+ *    only source that never leaves our stack — but Vercel does not forward the
+ *    geo header through this project's API rewrite, so today it answers null.
+ * 2. A keyless public lookup by IP, used only when (1) has nothing to say.
+ *    That means one third-party request per session at most, and none at all
+ *    once the answer is cached.
+ */
+async function fetchCountryCode() {
+  const own = await fetchJson(apiUrl('/public/geo'));
+  if (typeof own?.country === 'string' && own.country.length === 2) {
+    return own.country.toLowerCase();
+  }
+  const who = await fetchJson('https://ipwho.is/');
+  const code = who?.country_code;
+  return typeof code === 'string' && code.length === 2 ? code.toLowerCase() : null;
 }
 
 /**
