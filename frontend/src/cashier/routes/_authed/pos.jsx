@@ -133,7 +133,7 @@ function PosScreen({ user, session }) {
     const fromPct = (subtotalNumber * (Number(invoiceDiscountPct) || 0)) / 100;
     const amount = Math.min(room, +(fromPct + (Number(invoiceDiscountAmt) || 0)).toFixed(2));
     sale.setInvoiceDiscount(amount > 0 ? String(amount) : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [invoiceDiscountPct, invoiceDiscountAmt, subtotalNumber, lineDiscountsTotal]);
 
   const finalTotals = {

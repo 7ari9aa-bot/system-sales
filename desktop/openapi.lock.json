@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 715,
-    "sha256": "adcc557eea657e6548042ad571389354d1fdbf342963a17cba0201f66a70dee8",
-    "typed_operations": 398
+    "operations": 722,
+    "sha256": "422f12f5964804f4447eeca0cf1967b86fe613c51a1bb3c719630df114c859ff",
+    "typed_operations": 405
   },
   "spec": {
     "components": {
@@ -4423,6 +4423,17 @@
           "title": "ChannelPreference",
           "type": "object"
         },
+        "ChannelType": {
+          "enum": [
+            "web_voice",
+            "chat_voice",
+            "pstn",
+            "whatsapp_voice",
+            "mobile"
+          ],
+          "title": "ChannelType",
+          "type": "string"
+        },
         "ChosenRetentionPolicyOut": {
           "description": "The row a retention write just recorded.",
           "properties": {
@@ -4470,52 +4481,6 @@
             "period_end"
           ],
           "title": "ClosePeriodRequest",
-          "type": "object"
-        },
-        "CloseSessionRequest": {
-          "additionalProperties": false,
-          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.\n\nA shop that takes card, wallet or transfer counts those too: ``counted_methods`` carries what\nwas actually in each terminal, and the close stores one reconciliation row per method. The\nserver refuses a missing method when the shop asked to settle methods at close.",
-          "properties": {
-            "counted_cash": {
-              "anyOf": [
-                {
-                  "pattern": "^\\d+(\\.\\d{1,2})?$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Counted Cash"
-            },
-            "counted_methods": {
-              "anyOf": [
-                {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Counted Methods"
-            },
-            "variance_reason": {
-              "anyOf": [
-                {
-                  "maxLength": 500,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Variance Reason"
-            }
-          },
-          "title": "CloseSessionRequest",
           "type": "object"
         },
         "ColourIn": {
@@ -21759,6 +21724,55 @@
           "title": "SerialsRegisterRequest",
           "type": "object"
         },
+        "SessionResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "last_completed_turn": {
+              "title": "Last Completed Turn",
+              "type": "integer"
+            },
+            "persona": {
+              "title": "Persona",
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Scopes",
+              "type": "array"
+            },
+            "session_id": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "trace_id": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "session_id",
+            "tenant_id",
+            "persona",
+            "state",
+            "scopes",
+            "trace_id",
+            "last_completed_turn"
+          ],
+          "title": "SessionResponse",
+          "type": "object"
+        },
         "SetCreate": {
           "description": "Body for ``POST /evidence/sets``.",
           "properties": {
@@ -22549,6 +22563,29 @@
             "status"
           ],
           "title": "SiteStatusIn",
+          "type": "object"
+        },
+        "StartSessionRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "$ref": "#/components/schemas/ChannelType",
+              "default": "web_voice"
+            },
+            "client_key": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Client Key"
+            }
+          },
+          "title": "StartSessionRequest",
           "type": "object"
         },
         "StatementOut": {
@@ -26361,6 +26398,47 @@
           "title": "TransferShipRequest",
           "type": "object"
         },
+        "TransportResponse": {
+          "additionalProperties": false,
+          "description": "Everything the client needs to join, and nothing about the shop behind the session.",
+          "properties": {
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "identity": {
+              "title": "Identity",
+              "type": "string"
+            },
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "room": {
+              "title": "Room",
+              "type": "string"
+            },
+            "token": {
+              "title": "Token",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url",
+            "token",
+            "room",
+            "identity",
+            "expires_at"
+          ],
+          "title": "TransportResponse",
+          "type": "object"
+        },
         "TrialBalanceItem": {
           "properties": {
             "account_id": {
@@ -29196,6 +29274,52 @@
           "title": "ReturnRequest",
           "type": "object"
         },
+        "app__modules__pos__router__CloseSessionRequest": {
+          "additionalProperties": false,
+          "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.\n\nA shop that takes card, wallet or transfer counts those too: ``counted_methods`` carries what\nwas actually in each terminal, and the close stores one reconciliation row per method. The\nserver refuses a missing method when the shop asked to settle methods at close.",
+          "properties": {
+            "counted_cash": {
+              "anyOf": [
+                {
+                  "pattern": "^\\d+(\\.\\d{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Cash"
+            },
+            "counted_methods": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted Methods"
+            },
+            "variance_reason": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variance Reason"
+            }
+          },
+          "title": "CloseSessionRequest",
+          "type": "object"
+        },
         "app__modules__pos__router__ReturnRequest": {
           "description": "A line-level return of a POS sale (ERPNext's POS return document) AND its refund.\n\nThe money goes back across the tenders the sale actually collected: cash first, then the rest\nin the order they were taken. ``refund`` overrides that with explicit per-method amounts (give\nthe notes back even though the card was charged); ``refund_method`` refunds the whole return on\none method. Send neither to use the shop's policy.",
           "properties": {
@@ -29269,6 +29393,22 @@
             "lines"
           ],
           "title": "ReturnRequest",
+          "type": "object"
+        },
+        "app__modules__voice__routers__sessions__CloseSessionRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "title": "CloseSessionRequest",
           "type": "object"
         }
       }
@@ -81230,7 +81370,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/CloseSessionRequest"
+                      "$ref": "#/components/schemas/app__modules__pos__router__CloseSessionRequest"
                     },
                     {
                       "type": "null"
@@ -88624,6 +88764,39 @@
           "summary": "Add Product Variant",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/public/geo": {
+        "get": {
+          "description": "Which country the visitor is in, per the edge — no auth, no database.\n\nThe site uses this to send a visitor to their own market instead of asking\nthem to pick one. Unknown is a normal answer: the caller falls back to the\nlive market rather than showing a country picker.",
+          "operationId": "visitor_country_api_v1_public_geo_get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": "Response Visitor Country Api V1 Public Geo Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Visitor Country",
+          "tags": [
+            "public"
           ]
         }
       },
@@ -104022,6 +104195,659 @@
           "summary": "Set Variant Price",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions": {
+        "post": {
+          "operationId": "start_session_api_v1_voice_sessions_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartSessionRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Start Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}": {
+        "get": {
+          "operationId": "read_session_api_v1_voice_sessions__session_id__get",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Read Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/close": {
+        "post": {
+          "operationId": "close_session_api_v1_voice_sessions__session_id__close_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__modules__voice__routers__sessions__CloseSessionRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Close Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/handoff": {
+        "post": {
+          "operationId": "hand_off_session_api_v1_voice_sessions__session_id__handoff_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Hand Off Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/interrupt": {
+        "post": {
+          "operationId": "interrupt_session_api_v1_voice_sessions__session_id__interrupt_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Interrupt Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/transport": {
+        "post": {
+          "description": "Open the media path for a session the caller already owns.\n\nA session from another shop answers 404 exactly like an id that never existed, and a control\nplane with no media plane configured answers 503 rather than a credential that cannot connect.",
+          "operationId": "open_transport_api_v1_voice_sessions__session_id__transport_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TransportResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Transport",
+          "tags": [
+            "voice"
           ]
         }
       },
