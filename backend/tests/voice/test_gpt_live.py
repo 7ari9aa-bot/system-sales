@@ -163,3 +163,37 @@ class TestTheSessionVoice:
         with pytest.raises(GptLiveProtocolError):
             await provider.create_session({"voice": "   "})
         assert transport.sent == []
+
+
+@pytest.mark.asyncio
+async def test_an_async_transport_factory_is_awaited():
+    """The real factory opens a socket, so it returns a coroutine.
+
+    Production passes ``gpt_live_transport.transport_factory``, which is async. A
+    synchronous factory call would leave a coroutine where the transport should be
+    and every real call would die with AttributeError before the first frame.
+    """
+    transport = FakeTransport([STARTED])
+
+    async def factory(_config):
+        return transport
+
+    provider = GptLiveProvider(
+        GptLiveConfig(api_key="k", url="wss://example.test/live", model="m", voice="marin"),
+        factory,
+    )
+
+    session = await provider.create_session({"voice": "marin"})
+
+    assert session == "live_test_1"
+    assert transport.sent[0]["type"] == "session.start"
+
+
+@pytest.mark.asyncio
+async def test_a_sync_transport_factory_still_works():
+    """The adapter's own tests hand in a ready transport; that must not regress."""
+    provider, transport = _provider([STARTED])
+
+    await provider.create_session({"voice": "marin"})
+
+    assert transport.sent[0]["type"] == "session.start"

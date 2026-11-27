@@ -14,6 +14,7 @@ The transport is injected, so the whole protocol is testable without a socket.
 from __future__ import annotations
 
 import base64
+import inspect
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -115,6 +116,11 @@ class GptLiveProvider:
         if not voice.strip():
             raise GptLiveProtocolError("a session needs a voice")
         transport = self._transport_factory(self._config)
+        if inspect.isawaitable(transport):
+            # The real factory opens a socket, so it is a coroutine; the adapter
+            # tests hand in a ready transport. Both are one line of the same
+            # contract, and production passes the async one (browser_call.py).
+            transport = await transport
         await transport.send_json(
             {
                 "type": "session.start",
