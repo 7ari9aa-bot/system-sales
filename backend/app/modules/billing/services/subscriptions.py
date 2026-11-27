@@ -267,13 +267,24 @@ class BillingService:
         A closed period's snapshot and an ordinary invoice share the table, so both are
         returned: to the shop they are the same document. ``limit`` is clamped by the
         caller's dependency, never trusted from the query string.
+
+        "Newest" is the invoice's own date (``issued_at``), not the row's ``created_at``:
+        two invoices raised in one go share a transaction timestamp to the microsecond, so
+        ordering by the row timestamp left their order to the uuid tiebreak. ``issued_at``
+        is nullable (a draft), and Postgres puts NULLs last on a DESC order, which is where
+        an undated draft belongs. The row timestamp and the id stay as tiebreaks so paging
+        can never show the same invoice twice.
         """
         return (
             (
                 await session.execute(
                     select(Invoice)
                     .where(Invoice.tenant_id == tenant_id)
-                    .order_by(Invoice.created_at.desc(), Invoice.id.desc())
+                    .order_by(
+                        Invoice.issued_at.desc().nullslast(),
+                        Invoice.created_at.desc(),
+                        Invoice.id.desc(),
+                    )
                     .limit(limit)
                     .offset(offset)
                 )

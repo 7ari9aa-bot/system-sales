@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A full run on demand. Without it, verifying a commit whose paths did not change (a
+  # backend fix already merged, a re-run after a cancelled run) needed a dummy push — and
+  # each dummy push cancelled the run it was meant to replace, because the concurrency group
+  # is per branch. A manual dispatch asks for the whole matrix on one SHA and changes nothing.
+  workflow_dispatch:
 
 # One run per BRANCH, not per ref: `github.ref` differs between the push and PR events
 # (refs/heads/<branch> vs refs/pull/<n>/merge), which is how the duplicate above slipped past
@@ -22,8 +27,8 @@ jobs:
   changes:
     runs-on: ubuntu-24.04
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.decide.outputs.backend }}
+      frontend: ${{ steps.decide.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
@@ -32,10 +37,26 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              # backend/tests/test_openapi_lock.py reads desktop/openapi.lock.json, so a
+              # lock-only commit used to skip every job that checks it: run 45926309615 on
+              # 96027d5 reported "success" with backend, live-api and coverage all skipped,
+              # which is a green run that tested nothing.
+              - 'desktop/**'
               - '.github/workflows/ci.yml'
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
+      # A manual run means "verify this SHA completely": the paths say what changed since the
+      # parent, not what the person asked for.
+      - id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=${{ steps.filter.outputs.backend }}" >> "$GITHUB_OUTPUT"
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+          fi
 
   # The suite is 11k+ tests and took 1h53m in one serial job (run 45635012681:
   # "138 failed, 11175 passed … in 6811.16s"). xdist was tried and abandoned: its workers
@@ -272,7 +293,13 @@ jobs:
         run: npm ci
       - name: Install Chromium
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # `--with-deps` runs `apt-get update`, and the runner image carries
+        # Microsoft's prod repo, which now answers 403 Forbidden: the install dies
+        # before a browser is fetched (run 45918709547). Playwright needs the Ubuntu
+        # libraries, not that repo, so drop it first.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*
+          npx playwright install --with-deps chromium
       - name: Build frontend bundle
         working-directory: frontend
         run: npm run build
@@ -383,7 +410,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The 15 minutes used to cover npm ci, a Chromium install, the build AND the suite. On a
+    # cold runner those first three took 10 of them (run 45916376327: setup 00:23:16 -> suite
+    # 00:33) and the job was killed mid-suite, which reads as a red e2e when no test failed.
+    # The job gets room for its setup; the suite keeps its own budget below.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
@@ -395,10 +426,23 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # A cold browser download is ~40s of every e2e run. Keyed on the lockfile, so a
+      # Playwright bump still refetches; on a hit the install below is a no-op.
+      - name: Cache the Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-chromium-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      # Same 403 trap as the frontend job: the Microsoft apt source fails the deps install.
+      - name: Install Chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/*microsoft*
+          npx playwright install --with-deps chromium
       # Browser checks run against the built Vite app served by vite preview.
       - run: npm run build
+      # The suite itself: 6.2 minutes on a warm run (45908426992), so 12 is twice the room.
       - run: npm run test:e2e
+        timeout-minutes: 12
       # Traces/screenshots are captured on the first retry — keep them when the
       # run fails so a red build is debuggable without a re-run.
       - uses: actions/upload-artifact@v7

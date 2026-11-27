@@ -29,6 +29,7 @@ from app.modules.billing.models import Invoice
 from app.modules.billing.router import billing_router
 from app.modules.billing.services.subscriptions import BillingService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.modules.identity.models import Tenant
 from tests.test_billing_gates import _permission_codes
 
 
@@ -170,14 +171,18 @@ async def test_invoices_are_listed_newest_first_with_their_money_as_strings(
 
 
 async def test_another_tenants_invoice_is_not_listed(db: AsyncSession, tenant_ctx) -> None:
-    other = uuid.uuid4()
+    # A real tenant row, not a random uuid: `invoices.tenant_id` is a foreign key, so a made-up
+    # id fails the insert before RLS is ever consulted and the test proves nothing.
+    other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other Tenant")
+    db.add(other)
+    await db.flush()
     # invoices are tenant-isolated, so the other tenant's row must be written while bound
     # to that tenant; writing it under our own GUC is refused by RLS, not by the endpoint.
-    await bind_tenant(db, other)
+    await bind_tenant(db, other.id)
     await db.execute(
         Invoice.__table__.insert().values(
             id=uuid.uuid4(),
-            tenant_id=other,
+            tenant_id=other.id,
             number="INV-THEIRS",
             status="open",
             subtotal=0,

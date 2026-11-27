@@ -116,7 +116,15 @@ export function createVercelConfig({
     rewrites,
     // The pre-country addresses (/pricing, /en/pricing...) moved under /{country}/{lang}/. A
     // permanent redirect keeps old bookmarks and indexed links alive instead of a 404.
-    redirects: legacyPublicRedirects().map((r) => ({ ...r, permanent: true })),
+    redirects: [
+      // `/` is not a page: it is the visitor's market. Answering here, in the
+      // routing layer, means the browser gets a 307 before any HTML — no
+      // interstitial, no flash of a screen that says "taking you somewhere".
+      // Not permanent: this is the seam where geo detection will land, and a
+      // 308 would be cached in browsers past that change.
+      { source: "/", destination: "/eg/ar", permanent: false },
+      ...legacyPublicRedirects().map((r) => ({ ...r, permanent: true })),
+    ],
     // Unknown paths get the static 404 page with a real 404 status.
     // (Vercel only applies this after files and rewrites have been tried.)
   };

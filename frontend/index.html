@@ -2,6 +2,32 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      `/` is not a page: it is the visitor's market. Redirect before the first
+      paint, inline, so nobody ever sees an interstitial — the previous
+      client-side redirect rewrote the URL to /eg/ar while the browser was still
+      painting the old document, which read as a broken site. An edge redirect
+      would be better still, but Vercel's middleware is not available to this
+      project (it answered 500 for every / request).
+
+      Guarded by the pathname so it is inert on every other page the prerender
+      emits from this template. Egypt is the only live market; the market list
+      lives in src/lib/markets.js.
+    -->
+    <script>
+      (function () {
+        if (window.location.pathname !== '/') return;
+        try {
+          var stored = window.sessionStorage.getItem('fihrist:country');
+          var market = stored === 'eg' || stored === 'sa' || stored === 'ae' || stored === 'qa' ? stored : 'eg';
+          var live = { eg: true };
+          if (!live[market]) market = 'eg';
+          window.location.replace('/' + market + '/ar');
+        } catch (error) {
+          window.location.replace('/eg/ar');
+        }
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#08090A" />
     <meta name="robots" content="index, follow, max-image-preview:large" />

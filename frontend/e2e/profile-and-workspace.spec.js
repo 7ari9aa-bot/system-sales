@@ -185,16 +185,25 @@ test("the settings sidebar is the map's five groups, and every section is reacha
   }
 
   // Every section that used to be router-only is now a destination a person can click.
-  for (const [label, path] of [
-    ["Team & permissions", /\/settings\/team\/members$/],
-    ["Customers & support", /\/settings\/customers\/customer-records$/],
-    ["Analytics & reports", /\/settings\/analytics\/reports$/],
-    ["Automation & workflows", /\/settings\/automation\/workflows$/],
-    ["Workspace notifications", /\/settings\/notifications\/notification-channels$/],
-    ["Data & privacy", /\/settings\/data\/data-privacy$/],
+  //
+  // The expected address comes from the link the map rendered, never from a list kept here. A
+  // hand-kept list drifted twice: it still expected customers on customer-records (a tab that
+  // only hands over to /customers) and analytics on reports (which hands over to /cashier/reports
+  // and left settings entirely). Comparing the map's own answer with where the click actually
+  // lands is the assertion that catches the router disagreeing with the map, which is what broke.
+  for (const label of [
+    "Team & permissions",
+    "Customers & support",
+    "Analytics & reports",
+    "Automation & workflows",
+    "Workspace notifications",
+    "Data & privacy",
   ]) {
-    await sidebar(page).getByRole("link", { name: label, exact: true }).click();
-    await expect(page).toHaveURL(path);
+    const link = sidebar(page).getByRole("link", { name: label, exact: true });
+    const declared = await link.getAttribute("href");
+    expect(declared, `${label} is in the map with an address`).toMatch(/^\/settings\/[a-z-]+\/[a-z-]+$/);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${declared.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
     await page.goto("/settings");
   }

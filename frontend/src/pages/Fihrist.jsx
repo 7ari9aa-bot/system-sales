@@ -24,7 +24,7 @@ import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
 import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
 import BlogPost, { BlogIndex } from '@/pages/fhrist/Blog'
 import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
-import { MarketSelectorLanding, MarketHeaderSelector } from '@/components/fihrist/CountrySelector'
+import { RootRedirect, MarketHeaderSelector } from '@/components/fihrist/CountrySelector'
 import { WaitlistLanding } from '@/components/fihrist/WaitlistLanding'
 import { localizePath, localizeHtmlLinks } from '@/lib/locale-paths'
 import { routeForPath, resolveLocalizedPath, absoluteUrl } from '@/lib/public-seo-routes.mjs'
@@ -61,7 +61,9 @@ export const pageMeta = {
   'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
   support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
   download: c('تحميل تطبيقات FIHRIST لنقاط البيع | ديسكتوب وموبايل', 'Download FIHRIST POS Apps | Desktop & Mobile'),
-  selector: c('FIHRIST | اختر دولتك ولغتك - نظام المبيعات للمتاجر', 'FIHRIST | Select Country & Language - Sales OS for Stores'),
+  // The root no longer asks anything: it resolves the visitor's market and
+  // moves them there, so the tab title must not promise a picker.
+  selector: c('FIHRIST | نظام تشغيل المبيعات للمتاجر', 'FIHRIST | Sales OS for Stores'),
   'waitlist:ae': c('FIHRIST الإمارات | قريباً نظام تشغيل المبيعات للمتاجر', 'FIHRIST UAE | Sales Operating System Coming Soon'),
   'waitlist:qa': c('FIHRIST قطر | قريباً نظام تشغيل المبيعات للمتاجر', 'FIHRIST Qatar | Sales Operating System Coming Soon'),
 }
@@ -81,7 +83,7 @@ export const pageDescription = {
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
   support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
   download: c('حمل تطبيقات فهرس لنقاط البيع على الكمبيوتر والموبايل. كاشير سريع، بيع دون اتصال، ودعم طابعات الإيصالات وقارئات الباركود وأدراج النقدية.', 'Download Fihrist POS apps for Desktop & Mobile. Fast cashier, offline sales, barcode scanners, cash drawers, and thermal receipt printing.'),
-  selector: c('اختر دولتك للوصول إلى منصة FIHRIST للاطلاع على الميزات والأسعار المخصصة لسوقك في الشرق الأوسط.', 'Choose your country to access the FIHRIST platform with tailored features and pricing for your market.'),
+  selector: c('نظام تشغيل المبيعات للمتاجر: محادثات، منتجات، طلبات، مخزون، ومبيعات في مكان واحد — بأسعار وميزات سوقك تلقائيًا.', 'The sales operating system for stores: conversations, products, orders, inventory and sales in one place — with your market pricing and features.'),
   'waitlist:ae': c('منصة FIHRIST قادمة قريباً إلى دولة الإمارات العربية المتحدة. سجّل في قائمة الانتظار للحصول على وصول مبكر.', 'FIHRIST platform is coming soon to the UAE. Join the waitlist for exclusive early access.'),
   'waitlist:qa': c('منصة FIHRIST قادمة قريباً إلى دولة قطر. سجّل في قائمة الانتظار لتكون أول من ينضم للمنصة.', 'FIHRIST platform is coming soon to Qatar. Join the waitlist for exclusive early access.'),
 }
@@ -274,7 +276,7 @@ function App() {
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'data-deletion': DataDeletion, 'contact-sales': ContactSales, support: Support, download: MobileApp }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => {
-    if (page === 'selector') return <MarketSelectorLanding />
+    if (page === 'selector') return <RootRedirect />
     if (page.startsWith('waitlist:')) return <WaitlistLanding />
     if (page === 'blog') return <BlogIndex locale={locale}/>
     if (page.startsWith('post:')) return <BlogPost slug={page.slice('post:'.length)} locale={locale}/>

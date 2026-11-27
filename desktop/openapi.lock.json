@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 721,
-    "sha256": "7b0a8fb11046f1254ea57ba763368c3ba97b20e025b63c2d3e41fef20fc4ac56",
-    "typed_operations": 404
+    "operations": 722,
+    "sha256": "422f12f5964804f4447eeca0cf1967b86fe613c51a1bb3c719630df114c859ff",
+    "typed_operations": 405
   },
   "spec": {
     "components": {
@@ -17682,6 +17682,7 @@
               "anyOf": [
                 {
                   "maxLength": 255,
+                  "minLength": 1,
                   "type": "string"
                 },
                 {
@@ -88763,6 +88764,39 @@
           "summary": "Add Product Variant",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/public/geo": {
+        "get": {
+          "description": "Which country the visitor is in, per the edge — no auth, no database.\n\nThe site uses this to send a visitor to their own market instead of asking\nthem to pick one. Unknown is a normal answer: the caller falls back to the\nlive market rather than showing a country picker.",
+          "operationId": "visitor_country_api_v1_public_geo_get",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": "Response Visitor Country Api V1 Public Geo Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            }
+          },
+          "summary": "Visitor Country",
+          "tags": [
+            "public"
           ]
         }
       },

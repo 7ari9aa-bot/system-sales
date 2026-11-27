@@ -78,6 +78,9 @@ test("blog index and articles render in both languages with FAQ and schema", asy
 
     const response = await page.goto(`${prefix}/blog/how-to-sell-on-whatsapp-organized`, { waitUntil: "domcontentloaded" });
     expect(response?.status()).toBe(200);
+    // The article mounts after the shell: counting on domcontentloaded read an empty article and
+    // reported 0 headings while the snapshot taken seconds later showed twelve.
+    await expect(page.locator("article h2").first()).toBeVisible();
     expect(await page.locator("article h2").count()).toBeGreaterThanOrEqual(7);
     expect(await page.locator("details.faq-item").count()).toBeGreaterThanOrEqual(4);
     const schemas = (await page.locator('script[type="application/ld+json"]').allInnerTexts()).join("");

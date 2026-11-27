@@ -11,6 +11,7 @@ import {
   SETTINGS_NAV_ROUTES,
   SETTINGS_SECTIONS,
   SETTINGS_UNLISTED_SCREENS,
+  pageLink,
   pagePath,
   sectionBySlug,
   sectionPages,
@@ -150,17 +151,29 @@ describe("settings manifest pages", () => {
     expect(unserved).toEqual([]);
   });
 
-  it("lands every section on its own first page", () => {
+  it("lands every section on its first page the Center actually configures", () => {
     // A landing is either the bare section address (workspace, channels and ai open their own
     // overview screen there) or the section's FIRST page. A landing on a middle page is the bug
     // this catches: four sections pointed at page three while their tab strip started at page one.
+    //
+    // A page that only hands over to a module (`links`) cannot be the landing: the section would
+    // open on a card saying "this lives elsewhere" instead of on something to configure. So the
+    // first CONFIGURED page is the landing.
     const wrong = SETTINGS_SECTIONS.filter((section) => section.id !== "01")
       .filter((section) => {
-        const first = section.pages[0];
+        const first = section.pages.find((page) => !pageLink(section, page));
+        if (!first) return false;
         return section.to !== pagePath(section.slug, first) && section.to !== `/settings/${section.slug}`;
       })
       .map((section) => `${section.id} ${section.slug} -> ${section.to}`);
     expect(wrong).toEqual([]);
+  });
+
+  it("never lands a section on a page that only links away", () => {
+    for (const section of SETTINGS_SECTIONS) {
+      if (section.id === "01") continue;
+      expect(pageLink(section, section.to.split("/").pop())).toBeNull();
+    }
   });
 
   it("never lists the same page twice, and never reuses a label inside a section", () => {

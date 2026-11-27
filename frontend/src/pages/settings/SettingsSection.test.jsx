@@ -389,14 +389,22 @@ describe("SettingsSection", () => {
     expect(opts.page).toBe("stock-limits");
   });
 
-  test.each([
-    ["warehouses", "/inventory/warehouses"],
-    ["transfers", "/inventory/transfers"],
-    ["counts-and-adjustments", "/inventory/stocktakes"],
-  ])("%s shows the real records it governs", (page, endpoint) => {
-    renderAt(`/settings/inventory/${page}`);
+  test("the warehouses page shows the rows it governs", () => {
+    renderAt("/settings/inventory/warehouses");
     const props = inventoryRecordsMock.mock.calls.at(-1)[0];
-    expect(props.endpoint).toBe(endpoint);
+    expect(props.endpoint).toBe("/inventory/warehouses");
+  });
+
+  test.each([
+    ["transfers", "/cashier/inventory/movements"],
+    ["counts-and-adjustments", "/cashier/inventory/stocktake"],
+  ])("%s keeps its settings and hands the records to the module", (page, to) => {
+    // These two pages own real registry keys, so they cannot become link cards — the keys would
+    // lose their only editor. Their RECORD list is what leaves: no fetch of another module's
+    // rows from inside Settings, and a link to where those rows are read.
+    const html = renderAt(`/settings/inventory/${page}`);
+    expect(inventoryRecordsMock).not.toHaveBeenCalled();
+    expect(html).toContain(`href="${to}"`);
   });
 
   test("a page with no records panel does not grow one", () => {

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Globe2, ArrowRight, Check } from 'lucide-react';
-import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES } from '@/lib/markets';
+import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG } from '@/lib/markets';
+import { detectCountrySlug, rememberCountry } from '@/lib/country-detection';
 import { useCountry } from '@/lib/CountryContext';
 import { buildLocalizedRoute } from '@/lib/public-seo-routes.mjs';
 
@@ -196,6 +197,57 @@ export function MarketHeaderSelector() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Root `/` — no country question, just the right market.
+ *
+ * The old landing asked every visitor to choose a country before they could see
+ * anything. The country is a property of the request, so `/` now resolves it
+ * from the edge (see country-detection) and replaces the URL with that market's
+ * home. Egypt is the only live market today, so an unknown visitor lands there;
+ * the header switcher still lets anyone choose by hand.
+ */
+export function RootRedirect() {
+  const { locale } = useCountry();
+  const activeLocale = locale || 'ar';
+
+  // ``window.location.replace``, not the router: this component is also
+  // rendered by the prerender step, which has no <Router> above it and threw
+  // ``useNavigate() may be used only in the context of a <Router>`` — the
+  // production build failed on exactly that. A market landing deserves a real
+  // navigation anyway, and the effect never runs while prerendering.
+  useEffect(() => {
+    let alive = true;
+    const go = (slug) => {
+      if (!alive) return;
+      rememberCountry(slug);
+      window.location.replace(`/${slug}/${activeLocale}`);
+    };
+    detectCountrySlug()
+      .then(go)
+      .catch(() => go(DEFAULT_COUNTRY_SLUG));
+    return () => {
+      alive = false;
+    };
+  }, [activeLocale]);
+
+  // A blank beat, never a picker: the redirect lands in a few hundred ms.
+  // The heading is not decoration — the prerender step requires one <h1> on
+  // every public page, and this page is still a real page for a crawler.
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center">
+      <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+        {locale === 'en' ? 'Taking you to your market' : 'بنوديك على سوقك'}
+      </h1>
+      <p className="mt-3 text-sm text-muted-foreground" aria-busy="true">
+        {locale === 'en'
+          ? 'FIHRIST opens the pricing and features for the country you are in.'
+          : 'FIHRIST بيفتح الأسعار والميزات الخاصة بالبلد اللي إنت فيه.'}
+      </p>
     </div>
   );
 }

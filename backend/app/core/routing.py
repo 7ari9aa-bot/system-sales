@@ -50,6 +50,24 @@ class CommitBeforeResponseRoute(APIRoute):
         return handler
 
 
+#: Set on ``session.info`` the first time a request flushes a write.
+#:
+#: The identity-map heuristic below cannot see a write that was flushed inside a SAVEPOINT:
+#: ``session.begin_nested()`` + ``flush()`` moves the object out of ``session.new``, so a
+#: catalog write looked read-only and the middleware skipped the early commit. The live POS
+#: suite caught it — ``POST /products``, ``POST /products/{id}/variants`` and then
+#: ``POST /variants/{id}/identifiers`` 22 ms later answered "variant <id> not found" for a
+#: row the API had just created, and only a retry (after the dependency's late commit) worked.
+WRITE_FLUSHED = "wrote"
+
+
+def _mark_write(session: object, flush_context: object, instances: object = None) -> None:
+    """SQLAlchemy ``after_flush`` listener: this session wrote, whatever the identity map says."""
+    info = getattr(session, "info", None)
+    if info is not None:
+        info[WRITE_FLUSHED] = True
+
+
 def _has_pending_writes(session: object) -> bool:
     """Does this session hold changes that are not in the database yet?
 
@@ -57,6 +75,9 @@ def _has_pending_writes(session: object) -> bool:
     endpoint keeps reading through the same session while it sends, so closing the transaction
     under it would drop the tenant GUC and RLS would hide every row from the next read.
     """
+    info = getattr(session, "info", None)
+    if info is not None and info.get(WRITE_FLUSHED):
+        return True
     new = getattr(session, "new", None)
     dirty = getattr(session, "dirty", None)
     deleted = getattr(session, "deleted", None)
@@ -90,13 +111,26 @@ class CommitBeforeResponseMiddleware:
 
         async def send_committing_first(message):  # type: ignore[no-untyped-def]
             if message["type"] == "http.response.start":
-                await _commit_pending_writes(scope)
+                await _commit_pending_writes(scope, message)
             await send(message)
 
         await self.app(scope, receive, send_committing_first)
 
 
-async def _commit_pending_writes(scope) -> None:  # type: ignore[no-untyped-def]
+def _is_stream(message: object) -> bool:
+    """Is this response an event stream? Read from the headers the app is about to send."""
+    headers = getattr(message, "get", lambda *_: None)("headers") or ()
+    for name, value in headers:
+        if name.lower() == b"content-type" and value.lower().startswith(b"text/event-stream"):
+            return True
+    return False
+
+
+async def _commit_pending_writes(scope, message=None) -> None:  # type: ignore[no-untyped-def]
+    if message is not None and _is_stream(message):
+        # A stream keeps reading through the same session while it sends; the commit belongs at
+        # the dependency's exit, not here.
+        return
     state = scope.get("state") or {}
     session = state.get("db_session")
     if session is None:

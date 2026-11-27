@@ -213,7 +213,10 @@ const DashboardRoutes = () => (
           <Route path="/settings/pos/:page" element={<SettingsSection section="pos" />} />
           <Route path="/settings/purchasing" element={<Navigate to="/settings/purchasing/suppliers" replace />} />
           <Route path="/settings/purchasing/:page" element={<SettingsSection section="purchasing" />} />
-          <Route path="/settings/customers" element={<Navigate to="/settings/customers/customer-records" replace />} />
+          {/* customer-records only hands over to /customers, and a section must not open on a card
+              that says "this lives elsewhere": the bare address lands on the first page the
+              Center actually configures, which is what the sidebar link points at too. */}
+          <Route path="/settings/customers" element={<Navigate to="/settings/customers/customer-data" replace />} />
           <Route path="/settings/customers/:page" element={<SettingsSection section="customers" />} />
           <Route path="/settings/policies" element={<Navigate to="/settings/store/business-policies" replace />} />
           {/* Section 19 owns the plan. The old single billing screen read the same two

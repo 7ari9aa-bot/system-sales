@@ -18,6 +18,17 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
+#: A second policy beside ``tenant_isolation`` is allowed only when it is the documented
+#: token-scoped read for a flow that runs BEFORE the caller belongs to any tenant:
+#: ``invitations_accept_read`` is how an invitee redeems a token (fe2026112607), so the
+#: row cannot be tenant-scoped — the token itself is the credential. Every entry here
+#: must stay SELECT-only and bound to a per-call GUC, never a bare ``true``: the gate
+#: below re-proves both from ``pg_policies`` on every run, so an exception cannot rot
+#: into an OR-open table without failing CI.
+TOKEN_SCOPED_READS = {
+    ("invitations", "invitations_accept_read"): "app.invitation_token",
+}
+
 EXEMPT = {
     "outbox_events",
     "idempotency_keys",
@@ -71,7 +82,7 @@ async def test_every_schema_table_with_tenant_id_is_force_rls_with_canonical_pol
         policies = (
             await db.execute(
                 text(
-                    "SELECT policyname, cmd, permissive FROM pg_policies "
+                    "SELECT policyname, cmd, permissive, qual FROM pg_policies "
                     "WHERE schemaname = 'public' AND tablename = :t"
                 ),
                 {"t": name},
@@ -81,10 +92,19 @@ async def test_every_schema_table_with_tenant_id_is_force_rls_with_canonical_pol
         if "tenant_isolation" not in names:
             offenders.append(f"{name}: no canonical tenant_isolation policy (has {sorted(names)})")
         elif names - {"tenant_isolation"}:
-            offenders.append(
-                f"{name}: legacy permissive policies survive beside the canonical "
-                f"one and OR-open the table: {sorted(names - {'tenant_isolation'})}"
-            )
+            for policy in sorted(names - {"tenant_isolation"}):
+                row = next(p for p in policies if p.policyname == policy)
+                guc = TOKEN_SCOPED_READS.get((name, policy))
+                if guc is None:
+                    offenders.append(
+                        f"{name}: legacy permissive policies survive beside the canonical "
+                        f"one and OR-open the table: [{policy!r}]"
+                    )
+                elif row.cmd != "SELECT" or guc not in (row.qual or ""):
+                    offenders.append(
+                        f"{name}: {policy!r} claims to be a token-scoped read but is "
+                        f"cmd={row.cmd} qual={row.qual!r}, not a SELECT bound to {guc}"
+                    )
 
     assert not offenders, (
         "every tenant_id table must be FORCE RLS with exactly the canonical "

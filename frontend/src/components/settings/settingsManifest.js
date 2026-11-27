@@ -190,7 +190,7 @@ export const SETTINGS_SECTIONS = [
     id: "10",
     slug: "purchasing",
     labelKey: "settings.nav.purchasing",
-    to: "/settings/purchasing/suppliers",
+    to: "/settings/purchasing/purchasing-settings",
     icon: Truck,
     pages: [
       "suppliers",
@@ -200,12 +200,20 @@ export const SETTINGS_SECTIONS = [
       "supplier-returns",
       "approval-limits",
     ],
+    // Record screens, not settings: the module that owns these rows is where they are
+    // read and changed. The tab stays as a short link so an old bookmark still lands
+    // somewhere true (the owner's rule: Settings configures, modules operate).
+    links: {
+      "suppliers": "/cashier/suppliers",
+      "purchase-orders": "/cashier/purchases",
+      "supplier-returns": "/cashier/supplier-returns",
+    },
   },
   {
     id: "11",
     slug: "customers",
     labelKey: "settings.nav.customers",
-    to: "/settings/customers/customer-records",
+    to: "/settings/customers/customer-data",
     icon: UserRound,
     pages: [
       // The router lands /settings/customers on customer-records, so that page is first: a
@@ -220,6 +228,13 @@ export const SETTINGS_SECTIONS = [
       "support-hours",
       "escalation-to-human",
     ],
+    // Record screens, not settings: the module that owns these rows is where they are
+    // read and changed. The tab stays as a short link so an old bookmark still lands
+    // somewhere true (the owner's rule: Settings configures, modules operate).
+    links: {
+      "customer-records": "/customers",
+      "inbox": "/inbox",
+    },
   },
   {
     id: "12",
@@ -264,10 +279,18 @@ export const SETTINGS_SECTIONS = [
     id: "14",
     slug: "analytics",
     labelKey: "settings.nav.analytics",
-    to: "/settings/analytics/reports",
+    to: "/settings/analytics/metrics-and-indicators",
     icon: BarChart3,
-    // /settings/analytics/reports is the landing the router already redirects to.
+    // Reports and dashboards are record screens, so they are link-aways (below) and the
+    // section opens on the one page here that is settings: the metrics it reads.
     pages: ["reports", "dashboards", "metrics-and-indicators"],
+    // Record screens, not settings: the module that owns these rows is where they are
+    // read and changed. The tab stays as a short link so an old bookmark still lands
+    // somewhere true (the owner's rule: Settings configures, modules operate).
+    links: {
+      "reports": "/cashier/reports",
+      "dashboards": "/analytics",
+    },
   },
   {
     id: "15",
@@ -277,6 +300,12 @@ export const SETTINGS_SECTIONS = [
     icon: Workflow,
     // /settings/automation/workflows is the landing the router already redirects to.
     pages: ["workflows", "rules", "triggers-and-events", "execution-attempts"],
+    // Record screens, not settings: the module that owns these rows is where they are
+    // read and changed. The tab stays as a short link so an old bookmark still lands
+    // somewhere true (the owner's rule: Settings configures, modules operate).
+    links: {
+      "execution-attempts": "/automation",
+    },
   },
   {
     id: "16",
@@ -522,4 +551,32 @@ export function sectionByPath(pathname) {
   );
   if (candidates.length === 0) return null;
   return candidates.sort((a, b) => b.slug.length - a.slug.length)[0];
+}
+
+/**
+ * Where a page's real screen lives, when it is not the Center.
+ *
+ * The Settings Center configures how the system works. A screen whose job is to show RECORDS
+ * (a supplier list, a purchase order, an inbox, a report, a run log) belongs to the module that
+ * owns those rows: duplicating it here gave two editors for one table, and the copy in Settings
+ * was always the staler one. The page keeps its address as a short link, so a bookmark still
+ * lands somewhere true.
+ *
+ * Returns `null` for a page the Center itself renders.
+ */
+export function pageLink(section, page) {
+  if (!section || !page) return null;
+  return section.links?.[page] || null;
+}
+
+/** Every module link in the Center, for the tests and the generated docs. */
+export function allPageLinks() {
+  return SETTINGS_SECTIONS.flatMap((section) =>
+    Object.entries(section.links || {}).map(([page, to]) => ({
+      sectionId: section.id,
+      sectionSlug: section.slug,
+      page,
+      to,
+    }))
+  );
 }

@@ -80,6 +80,27 @@ async def inspect_app_role_bypass_rls(session: AsyncSession) -> str | None:
     return None
 
 
+#: Policies that are not ``tenant_isolation`` but are load-bearing for a PUBLIC
+#: flow, keyed by (table, policy).
+#:
+#: Empty on purpose. ``invitations_accept_read`` used to be listed here, but it was a
+#: second permissive policy on a tenant table: Postgres ORs permissive policies, so a
+#: session that could set ``app.invitation_token`` could read that invitation row beside
+#: ``tenant_isolation`` — the exact hole the schema-wide guard exists to close, and the
+#: guard rightly reported it. The accept flow never needed it: it resolves the tenant
+#: with ``public.invitation_tenant_by_token`` (SECURITY DEFINER, one row, token only) and
+#: then reads under the bound tenant like any other query. The load-bearing object is
+#: therefore that function, watched below, not a policy.
+REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = ()
+
+#: Functions a PUBLIC flow cannot work without, keyed by (schema, function). Nothing
+#: re-creates them on provisioning, and a stamped alembic revision never re-runs: on
+#: 27 Nov the invitation accept answered 404 for every valid token while
+#: ``alembic_version`` reported the lookup applied, so the missing object was invisible
+#: until a teammate could not join their shop. Probed on the open session below.
+REQUIRED_PUBLIC_FUNCTIONS: tuple[tuple[str, str], ...] = (("public", "invitation_tenant_by_token"),)
+
+
 async def inspect_tenant_rls_invariants(
     session: AsyncSession,
     *,
@@ -188,6 +209,10 @@ async def run_boot_reconciler(
             connect_args={"statement_cache_size": 0},
         )
 
+    # What the probe found BEFORE a later query failed still counts: an exception must not
+    # erase a violation we already saw.
+    violations: list[str] = []
+
     try:
         async with engine.connect() as conn:
             async with AsyncSession(conn) as session:
@@ -197,11 +222,54 @@ async def run_boot_reconciler(
                 # local/test the developer role (often postgres, superuser,
                 # BYPASSRLS by construction) is expected — logged, not fatal.
                 role_violation = await inspect_app_role_bypass_rls(session)
+                # Read on the session that is still OPEN. This loop used to run after the
+                # context managers exited (and after the engine was disposed), so the probe
+                # died with 'This Connection is closed' on every boot — and because it ran
+                # after the fatal decision below, a missing policy could never fail closed.
+                for table, policy in REQUIRED_NAMED_POLICIES:
+                    present = (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT 1 FROM pg_policies
+                                WHERE schemaname = 'public'
+                                  AND tablename = :t
+                                  AND policyname = :p
+                                """
+                            ),
+                            {"t": table, "p": policy},
+                        )
+                    ).scalar_one_or_none()
+                    if present is None:
+                        violations.append(
+                            f"{table}: required policy {policy} is MISSING — the public flow it "
+                            "authorizes answers not-found for every valid request"
+                        )
+                # Same rule as above for the objects a public flow calls: read on the open
+                # session, and a missing one is a violation, not a warning.
+                for schema, function in REQUIRED_PUBLIC_FUNCTIONS:
+                    found = (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT 1 FROM pg_proc p
+                                JOIN pg_namespace n ON n.oid = p.pronamespace
+                                WHERE n.nspname = :s AND p.proname = :f
+                                """
+                            ),
+                            {"s": schema, "f": function},
+                        )
+                    ).scalar_one_or_none()
+                    if found is None:
+                        violations.append(
+                            f"{schema}.{function}: required function is MISSING — the public "
+                            "flow that calls it answers not-found for every valid request"
+                        )
     except Exception as exc:
         if should_fail_closed:
             raise BootReconcilerError(f"Boot Reconciler database probe failed: {exc}") from exc
         logger.warning("boot_reconciler.probe_skipped: %s", exc)
-        return []
+        return violations
     finally:
         if owns_engine:
             await engine.dispose()
@@ -225,4 +293,5 @@ async def run_boot_reconciler(
             raise BootReconcilerError(msg)
 
     logger.info("boot_reconciler.passed: Invariant 13 verified across tenant tables")
+
     return violations

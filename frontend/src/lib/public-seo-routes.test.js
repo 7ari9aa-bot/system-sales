@@ -103,7 +103,12 @@ describe('public SEO routes (country-aware marketing)', () => {
       expect(bySource.has(`/en${route.path}`), `/en${route.path}`).toBe(true);
     }
     expect(new Set(redirects.map((r) => r.source)).size).toBe(redirects.length);
-    expect(createVercelConfig({ environment: 'production' }).redirects.every((r) => r.permanent)).toBe(true);
+    // Old addresses are permanent; the market entry at / is not, because geo
+    // detection will change where it points and a 308 would outlive that.
+    const configured = createVercelConfig({ environment: 'production' }).redirects;
+    const root = configured.find((r) => r.source === '/');
+    expect(root).toEqual({ source: '/', destination: '/eg/ar', permanent: false });
+    expect(configured.filter((r) => r.source !== '/').every((r) => r.permanent)).toBe(true);
   });
 });
 

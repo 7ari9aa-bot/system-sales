@@ -26,6 +26,27 @@ class TelemetryEventIn(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+#: Headers the edge sets with the visitor's country. Vercel writes
+#: ``x-vercel-ip-country`` on every request it proxies, Cloudflare writes
+#: ``cf-ipcountry``; both are ISO-3166 alpha-2.
+_COUNTRY_HEADERS = ("x-vercel-ip-country", "cf-ipcountry", "x-country-code")
+
+
+@router.get("/geo")
+async def visitor_country(request: Request) -> dict[str, str | None]:
+    """Which country the visitor is in, per the edge — no auth, no database.
+
+    The site uses this to send a visitor to their own market instead of asking
+    them to pick one. Unknown is a normal answer: the caller falls back to the
+    live market rather than showing a country picker.
+    """
+    for header in _COUNTRY_HEADERS:
+        value = (request.headers.get(header) or "").strip().upper()
+        if len(value) == 2 and value.isalpha():
+            return {"country": value}
+    return {"country": None}
+
+
 @router.post("/telemetry")
 async def ingest_telemetry(
     request: Request,

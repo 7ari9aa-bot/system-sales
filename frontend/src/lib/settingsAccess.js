@@ -22,9 +22,20 @@ export const SETTINGS_READ_SENSITIVE = "settings:read_sensitive";
 
 /** `{ roleCode, permissions: Set<string> }` — the shape every consumer reads. */
 function shape(payload) {
+  // An answer, or nothing. A payload that is not a role object (a list, a string, an error
+  // body) is NOT a grant with zero codes: reading it that way turned one unexpected response
+  // into "you do not have this section" on every screen of the Center. Unknown is not denial,
+  // so this throws and the caller treats it like a failed read — the screens stay usable and
+  // the server's own 403s decide.
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("roles/me did not answer with an object");
+  }
+  if (typeof payload.role_code !== "string") {
+    throw new Error("roles/me did not answer with a role");
+  }
   return {
-    roleCode: payload?.role_code ?? null,
-    permissions: new Set(Array.isArray(payload?.permissions) ? payload.permissions : []),
+    roleCode: payload.role_code,
+    permissions: new Set(Array.isArray(payload.permissions) ? payload.permissions : []),
   };
 }
 

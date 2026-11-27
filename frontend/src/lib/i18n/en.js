@@ -2123,6 +2123,7 @@ export default {
   "settings.billing.plan.statuses.canceled": "Canceled",
   "settings.billing.plan.statuses.expired": "Expired",
   "settings.billing.plan.whereToEdit": "Upgrading or changing plan needs a checkout path, and no payment provider is configured yet, so this page does not show an upgrade button that does nothing. The renewal rules below ARE edited here and are read by the service.",
+  "settings.billing.plan.usageLink": "Usage",
   "settings.billing.usage.title": "Usage against plan limits",
   "settings.billing.usage.desc": "Every feature with a limit in the plan, and what this period has used.",
   "settings.billing.usage.empty": "No metered limits on the current plan.",

@@ -78,6 +78,7 @@ async def test_run_boot_reconciler_fails_closed_in_secure_environment() -> None:
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
     with (
+        patch("app.core.boot.AsyncSession", return_value=_ClosingSession(present=1)),
         patch(
             "app.core.boot.inspect_tenant_rls_invariants",
             return_value=["leaky_table: RLS disabled"],
@@ -100,6 +101,7 @@ async def test_run_boot_reconciler_warns_when_not_fail_closed() -> None:
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
     with (
+        patch("app.core.boot.AsyncSession", return_value=_ClosingSession(present=1)),
         patch(
             "app.core.boot.inspect_tenant_rls_invariants",
             return_value=["leaky_table: RLS disabled"],
@@ -120,6 +122,7 @@ async def test_run_boot_reconciler_refuses_when_the_connected_role_bypasses_rls(
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
     with (
+        patch("app.core.boot.AsyncSession", return_value=_ClosingSession(present=1)),
         patch(
             "app.core.boot.inspect_tenant_rls_invariants",
             return_value=[],
@@ -146,6 +149,7 @@ async def test_run_boot_reconciler_warns_on_role_bypass_outside_secure_environme
     engine.connect.return_value.__aenter__.return_value = conn_mock
 
     with (
+        patch("app.core.boot.AsyncSession", return_value=_ClosingSession(present=1)),
         patch(
             "app.core.boot.inspect_tenant_rls_invariants",
             return_value=[],
@@ -161,3 +165,112 @@ async def test_run_boot_reconciler_warns_on_role_bypass_outside_secure_environme
 
     assert violations == [], "a dev-environment role violation must not fail the boot"
     assert any("app_role_bypassrls" in r.getMessage() for r in caplog.records)
+
+
+class _ClosingSession:
+    """A session that behaves like SQLAlchemy's: usable inside its context manager and dead
+    after it, where a query raises ResourceClosedError("This Connection is closed")."""
+
+    def __init__(self, present: int | None = None, function_present: int | None = 1) -> None:
+        self.closed = False
+        self.queries: list[dict[str, str]] = []
+        self._present = present
+        # The boot probe watches two kinds of object now: a policy (params carry "t"/"p")
+        # and the function a public flow calls (params carry "s"/"f"). They answer
+        # independently, so a test can make one missing while the other is present.
+        self._function_present = function_present
+
+    async def __aenter__(self) -> _ClosingSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        self.closed = True
+        return False
+
+    async def execute(self, statement: object, params: dict[str, str] | None = None) -> MagicMock:
+        if self.closed:
+            from sqlalchemy.exc import ResourceClosedError
+
+            raise ResourceClosedError("This Connection is closed")
+        if params is not None:
+            self.queries.append(params)
+        result = MagicMock()
+        if "f" in (params or {}):
+            result.scalar_one_or_none.return_value = self._function_present
+        else:
+            result.scalar_one_or_none.return_value = self._present
+        return result
+
+
+def _engine() -> MagicMock:
+    engine = MagicMock()
+    engine.connect.return_value.__aenter__.return_value = AsyncMock()
+    return engine
+
+
+@pytest.mark.asyncio
+async def test_a_missing_named_policy_fails_closed_and_is_read_on_the_open_session() -> None:
+    """The named-policy probe used to run after the session was closed, so every boot logged
+    'This Connection is closed' and — worse — the finding landed after the fatal decision, so a
+    missing policy could never refuse a boot in a secure environment."""
+    session = _ClosingSession(present=None)
+    with (
+        patch("app.core.boot.inspect_tenant_rls_invariants", return_value=[]),
+        patch("app.core.boot.inspect_app_role_bypass_rls", return_value=None),
+        patch("app.core.boot.AsyncSession", return_value=session),
+        patch(
+            "app.core.boot.REQUIRED_NAMED_POLICIES",
+            (("invitations", "invitations_accept_read"),),
+        ),
+    ):
+        with pytest.raises(BootReconcilerError) as caught:
+            await run_boot_reconciler(_engine(), fail_closed=True)
+
+    message = str(caught.value)
+    assert "invitations_accept_read" in message
+    assert "MISSING" in message
+    assert "probe failed" not in message, "the probe ran after the session was closed"
+    assert session.queries == [
+        {"t": "invitations", "p": "invitations_accept_read"},
+        {"s": "public", "f": "invitation_tenant_by_token"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_present_named_policy_passes_and_is_read_on_the_open_session() -> None:
+    session = _ClosingSession(present=1)
+    with (
+        patch("app.core.boot.inspect_tenant_rls_invariants", return_value=[]),
+        patch("app.core.boot.inspect_app_role_bypass_rls", return_value=None),
+        patch("app.core.boot.AsyncSession", return_value=session),
+        patch(
+            "app.core.boot.REQUIRED_NAMED_POLICIES",
+            (("invitations", "invitations_accept_read"),),
+        ),
+    ):
+        violations = await run_boot_reconciler(_engine(), fail_closed=True)
+
+    assert violations == []
+    assert session.queries == [
+        {"t": "invitations", "p": "invitations_accept_read"},
+        {"s": "public", "f": "invitation_tenant_by_token"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_missing_required_function_fails_closed() -> None:
+    """The invitation accept flow calls ``public.invitation_tenant_by_token``. If that function
+    is gone the endpoint answers 404 for every valid token, which is exactly the outage of
+    27 Nov — a missing object behind a stamped migration. The boot probe must refuse."""
+    session = _ClosingSession(present=1, function_present=None)
+    with (
+        patch("app.core.boot.inspect_tenant_rls_invariants", return_value=[]),
+        patch("app.core.boot.inspect_app_role_bypass_rls", return_value=None),
+        patch("app.core.boot.AsyncSession", return_value=session),
+    ):
+        with pytest.raises(BootReconcilerError) as caught:
+            await run_boot_reconciler(_engine(), fail_closed=True)
+
+    assert "public.invitation_tenant_by_token" in str(caught.value)
+    assert "MISSING" in str(caught.value)
+    assert {"s": "public", "f": "invitation_tenant_by_token"} in session.queries
