@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { approach, clamp01, orbLook, orbMode } from "./looks";
+import { approach, cameraRig, clamp01, orbLook, orbMode } from "./looks";
 import { createLevelMeter, float32Level, pcm16Level } from "./levels";
 
 function pcm16(samples) {
@@ -116,5 +116,37 @@ describe("approach", () => {
     expect(approach(0, 1, 0)).toBe(0);
     expect(clamp01(3)).toBe(1);
     expect(clamp01(Number.NaN)).toBe(0);
+  });
+});
+
+describe("cameraRig", () => {
+  it("moves the camera with the pointer, so the whole page has depth", () => {
+    const center = cameraRig({ pointerX: 0, pointerY: 0, energy: 0, time: 0 });
+    const right = cameraRig({ pointerX: 1, pointerY: 0, energy: 0, time: 0 });
+    const up = cameraRig({ pointerX: 0, pointerY: 1, energy: 0, time: 0 });
+    expect(right.x).toBeGreaterThan(center.x);
+    expect(up.y).toBeGreaterThan(center.y);
+  });
+
+  it("pushes in when the voice gets loud, and never inside the orb", () => {
+    const quiet = cameraRig({ energy: 0 });
+    const loud = cameraRig({ energy: 1 });
+    expect(loud.z).toBeLessThan(quiet.z);
+    expect(loud.z).toBeGreaterThan(2);
+  });
+
+  it("keeps a slow drift so the page is alive even in silence", () => {
+    const a = cameraRig({ time: 0 });
+    const b = cameraRig({ time: 6 });
+    expect(a.x).not.toBe(b.x);
+    expect(Math.abs(a.x)).toBeLessThan(0.2);
+  });
+
+  it("clamps wild pointers instead of flying out of the scene", () => {
+    const wild = cameraRig({ pointerX: 40, pointerY: -40, energy: 5 });
+    expect(wild.x).toBeLessThanOrEqual(0.5);
+    expect(wild.y).toBeGreaterThanOrEqual(-0.4);
+    const broken = cameraRig({ pointerX: Number.NaN, pointerY: undefined, energy: Number.NaN });
+    for (const key of ["x", "y", "z", "lookY"]) expect(Number.isFinite(broken[key])).toBe(true);
   });
 });

@@ -68,3 +68,23 @@ export function clamp01(value) {
   const n = Number.isFinite(value) ? value : 0;
   return Math.min(1, Math.max(0, n));
 }
+
+/** موضع الكاميرا: الصفحة كلها بتتحرك، مش الكرة بس.
+ *
+ *  المؤشر بيدوّر الكاميرا حوالين المشهد شوية (parallax)، والصوت بيقرّبها. الأرقام مقيّدة
+ *  عشان مايحصلش دوران كامل ولا زووم يوصل جوه الكرة.
+ */
+export function cameraRig({ pointerX = 0, pointerY = 0, energy = 0, time = 0 } = {}) {
+  const px = Math.max(-1, Math.min(1, Number.isFinite(pointerX) ? pointerX : 0));
+  const py = Math.max(-1, Math.min(1, Number.isFinite(pointerY) ? pointerY : 0));
+  const e = clamp01(energy);
+  const t = Number.isFinite(time) ? time : 0;
+  // تنفّس بطيء في السكون: الكاميرا بتتحرك حتى من غير صوت، بس بمسافة صغيرة جداً.
+  const drift = Math.sin(t * 0.25) * 0.06;
+  return {
+    x: px * 0.42 + drift,
+    y: py * 0.28 + Math.cos(t * 0.19) * 0.04,
+    z: 3.4 - e * 0.32,
+    lookY: py * -0.06,
+  };
+}
