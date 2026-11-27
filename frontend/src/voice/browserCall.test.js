@@ -334,3 +334,96 @@ describe("startBrowserCall", () => {
     expect(notes).toContain("open");
   });
 });
+
+describe("the model's audio actually comes back", () => {
+  it("counts every audio delta the socket delivers and reports it as it arrives", async () => {
+    const socket = fakeSocket();
+    const player = fakePlayer();
+    const heard = [];
+
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => socket,
+      micFactory: () => fakeMic(),
+      playerFactory: () => player,
+      onAudio: (counts) => heard.push(counts),
+    });
+
+    // The socket opened and the mic started, but nothing has been heard yet.
+    expect(call.audio).toEqual({ frames: 0, bytes: 0 });
+
+    socket.onmessage({ data: new ArrayBuffer(480) });
+    socket.onmessage({ data: new ArrayBuffer(480) });
+
+    expect(player.play).toHaveBeenCalledTimes(2);
+    expect(call.audio).toEqual({ frames: 2, bytes: 960 });
+    expect(heard).toEqual([
+      { frames: 1, bytes: 480 },
+      { frames: 2, bytes: 960 },
+    ]);
+  });
+
+  it("does not count a control frame as audio", async () => {
+    const socket = fakeSocket();
+    const player = fakePlayer();
+
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => socket,
+      micFactory: () => fakeMic(),
+      playerFactory: () => player,
+    });
+
+    socket.onmessage({ data: JSON.stringify({ type: "session.started" }) });
+
+    expect(player.play).not.toHaveBeenCalled();
+    expect(call.audio).toEqual({ frames: 0, bytes: 0 });
+  });
+});
+
+describe("a suspended microphone is announced, not hidden", () => {
+  it("says the browser needs a gesture, and resumeMic clears it once audio flows", async () => {
+    const socket = fakeSocket();
+    let suspended = true;
+    const mic = {
+      ...fakeMic(),
+      isSuspended: () => suspended,
+      resume: vi.fn(async () => {
+        suspended = false;
+      }),
+    };
+    const prompts = [];
+
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => socket,
+      micFactory: () => mic,
+      playerFactory: () => fakePlayer(),
+      onNeedsGesture: (info) => prompts.push(info),
+    });
+
+    // The call is live, but the screen was told the mic is silent.
+    expect(call.state).toBe(STREAM_STATE.LIVE);
+    expect(prompts).toEqual([{ reason: "suspended" }]);
+
+    expect(await call.resumeMic()).toBe(true);
+    expect(mic.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing when the microphone is already running", async () => {
+    const prompts = [];
+    await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => fakeSocket(),
+      micFactory: () => ({ ...fakeMic(), isSuspended: () => false }),
+      playerFactory: () => fakePlayer(),
+      onNeedsGesture: (info) => prompts.push(info),
+    });
+
+    expect(prompts).toEqual([]);
+  });
+});

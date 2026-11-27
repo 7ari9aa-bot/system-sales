@@ -151,3 +151,26 @@ describe("the composer shows the call button", () => {
     expect(controller.calling).toBe(false);
   });
 });
+
+describe("callControl and the real audio", () => {
+  it("passes the microphone gesture and the audio count through to the screen", async () => {
+    const stop = vi.fn();
+    const resumeMic = vi.fn(async () => true);
+    const openSession = vi.fn(async () => "sess-1");
+    const startCall = vi.fn(async ({ onState }) => {
+      onState(STREAM_STATE.LIVE, "");
+      return { stop, resumeMic, state: STREAM_STATE.LIVE, audio: { frames: 3, bytes: 1440 } };
+    });
+    const controller = createCallController({ openSession, startCall });
+
+    // Before any call there is nothing to resume and nothing heard.
+    expect(await controller.resumeMic()).toBe(false);
+    expect(controller.audio).toEqual({ frames: 0, bytes: 0 });
+
+    await controller.toggle();
+
+    expect(controller.audio).toEqual({ frames: 3, bytes: 1440 });
+    expect(await controller.resumeMic()).toBe(true);
+    expect(resumeMic).toHaveBeenCalledTimes(1);
+  });
+});

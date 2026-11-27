@@ -93,6 +93,15 @@ export function createCallController({
       handle = null;
       calling = false;
     },
+    /** المايك اللي المتصفح علّقه: أول دوسة بترجّعه، وبترجّع هل نجح. */
+    async resumeMic() {
+      if (!handle?.resumeMic) return false;
+      return handle.resumeMic();
+    },
+    /** حزم صوت المساعد اللي وصلت فعلاً — صفر معناها مفيش صوت راجع. */
+    get audio() {
+      return handle?.audio ?? { frames: 0, bytes: 0 };
+    },
     get calling() {
       return calling;
     },

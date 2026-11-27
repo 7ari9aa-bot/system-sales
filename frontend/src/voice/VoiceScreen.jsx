@@ -46,6 +46,7 @@ export default function VoiceScreen({
   message = "",
   interrupted = false,
   note = "",
+  onGesture = null,
   onClose = () => {},
   onInterrupt = () => {},
   labels = {},
@@ -68,6 +69,7 @@ export default function VoiceScreen({
   return (
     <div
       data-testid="voice-screen"
+      onClick={onGesture ?? undefined}
       dir="rtl"
       className="fixed inset-0 z-[80] flex flex-col items-center justify-center overflow-hidden bg-[#05070d] text-white"
     >

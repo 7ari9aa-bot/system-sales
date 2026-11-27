@@ -46,6 +46,10 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   const [callState, setCallState] = React.useState(STREAM_STATE.IDLE);
   // أثر السوكت: لما المكالمة تفشل، السبب الحقيقي لازم يبان بدل رسالة عامة.
   const [socketNote, setSocketNote] = React.useState("");
+  // دليل الصوت: عدد حزم صوت المساعد اللي وصلت. صفر معناها السوكت فتح بس.
+  const [audioNote, setAudioNote] = React.useState("");
+  // المايك المعلّق: المتصفح مش بيشغّل الصوت قبل دوسة، والشاشة لازم تقول كده.
+  const [micPrompt, setMicPrompt] = React.useState(false);
 
   const onCallEndRef = React.useRef(onCallEnd);
   onCallEndRef.current = onCallEnd;
@@ -63,6 +67,11 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
           ...options,
           onSocket: (event) =>
             setSocketNote(event.type === "close" ? `قناة الصوت: مغلقة (${event.code ?? "?"})` : `قناة الصوت: ${event.type === "open" ? "متصلة" : "غير متاحة"}`),
+          onAudio: ({ frames }) => {
+            setMicPrompt(false);
+            setAudioNote(`صوت المساعد: ${frames} حزمة`);
+          },
+          onNeedsGesture: () => setMicPrompt(true),
         }),
       // الجلسة المحفوظة لو بقت مش موجودة، المفتاح بيتبدّل فبتفتح جلسة جديدة.
       resetSession: async () => {
@@ -77,6 +86,8 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
       onEnd: () => {
         onCallEndRef.current?.();
         setScreenOpen(false);
+        setMicPrompt(false);
+        setAudioNote("");
       },
     });
   }
@@ -86,6 +97,8 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
     else {
       setCallError(null);
       setCallState(STREAM_STATE.OPENING);
+      setMicPrompt(false);
+      setAudioNote("");
       setScreenOpen(true);
     }
     controllerRef.current?.toggle();
@@ -195,7 +208,15 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         open={screenOpen}
         state={callState}
         message={callError ?? ""}
-        note={socketNote}
+        note={micPrompt ? "اضغط على الشاشة لتشغيل الميكروفون" : audioNote || socketNote}
+        onGesture={
+          micPrompt
+            ? async () => {
+                const resumed = await controllerRef.current?.resumeMic();
+                if (resumed) setMicPrompt(false);
+              }
+            : null
+        }
         onClose={closeScreen}
         onInterrupt={() => controllerRef.current?.interrupt()}
       />

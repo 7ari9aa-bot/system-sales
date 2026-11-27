@@ -166,7 +166,12 @@ export function createMicSource({ win = typeof window !== "undefined" ? window :
     }
   }
 
-  return { start, stop };
+  return {
+    start,
+    stop,
+    isSuspended: () => Boolean(context && context.state === "suspended"),
+    resume: () => (context ? context.resume() : Promise.resolve()),
+  };
 }
 
 /** السمّاعة: كل دلتا PCM16 24k بتتحوّل AudioBuffer وتتجدول ورا بعضها. */
@@ -226,6 +231,8 @@ export async function startBrowserCall({
   playerFactory = createPcmPlayer,
   onState = () => {},
   onSocket = () => {},
+  onAudio = () => {},
+  onNeedsGesture = () => {},
   openTimeoutMs = 8000,
 } = {}) {
   const state = { value: STREAM_STATE.IDLE };
@@ -285,9 +292,19 @@ export async function startBrowserCall({
     return { stop: cleanup, get state() { return state.value; } };
   }
 
+  // صوت المساعد: كل دلتا PCM16 بتتعدّ قبل ما تتشغّل. العدّاد هو الدليل إن الصوت راجع
+  // فعلاً — من غيره "أنت تتحدث الآن" بتثبت إن السوكت فتح بس، مش إن حد سمع حاجة.
+  const audio = { frames: 0, bytes: 0 };
   socket.binaryType = "arraybuffer";
   socket.onmessage = (event) => {
-    if (event?.data instanceof ArrayBuffer) player.play(event.data);
+    if (!(event?.data instanceof ArrayBuffer)) return;
+    audio.frames += 1;
+    audio.bytes += event.data.byteLength;
+    try {
+      player.play(event.data);
+    } finally {
+      onAudio({ frames: audio.frames, bytes: audio.bytes });
+    }
   };
 
   // مكالمة "شغالة" معناها السوكت مفتوح فعلاً. قبل كده كنا بنعلن LIVE بعد ما المايك
@@ -341,11 +358,26 @@ export async function startBrowserCall({
     return { stop: cleanup, get state() { return state.value; } };
   }
 
+  // المتصفح بيعلّق الـAudioContext قبل أي تفاعل، فالمايك بيفضل ساكت من غير أي خطأ.
+  // الإشارة دي بتخلّي الشاشة تطلب دوسة بدل ما تعلن إن المكالمة شغالة وصوت المستخدم مش واصل.
+  if (mic.isSuspended?.()) onNeedsGesture({ reason: "suspended" });
+
   setState(STREAM_STATE.LIVE);
   return {
     stop: () => {
       cleanup();
       setState(STREAM_STATE.CLOSED);
+    },
+    resumeMic: async () => {
+      try {
+        await mic.resume?.();
+      } catch {
+        /* الفشل هنا معناه المايك لسه ساكت، والشاشة بتفضل تقول كده */
+      }
+      return !mic.isSuspended?.();
+    },
+    get audio() {
+      return { frames: audio.frames, bytes: audio.bytes };
     },
     interrupt: () => {
       // Barge-in: silence the speaker now, and tell the server to drop the rest
