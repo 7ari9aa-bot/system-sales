@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from app.modules.ai.chat import service as chat_service
 from app.modules.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
@@ -23,9 +24,32 @@ TENANT = uuid.uuid4()
 USER = uuid.uuid4()
 
 
+class _SessionRow:
+    """The voice_sessions row the start path reads to find (or open) its conversation."""
+
+    def __init__(self) -> None:
+        self.id = uuid.uuid4()
+        self.ai_chat_thread_id = None
+
+
+class _DbStub:
+    """Just enough AsyncSession for the thread bridge, with no database behind it."""
+
+    def __init__(self, row: object) -> None:
+        self.row = row
+        self.flushed = 0
+
+    async def execute(self, _statement: object) -> object:
+        row = self.row
+        return SimpleNamespace(scalar_one_or_none=lambda: row)
+
+    async def flush(self) -> None:
+        self.flushed += 1
+
+
 def _ctx(permissions: set[str] | None = None) -> SimpleNamespace:
     return SimpleNamespace(
-        session=None,
+        session=_DbStub(_SessionRow()),
         user=SimpleNamespace(id=USER),
         tenant_id=TENANT,
         workspace_id=None,
@@ -37,6 +61,14 @@ def _ctx(permissions: set[str] | None = None) -> SimpleNamespace:
 def manager(monkeypatch: pytest.MonkeyPatch) -> VoiceSessionManager:
     built = VoiceSessionManager(InMemorySessionStore())
     monkeypatch.setattr(api, "_manager", lambda _ctx: built)
+
+    # Starting a session opens its conversation through the chat module. That module needs the
+    # real agent registry, so it is stubbed here: what this file proves is the control plane, and
+    # the bridge itself is covered by tests/voice/test_session_thread.py.
+    async def _fake_create_thread(_session, _ctx, *, title=None, context=None):
+        return SimpleNamespace(id=uuid.uuid4())
+
+    monkeypatch.setattr(chat_service, "create_thread", _fake_create_thread)
     return built
 
 

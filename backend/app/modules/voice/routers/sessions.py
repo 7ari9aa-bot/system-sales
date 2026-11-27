@@ -23,6 +23,7 @@ from app.core.errors import (
 )
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.voice.application.session_manager import VoiceSessionManager
+from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.application.transport import VoiceTransportService
 from app.modules.voice.domain.personas import PrincipalType
 from app.modules.voice.infrastructure.sql_store import SqlSessionStore
@@ -103,6 +104,10 @@ async def start_session(ctx: VoiceCtx, body: StartSessionRequest) -> SessionResp
         channel=body.channel,
         client_key=body.client_key,
     )
+    # The session owns a conversation from its first second: a spoken turn needs a thread to land
+    # in, and a session that connects and stays silent must still be resumable. Idempotent, so a
+    # client_key replay returns the thread the first request opened.
+    await ensure_session_thread(ctx.session, ctx, session_id=record.session_id)
     return _respond(record)
 
 
