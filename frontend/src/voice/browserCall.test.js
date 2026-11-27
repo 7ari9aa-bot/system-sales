@@ -291,4 +291,46 @@ describe("startBrowserCall", () => {
 
     expect(await openVoiceSession({ apiFn, clientKey: "screen-key" })).toBeNull();
   });
+
+  it("does not call a call live before the socket is actually open", async () => {
+    // سوكت بيفضل معلّق: مفيش open ومفيش close. الشاشة مكانتش بتعرف الفرق.
+    const pending = { ...fakeSocket(), readyState: 0 };
+    const notes = [];
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => pending,
+      micFactory: () => fakeMic(),
+      playerFactory: () => fakePlayer(),
+      onSocket: (event) => notes.push(event.type),
+      openTimeoutMs: 10,
+    });
+
+    expect(call.state).toBe(STREAM_STATE.FAILED);
+    expect(notes).toEqual(["unopened"]);
+  });
+
+  it("reports open and goes live when the handshake completes", async () => {
+    const socket = fakeSocket();
+    socket.readyState = 0;
+    const notes = [];
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => {
+        setTimeout(() => {
+          socket.readyState = 1;
+          socket.onopen?.();
+        }, 0);
+        return socket;
+      },
+      micFactory: () => fakeMic(),
+      playerFactory: () => fakePlayer(),
+      onSocket: (event) => notes.push(event.type),
+      openTimeoutMs: 50,
+    });
+
+    expect(call.state).toBe(STREAM_STATE.LIVE);
+    expect(notes).toContain("open");
+  });
 });

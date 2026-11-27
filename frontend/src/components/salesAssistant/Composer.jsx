@@ -44,6 +44,8 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   // شاشة المكالمة: بتفتح مع الدوسة، وبتفضل مفتوحة لو السيرفر رفض عشان الرسالة تتقري.
   const [screenOpen, setScreenOpen] = React.useState(false);
   const [callState, setCallState] = React.useState(STREAM_STATE.IDLE);
+  // أثر السوكت: لما المكالمة تفشل، السبب الحقيقي لازم يبان بدل رسالة عامة.
+  const [socketNote, setSocketNote] = React.useState("");
 
   const onCallEndRef = React.useRef(onCallEnd);
   onCallEndRef.current = onCallEnd;
@@ -56,7 +58,12 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
     controllerRef.current = createCallController({
       openSession: () =>
         openVoiceSession({ clientKey: clientKeyRef.current, threadId: threadIdRef.current }),
-      startCall: (options) => startBrowserCall(options),
+      startCall: (options) =>
+        startBrowserCall({
+          ...options,
+          onSocket: (event) =>
+            setSocketNote(event.type === "close" ? `سوكت: close ${event.code ?? "?"}` : `سوكت: ${event.type}`),
+        }),
       // الجلسة المحفوظة لو بقت مش موجودة، المفتاح بيتبدّل فبتفتح جلسة جديدة.
       resetSession: async () => {
         clientKeyRef.current =
@@ -188,6 +195,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         open={screenOpen}
         state={callState}
         message={callError ?? ""}
+        note={socketNote}
         onClose={closeScreen}
         onInterrupt={() => controllerRef.current?.interrupt()}
       />

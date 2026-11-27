@@ -45,6 +45,7 @@ export default function VoiceScreen({
   state = "opening",
   message = "",
   interrupted = false,
+  note = "",
   onClose = () => {},
   onInterrupt = () => {},
   labels = {},
@@ -133,6 +134,11 @@ export default function VoiceScreen({
           <p data-testid="voice-screen-timer" className="mt-1 font-mono text-sm text-white/60">
             {formatElapsed(elapsed)}
           </p>
+          {note ? (
+            <p data-testid="voice-screen-note" className="mt-2 font-mono text-[11px] text-white/40">
+              {note}
+            </p>
+          ) : null}
         </div>
       </div>
 

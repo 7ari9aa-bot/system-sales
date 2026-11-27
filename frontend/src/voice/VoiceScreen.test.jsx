@@ -58,6 +58,14 @@ describe("VoiceScreen", () => {
     expect(html).toContain('disabled=""');
   });
 
+  it("بيسيب أثر السوكت مكتوب لما يتطلب", () => {
+    const html = renderToStaticMarkup(<VoiceScreen open state="live" note="سوكت: close 1006" />);
+    expect(html).toContain('data-testid="voice-screen-note"');
+    expect(html).toContain("سوكت: close 1006");
+    const without = renderToStaticMarkup(<VoiceScreen open state="live" />);
+    expect(without).not.toContain('data-testid="voice-screen-note"');
+  });
+
   it("المؤقّت بيتنسّق دقايق وثواني", () => {
     expect(formatElapsed(0)).toBe("00:00");
     expect(formatElapsed(75)).toBe("01:15");

@@ -225,6 +225,8 @@ export async function startBrowserCall({
   micFactory = createMicSource,
   playerFactory = createPcmPlayer,
   onState = () => {},
+  onSocket = () => {},
+  openTimeoutMs = 8000,
 } = {}) {
   const state = { value: STREAM_STATE.IDLE };
   const setState = (next) => {
@@ -287,10 +289,47 @@ export async function startBrowserCall({
   socket.onmessage = (event) => {
     if (event?.data instanceof ArrayBuffer) player.play(event.data);
   };
-  socket.onclose = (event) => {
-    cleanup();
-    setState(streamStateForClose(event?.code));
+
+  // مكالمة "شغالة" معناها السوكت مفتوح فعلاً. قبل كده كنا بنعلن LIVE بعد ما المايك
+  // يفتح، فالشاشة كانت بتقول "بتتكلم دلوقتي" والسوكت لسه معلّق في الهاندشيك من غير
+  // ما يوصل للسيرفر — والفرق بين الاتنين هو الفرق بين صوت بيشتغل وواجهة بتكدب.
+  let closeCode = null;
+  let resolveOpen;
+  const opened = new Promise((resolve) => {
+    resolveOpen = resolve;
+  });
+  const timer = setTimeout(() => resolveOpen(socket.readyState === 1), openTimeoutMs);
+  const settle = (value) => {
+    clearTimeout(timer);
+    resolveOpen(value);
   };
+  socket.onopen = () => {
+    onSocket({ type: "open" });
+    settle(true);
+  };
+  socket.onerror = () => {
+    onSocket({ type: "error" });
+    settle(false);
+  };
+  socket.onclose = (event) => {
+    closeCode = event?.code ?? null;
+    onSocket({ type: "close", code: closeCode });
+    cleanup();
+    setState(streamStateForClose(closeCode));
+    settle(false);
+  };
+  // سوكت اتبنى مفتوح خلاص (بينضرب في التستات وفي متصفحات نادرة): مفيش استنى.
+  if (socket.readyState === 1) {
+    onSocket({ type: "open" });
+    settle(true);
+  }
+
+  if (!(await opened)) {
+    onSocket({ type: "unopened", code: closeCode });
+    if (!stopped) setState(closeCode === null ? STREAM_STATE.FAILED : streamStateForClose(closeCode));
+    cleanup();
+    return { stop: cleanup, get state() { return state.value; } };
+  }
 
   try {
     await mic.start((chunk) => {
