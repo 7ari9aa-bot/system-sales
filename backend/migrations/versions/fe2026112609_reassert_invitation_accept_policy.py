@@ -24,8 +24,11 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "fe2026112609"
-down_revision: str | None = "fe2026112608"
+# The recovery is the LAST word on this policy, not a branch off fe2026112608: reusing
+# that revision id gave alembic two revisions named fe2026112609 and a second head, so
+# `alembic upgrade head` refused to run at all ("Multiple head revisions are present").
+revision: str = "fe2026112618"
+down_revision: str | None = "fe2026112617"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
