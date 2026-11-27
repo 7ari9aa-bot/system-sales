@@ -44,7 +44,11 @@ describe("callControl", () => {
     await h.controller.toggle();
 
     expect(h.controller.calling).toBe(false);
-    expect(h.changes.at(-1)).toEqual({ calling: false, error: "الجلسة دي مش بتاخد صوت مباشر دلوقتي." });
+    expect(h.changes.at(-1)).toEqual({
+      calling: false,
+      error: "الجلسة دي مش بتاخد صوت مباشر دلوقتي.",
+      state: STREAM_STATE.REFUSED,
+    });
     expect(h.stop).toHaveBeenCalledTimes(1);
   });
 
@@ -53,7 +57,7 @@ describe("callControl", () => {
 
     await h.controller.toggle();
 
-    expect(h.changes.at(-1)).toEqual({ calling: false, error: null });
+    expect(h.changes.at(-1)).toEqual({ calling: false, error: null, state: STREAM_STATE.CLOSED });
   });
 
   it("reports a failure to start instead of staying stuck on calling", async () => {
@@ -113,4 +117,37 @@ describe("the composer shows the call button", () => {
     expect(controller.interrupt()).toBe(false);
   });
 
+
+  it("stale session is dropped once and a fresh call opens instead of showing 404", async () => {
+    const openSession = vi.fn(async () => `s-${openSession.mock.calls.length}`);
+    const startCall = vi
+      .fn()
+      .mockImplementationOnce(async () => ({ state: STREAM_STATE.NOT_FOUND, stop: vi.fn() }))
+      .mockImplementationOnce(async ({ onState }) => {
+        onState(STREAM_STATE.LIVE);
+        return { state: STREAM_STATE.LIVE, stop: vi.fn(), interrupt: vi.fn() };
+      });
+    const resetSession = vi.fn(async () => {});
+    const controller = createCallController({ openSession, startCall, resetSession });
+
+    await controller.toggle();
+
+    expect(resetSession).toHaveBeenCalledTimes(1);
+    expect(openSession).toHaveBeenCalledTimes(2);
+    expect(startCall).toHaveBeenCalledTimes(2);
+    expect(startCall.mock.calls[1][0].sessionId).toBe("s-2");
+    expect(controller.calling).toBe(true);
+  });
+
+  it("does not retry forever when the fresh session is refused too", async () => {
+    const openSession = vi.fn(async () => "s-1");
+    const startCall = vi.fn(async () => ({ state: STREAM_STATE.NOT_FOUND, stop: vi.fn() }));
+    const resetSession = vi.fn(async () => {});
+    const controller = createCallController({ openSession, startCall, resetSession });
+
+    await controller.toggle();
+
+    expect(openSession).toHaveBeenCalledTimes(2);
+    expect(controller.calling).toBe(false);
+  });
 });

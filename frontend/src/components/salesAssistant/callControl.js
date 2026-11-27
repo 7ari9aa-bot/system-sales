@@ -13,16 +13,23 @@ const ENDED = new Set([
   STREAM_STATE.CLOSED,
 ]);
 
-export function createCallController({ openSession, startCall, onChange = () => {}, onEnd = () => {} }) {
+export function createCallController({
+  openSession,
+  startCall,
+  resetSession = null,
+  onChange = () => {},
+  onEnd = () => {},
+}) {
   let handle = null;
   let calling = false;
   let lastError = null;
+  let lastState = STREAM_STATE.IDLE;
 
   const publish = (next, error = null) => {
     calling = next;
     // الرفض بيتبلّغ مرة واحدة ويقعد معروض؛ مفيش تصفير بعده يخفيه.
     if (error) lastError = error;
-    onChange({ calling, error: error ?? lastError });
+    onChange({ calling, error: error ?? lastError, state: lastState });
   };
 
   async function toggle() {
@@ -34,23 +41,31 @@ export function createCallController({ openSession, startCall, onChange = () => 
       return;
     }
     publish(true);
+    const onState = (state, message) => {
+      lastState = state;
+      if (state === STREAM_STATE.LIVE) {
+        publish(true);
+        return;
+      }
+      if (ENDED.has(state)) {
+        handle = null;
+        publish(false, state === STREAM_STATE.CLOSED ? null : message);
+        onEnd();
+      }
+    };
+    const begin = async () => {
+      const sessionId = await openSession();
+      return startCall({ sessionId, onState });
+    };
     let call;
     try {
-      const sessionId = await openSession();
-      call = await startCall({
-        sessionId,
-        onState: (state, message) => {
-          if (state === STREAM_STATE.LIVE) {
-            publish(true);
-            return;
-          }
-          if (ENDED.has(state)) {
-            handle = null;
-            publish(false, state === STREAM_STATE.CLOSED ? null : message);
-            onEnd();
-          }
-        },
-      });
+      call = await begin();
+      // الجلسة المحفوظة بقت مش موجودة (متجر تاني، أو جلسة اتقفلت من زمان): بنرميها
+      // وبنفتح جلسة جديدة مرة واحدة بدل ما نعرض رسالة والزر مايشتغلش خالص.
+      if (call?.state === STREAM_STATE.NOT_FOUND && resetSession) {
+        await resetSession();
+        call = await begin();
+      }
     } catch {
       publish(false, "تعذّر بدء المكالمة، جرّب تاني.");
       return;

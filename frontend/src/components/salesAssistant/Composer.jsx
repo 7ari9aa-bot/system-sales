@@ -8,7 +8,8 @@
 import React from "react";
 import { ArrowUp, AudioLines, Mic, Plus, Square, VolumeX } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { openVoiceSession, startBrowserCall } from "@/voice/browserCall";
+import { openVoiceSession, startBrowserCall, STREAM_STATE } from "@/voice/browserCall";
+import VoiceScreen from "@/voice/VoiceScreen";
 import { createCallController } from "./callControl";
 import { ATTACH_EXTENSIONS, checkAttachment, mergeAttachment } from "./fileAttach";
 import {
@@ -40,6 +41,9 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   );
   const [calling, setCalling] = React.useState(false);
   const [callError, setCallError] = React.useState(null);
+  // شاشة المكالمة: بتفتح مع الدوسة، وبتفضل مفتوحة لو السيرفر رفض عشان الرسالة تتقري.
+  const [screenOpen, setScreenOpen] = React.useState(false);
+  const [callState, setCallState] = React.useState(STREAM_STATE.IDLE);
 
   const onCallEndRef = React.useRef(onCallEnd);
   onCallEndRef.current = onCallEnd;
@@ -53,16 +57,36 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
       openSession: () =>
         openVoiceSession({ clientKey: clientKeyRef.current, threadId: threadIdRef.current }),
       startCall: (options) => startBrowserCall(options),
-      onChange: ({ calling: next, error }) => {
+      // الجلسة المحفوظة لو بقت مش موجودة، المفتاح بيتبدّل فبتفتح جلسة جديدة.
+      resetSession: async () => {
+        clientKeyRef.current =
+          typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `screen-${Date.now()}`;
+      },
+      onChange: ({ calling: next, error, state }) => {
         setCalling(next);
         setCallError(error);
+        if (state) setCallState(state);
       },
-      onEnd: () => onCallEndRef.current?.(),
+      onEnd: () => {
+        onCallEndRef.current?.();
+        setScreenOpen(false);
+      },
     });
   }
 
   const toggleCall = React.useCallback(() => {
+    if (controllerRef.current?.calling) setScreenOpen(false);
+    else {
+      setCallError(null);
+      setCallState(STREAM_STATE.OPENING);
+      setScreenOpen(true);
+    }
     controllerRef.current?.toggle();
+  }, []);
+
+  const closeScreen = React.useCallback(() => {
+    controllerRef.current?.stop();
+    setScreenOpen(false);
   }, []);
 
   React.useEffect(() => () => controllerRef.current?.stop(), []);
@@ -160,6 +184,13 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
 
   return (
     <div data-testid="assistant-composer" className="mx-auto w-full max-w-4xl shrink-0 bg-background px-4 pb-6 pt-2 sm:px-6">
+      <VoiceScreen
+        open={screenOpen}
+        state={callState}
+        message={callError ?? ""}
+        onClose={closeScreen}
+        onInterrupt={() => controllerRef.current?.interrupt()}
+      />
       {error ? (
         <p data-testid="assistant-send-error" role="alert" className="mb-2 px-3 text-center text-[12.5px] text-destructive">
           {error}
