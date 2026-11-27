@@ -10,8 +10,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.modules.applications.dependencies import workspace_gate
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import (
+    TenantContext,
+    TenantCtxDep,
+    get_tenant_ctx,
+    require_permission,
+)
 from app.modules.inventory.reconciliation import InventoryReconciliationService
 from app.modules.inventory.service import (
     MOVEMENT_DIRECTION_PATTERN,
@@ -30,7 +36,17 @@ from app.modules.inventory.service import (
 from app.modules.inventory.services.expiry import expiry_report
 from app.modules.inventory.services.screens import visible_screens
 
-router = APIRouter(prefix="/inventory", tags=["inventory"])
+
+async def _inventory_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """Balances and movements are part of the core product, not an add-on."""
+    return await workspace_gate("retail.core", ctx)
+
+
+router = APIRouter(
+    prefix="/inventory",
+    tags=["inventory"],
+    dependencies=[Depends(_inventory_gate)],
+)
 
 
 class MovementRequest(BaseModel):
