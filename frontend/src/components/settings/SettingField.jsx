@@ -33,7 +33,33 @@ export function isProtectedValue(value) {
   return value === MASKED_VALUE;
 }
 
-export function SettingField({ defn, value, onChange, isAr }) {
+/**
+ * Where a value came from, in the reader's words.
+ *
+ * A settings screen that shows a number without saying whose number it is invites the wrong
+ * conclusion: a branch reading the workspace's inherited discount believes it chose it, and
+ * the next person "fixes" a value nobody broke. `is_default` is its own case — no one decided.
+ */
+export function sourceLabel(source, isAr) {
+  if (!source) return "";
+  if (source.isDefault) return isAr ? "القيمة الافتراضية" : "Default";
+  const scope = isAr ? SCOPE_LABELS_AR[source.scope] || source.scope : source.scope;
+  if (source.isInherited) return isAr ? `موروثة من ${scope}` : `From ${scope}`;
+  return isAr ? `محدَّدة هنا (${scope})` : `Set here (${scope})`;
+}
+
+const SCOPE_LABELS_AR = {
+  tenant: "النشاط",
+  workspace: "المساحة",
+  branch: "الفرع",
+  warehouse: "المخزن",
+  pos_profile: "ملف الكاشير",
+  register: "الدرج",
+  channel: "القناة",
+  user: "المستخدم",
+};
+
+export function SettingField({ defn, value, onChange, isAr, source }) {
   const label = isAr ? defn.label_ar || defn.key : defn.label_en || defn.key;
   const desc = isAr ? defn.description_ar : defn.description_en;
   // A key the engine does not enforce is a promise nothing keeps: the row still says what it is
@@ -149,6 +175,28 @@ export function SettingField({ defn, value, onChange, isAr }) {
     <SettingRow label={label} desc={desc} stretch={defn.type === "list" || defn.type === "string"}>
       <div className="flex items-center gap-2">
         {renderControl()}
+        {source && (
+          <Badge
+            tone={source.isDefault ? "muted" : source.isInherited ? "warning" : "success"}
+            className="shrink-0"
+            data-testid="setting-source"
+            title={
+              source.isDefault
+                ? isAr
+                  ? "محدش عدّلها، فهي قيمة النظام الافتراضية"
+                  : "Nobody set it, so this is the system default"
+                : source.isInherited
+                  ? isAr
+                    ? `موروثة من ${source.scope}`
+                    : `Inherited from the ${source.scope}`
+                  : isAr
+                    ? `محدَّدة على مستوى ${source.scope}`
+                    : `Set at ${source.scope} level`
+            }
+          >
+            {sourceLabel(source, isAr)}
+          </Badge>
+        )}
         {readOnly && (
           <Badge tone="muted" className="shrink-0" data-testid="setting-read-only">
             <Lock className="mr-1 h-3 w-3" />

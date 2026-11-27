@@ -379,6 +379,10 @@ export default function SettingsSection({ section }) {
               ? isAr
                 ? "تم حفظ التعديلات المباشرة، والباقي اتحول لطلب تغيير بانتظار الموافقة"
                 : "Direct edits saved; the rest became a change request awaiting approval"
+              : s.notice === "saved_request_failed"
+              ? isAr
+                ? "التعديلات المباشرة اتحفظت فعلاً، لكن طلب التغيير فشل — القيم لسه في الشاشة، جرّب تبعته تاني"
+                : "The direct edits really were saved; the change request failed. The values are still on screen — try sending it again"
               : s.notice === "change_request_submitted"
                 ? isAr
                   ? "تم إرسال طلب التغيير"
@@ -428,6 +432,7 @@ export default function SettingsSection({ section }) {
               value={s.values[defn.key]}
               onChange={s.setValue}
               isAr={isAr}
+              source={s.sources?.[defn.key]}
             />
           ))}
         </SettingCard>

@@ -76,3 +76,34 @@ describe("SettingField under a grant", () => {
     expect(withAccess(null)).not.toContain("Read-only");
   });
 });
+
+describe("where a value came from", () => {
+  const withSource = (source) =>
+    renderToStaticMarkup(
+      <I18nProvider>
+        <SettingsAccessContext.Provider
+          value={{ access: null, loading: false, failed: false, can: () => true, canWrite: true, canSee: () => true }}
+        >
+          <SettingField defn={DEF} value="0100" onChange={() => {}} isAr={false} source={source} />
+        </SettingsAccessContext.Provider>
+      </I18nProvider>
+    );
+
+  test("a default says it is the default, not a decision", () => {
+    expect(withSource({ scope: "tenant", isInherited: false, isDefault: true })).toContain("Default");
+  });
+
+  test("an inherited value names the scope it came from", () => {
+    const html = withSource({ scope: "workspace", isInherited: true, isDefault: false });
+    expect(html).toContain("From workspace");
+  });
+
+  test("a value set here says so, with its level", () => {
+    const html = withSource({ scope: "branch", isInherited: false, isDefault: false });
+    expect(html).toContain("Set here (branch)");
+  });
+
+  test("no source renders no claim", () => {
+    expect(withSource(null)).not.toContain("setting-source");
+  });
+});

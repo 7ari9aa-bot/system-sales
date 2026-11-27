@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { applySave } from "@/components/settings/saveChanges";
 
 /**
  * Split a pending edit into what can be written now and what needs a change request.
@@ -62,6 +63,11 @@ export function useSettings(opts = {}) {
   const [values, setValues] = useState({});
   const [original, setOriginal] = useState({});
   const [historyIds, setHistoryIds] = useState({});
+  /** Per key: `{ scope, scopeId, isInherited, isDefault }` — where the value in `values` came from. */
+  const [sources, setSources] = useState({});
+  // Bumped to re-read the page after a partial save: the stored half must be shown as stored.
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken((n) => n + 1), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -118,13 +124,26 @@ export function useSettings(opts = {}) {
         setDefs(list);
         const v = {};
         const hids = {};
+        const src = {};
         for (const [key, resolved] of Object.entries(eff || {})) {
           v[key] = resolved.value;
           if (resolved.latest_history_id) hids[key] = resolved.latest_history_id;
+          // WHERE the value came from, which the server already answers and this hook used to
+          // throw away: the scope that won the resolution, whether that scope is an ancestor
+          // (inherited), and whether the value is the registry default rather than anyone's
+          // decision. Without it the screen showed a branch's inherited number as if the branch
+          // had chosen it.
+          src[key] = {
+            scope: resolved.scope,
+            scopeId: resolved.scope_id ?? null,
+            isInherited: Boolean(resolved.is_inherited),
+            isDefault: Boolean(resolved.is_default),
+          };
         }
         setValues(v);
         setOriginal(v);
         setHistoryIds(hids);
+        setSources(src);
         setLoading(false);
       })
       .catch((err) => {
@@ -144,7 +163,7 @@ export function useSettings(opts = {}) {
       });
 
     return () => { alive = false; };
-  }, [defsQuery, effQuery]);
+  }, [defsQuery, effQuery, reloadToken]);
 
   const dirty = useMemo(
     () => JSON.stringify(values) !== JSON.stringify(original),
@@ -232,6 +251,12 @@ export function useSettings(opts = {}) {
     setError("");
     setNotice("");
     setConflict(null);
+    // A save is TWO writes, and each one either lands or does not. They used to share a single
+    // try block: if the change-request call failed, the screen said "could not save" while the
+    // bulk write was already stored, left the saved keys dirty, and a retry re-sent them with
+    // stale revisions and collected a 409. Each half now records its own outcome and the
+    // caller gets the truth: what was saved, what is pending, what failed.
+    const outcome = { saved: [], pending: [], failed: [] };
     try {
       const changes = {};
       for (const [k, v] of Object.entries(values)) {
@@ -246,59 +271,64 @@ export function useSettings(opts = {}) {
       // rest become a change request.
       const { direct, needsApproval } = splitSaveChanges(changes, approvalRequiredKeys);
 
-      if (Object.keys(direct).length > 0) {
-        // Pass expected_history_ids for optimistic-concurrency checks (§81).
-        // Every key names the revision it was read at — null for a setting that has never
-        // been written. Sending only the keys that already had a revision left the first
-        // write of a fresh setting unprotected: another user's first write was overwritten
-        // without a 409.
-        const expectedIds = {};
-        for (const k of Object.keys(direct)) {
-          expectedIds[k] = historyIds[k] ?? null;
-        }
-        await api("/settings/bulk", {
-          method: "POST",
-          body: {
-            scope,
-            ...(scopeId ? { scope_id: scopeId } : {}),
-            settings: direct,
-            ...(Object.keys(expectedIds).length > 0
-              ? { expected_history_ids: expectedIds }
-              : {}),
-          },
-        });
-      }
+      // Pass expected_history_ids for optimistic-concurrency checks (§81). Every key names the
+      // revision it was read at — null for a setting that has never been written. Sending only
+      // the keys that already had a revision left the first write of a fresh setting
+      // unprotected: another user's first write was overwritten without a 409.
+      const expectedIds = {};
+      for (const k of Object.keys(direct)) expectedIds[k] = historyIds[k] ?? null;
 
-      if (Object.keys(needsApproval).length > 0) {
-        const req = await api("/settings/change-requests", {
-          method: "POST",
-          body: {
-            changes: needsApproval,
-            scope,
-            ...(scopeId ? { scope_id: scopeId } : {}),
-          },
-        });
-        setChangeRequests((prev) => [req, ...prev]);
-        // They are pending, not saved: show the stored value, not the request.
-        setValues((prev) => {
+      // The two writes and their independent outcomes live in `applySave` (pure, tested).
+      const result = await applySave({
+        api,
+        direct,
+        needsApproval,
+        scope,
+        scopeId,
+        expectedIds,
+      });
+      outcome.saved = result.saved;
+      outcome.pending = result.pending;
+      outcome.failed = result.failed;
+
+      if (result.saved.length > 0) {
+        // Stored NOW, so these keys stop being dirty before the request half is considered: if
+        // that half failed, the screen must not claim they are unsaved.
+        setOriginal((prev) => {
           const next = { ...prev };
-          for (const k of Object.keys(needsApproval)) next[k] = original[k];
+          for (const k of result.saved) next[k] = values[k];
           return next;
         });
       }
+      if (result.request) {
+        setChangeRequests((prev) => [result.request, ...prev]);
+        // They are pending, not saved: show the stored value, not the request.
+        setValues((prev) => {
+          const next = { ...prev };
+          for (const k of result.pending) next[k] = original[k];
+          return next;
+        });
+      }
+      if (result.error) {
+        if (result.errorPhase === "request") {
+          // The typed values stay in the fields so they can be sent again; the half that DID
+          // save is reported as saved, never as a total failure.
+          setError(result.error?.message || "Could not file the change request");
+          setNotice(result.saved.length > 0 ? "saved_request_failed" : "");
+          if (result.saved.length > 0) reload();
+          return outcome;
+        }
+        throw result.error;
+      }
 
-      setOriginal((prev) => {
-        const next = { ...prev };
-        for (const k of Object.keys(direct)) next[k] = values[k];
-        return next;
-      });
-      if (Object.keys(needsApproval).length > 0 && Object.keys(direct).length > 0) {
+      if (outcome.pending.length > 0 && outcome.saved.length > 0) {
         setNotice("saved_with_pending");
-      } else if (Object.keys(needsApproval).length > 0) {
+      } else if (outcome.pending.length > 0) {
         setNotice("change_request_submitted");
       } else {
         setNotice("saved");
       }
+      return outcome;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConflict({
@@ -308,10 +338,14 @@ export function useSettings(opts = {}) {
       } else {
         setError(err?.message || "Could not save");
       }
+      // A partial write is possible even here: the bulk call landed and something after it
+      // did not. Re-read so the screen shows what the server holds, not what we hoped.
+      if (outcome.saved.length > 0) reload();
+      return outcome;
     } finally {
       setSaving(false);
     }
-  }, [values, original, historyIds, scope, scopeId, approvalRequiredKeys]);
+  }, [values, original, historyIds, scope, scopeId, approvalRequiredKeys, reload]);
 
   /** Create a change request for APPROVAL_REQUIRED settings. */
   const submitChangeRequest = useCallback(async (reason) => {
@@ -404,6 +438,7 @@ export function useSettings(opts = {}) {
     defMap,
     grouped,
     values,
+    sources,
     original,
     dirty,
     loading,
