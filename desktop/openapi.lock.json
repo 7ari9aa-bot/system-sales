@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 715,
-    "sha256": "1d365d74d1ee16e80f8375b115c9a9e9b30bdd8658862d1caa9a45c0b05d96fa",
+    "sha256": "adcc557eea657e6548042ad571389354d1fdbf342963a17cba0201f66a70dee8",
     "typed_operations": 398
   },
   "spec": {
@@ -17717,6 +17717,7 @@
               "anyOf": [
                 {
                   "maxLength": 255,
+                  "minLength": 1,
                   "type": "string"
                 },
                 {
