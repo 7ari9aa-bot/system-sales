@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Globe2, ArrowRight, Check } from 'lucide-react';
-import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES } from '@/lib/markets';
+import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG } from '@/lib/markets';
+import { detectCountrySlug, rememberCountry } from '@/lib/country-detection';
 import { useCountry } from '@/lib/CountryContext';
 import { buildLocalizedRoute } from '@/lib/public-seo-routes.mjs';
 
@@ -198,4 +200,38 @@ export function MarketHeaderSelector() {
       )}
     </div>
   );
+}
+
+
+/**
+ * Root `/` — no country question, just the right market.
+ *
+ * The old landing asked every visitor to choose a country before they could see
+ * anything. The country is a property of the request, so `/` now resolves it
+ * from the edge (see country-detection) and replaces the URL with that market's
+ * home. Egypt is the only live market today, so an unknown visitor lands there;
+ * the header switcher still lets anyone choose by hand.
+ */
+export function RootRedirect() {
+  const navigate = useNavigate();
+  const { locale } = useCountry();
+  const activeLocale = locale || 'ar';
+
+  useEffect(() => {
+    let alive = true;
+    const go = (slug) => {
+      if (!alive) return;
+      rememberCountry(slug);
+      navigate(`/${slug}/${activeLocale}`, { replace: true });
+    };
+    detectCountrySlug()
+      .then(go)
+      .catch(() => go(DEFAULT_COUNTRY_SLUG));
+    return () => {
+      alive = false;
+    };
+  }, [navigate, activeLocale]);
+
+  // A blank beat, never a picker: the redirect lands in a few hundred ms.
+  return <div className="min-h-[60vh]" aria-busy="true" />;
 }

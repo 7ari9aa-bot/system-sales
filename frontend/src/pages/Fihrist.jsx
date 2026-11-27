@@ -24,7 +24,7 @@ import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
 import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
 import BlogPost, { BlogIndex } from '@/pages/fhrist/Blog'
 import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
-import { MarketSelectorLanding, MarketHeaderSelector } from '@/components/fihrist/CountrySelector'
+import { RootRedirect, MarketHeaderSelector } from '@/components/fihrist/CountrySelector'
 import { WaitlistLanding } from '@/components/fihrist/WaitlistLanding'
 import { localizePath, localizeHtmlLinks } from '@/lib/locale-paths'
 import { routeForPath, resolveLocalizedPath, absoluteUrl } from '@/lib/public-seo-routes.mjs'
@@ -274,7 +274,7 @@ function App() {
   const pageComponents = { product: Product, conversations: Conversations, context: Context, assistant: Assistant, automation: Automation, pricing: Pricing, security: Security, privacy: Privacy, terms: Terms, 'data-deletion': DataDeletion, 'contact-sales': ContactSales, support: Support, download: MobileApp }
   const PageComponent = pageComponents[page]
   const content = useMemo(() => {
-    if (page === 'selector') return <MarketSelectorLanding />
+    if (page === 'selector') return <RootRedirect />
     if (page.startsWith('waitlist:')) return <WaitlistLanding />
     if (page === 'blog') return <BlogIndex locale={locale}/>
     if (page.startsWith('post:')) return <BlogPost slug={page.slice('post:'.length)} locale={locale}/>
