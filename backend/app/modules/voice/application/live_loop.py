@@ -96,6 +96,10 @@ class LiveCallLoop:
         self._voice_session_id: str | None = None
         self._provider_session: str | None = None
         self._closed = False
+        #: True between a caller's interrupt and the model's next turn. The model
+        #: owns the end of its own turn, so we cannot ask it to stop; what we can
+        #: do is stop playing it. Dropping the deltas IS the barge-in.
+        self._muted = False
         self.counts: dict[str, int] = {}
 
     @property
@@ -114,6 +118,24 @@ class LiveCallLoop:
             self._provider_session,
         )
         return self._provider_session
+
+    def interrupt(self) -> None:
+        """The caller talked over the model: silence our side now.
+
+        The provider is told as well (it owns the turn), but the guarantee this
+        loop makes is local and immediate: no further model audio reaches the
+        sink until the caller speaks again or a delegation is answered.
+        """
+        if self._closed:
+            return
+        self._muted = True
+        interrupt = getattr(self._provider, "interrupt", None)
+        if interrupt is not None and self._provider_session is not None:
+            interrupt(self._provider_session)
+
+    @property
+    def muted(self) -> bool:
+        return self._muted
 
     async def push_audio(self, pcm: bytes) -> None:
         """Send caller audio. A closed call accepts nothing: silence is not a frame."""
@@ -134,10 +156,13 @@ class LiveCallLoop:
 
         if kind == OUTPUT_AUDIO_DELTA:
             delta = event.get("delta")
-            if isinstance(delta, str) and delta:
-                self._audio_sink(_decode(delta))
-                return self._count("audio")
-            return "ignored"
+            if not (isinstance(delta, str) and delta):
+                return "ignored"
+            if self._muted:
+                # The caller interrupted: the rest of this model turn is not played.
+                return self._count("muted")
+            self._audio_sink(_decode(delta))
+            return self._count("audio")
 
         if kind == INPUT_TRANSCRIPT_DELTA:
             # Only the caller's own words answer a delegation; what the model said
@@ -145,6 +170,8 @@ class LiveCallLoop:
             delta = event.get("delta")
             if isinstance(delta, str) and delta:
                 self._transcripts.append(delta)
+                # The caller talking again is a new turn: the speaker comes back.
+                self._muted = False
                 return self._count("transcript")
             return "ignored"
 
@@ -159,6 +186,8 @@ class LiveCallLoop:
             return self._count("closed")
 
         if kind == DELEGATION_CREATED:
+            # An answer is about to be spoken, so the mute must not swallow it.
+            self._muted = False
             outcome = await self._delegations.on_event(
                 self._provider_session,
                 event,

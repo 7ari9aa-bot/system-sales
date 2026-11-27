@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 import uuid
 from typing import Annotated
 
@@ -235,6 +236,22 @@ async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTick
     )
 
 
+def control_frame(text: str) -> str | None:
+    """The one control the browser may send on the audio socket: "interrupt".
+
+    Anything else — malformed JSON, an unknown type, a field we do not act on — is
+    ignored rather than guessed at, because a control frame that half-works is
+    worse than one that is dropped.
+    """
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return "interrupt" if payload.get("type") == "interrupt" else None
+
+
 async def _pump(call, websocket: WebSocket) -> None:
     """Read model frames until the call closes or the transport breaks."""
     try:
@@ -282,6 +299,13 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
                 break
+            control = message.get("text")
+            if control:
+                # Barge-in: the caller talked over the model. The loop stops
+                # playing immediately; the model still owns its own turn.
+                if control_frame(control) == "interrupt":
+                    call.interrupt()
+                continue
             chunk = message.get("bytes")
             if not chunk:
                 continue

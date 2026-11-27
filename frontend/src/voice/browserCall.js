@@ -219,7 +219,7 @@ export async function startBrowserCall({
 
   if (!sessionId) {
     setState(STREAM_STATE.NOT_FOUND);
-    return { stop: () => {}, get state() { return state.value; } };
+    return { stop: () => {}, interrupt: () => {}, get state() { return state.value; } };
   }
 
   setState(STREAM_STATE.OPENING);
@@ -228,11 +228,11 @@ export async function startBrowserCall({
     ticket = await requestStreamTicket(sessionId, { apiFn });
   } catch (error) {
     setState(streamStateForStatus(error?.status ?? error?.response?.status));
-    return { stop: () => {}, get state() { return state.value; } };
+    return { stop: () => {}, interrupt: () => {}, get state() { return state.value; } };
   }
   if (!ticket) {
     setState(STREAM_STATE.UNAVAILABLE);
-    return { stop: () => {}, get state() { return state.value; } };
+    return { stop: () => {}, interrupt: () => {}, get state() { return state.value; } };
   }
 
   const mic = micFactory();
@@ -292,6 +292,22 @@ export async function startBrowserCall({
     stop: () => {
       cleanup();
       setState(STREAM_STATE.CLOSED);
+    },
+    interrupt: () => {
+      // Barge-in: silence the speaker now, and tell the server to drop the rest
+      // of the model's turn. The call stays open — the caller is still talking.
+      try {
+        player.stop();
+      } catch {
+        /* الصوت بيتوقف حتى لو حصل خطأ */
+      }
+      try {
+        if (socket && socket.readyState === 1) {
+          socket.send(JSON.stringify({ type: "interrupt" }));
+        }
+      } catch {
+        /* لو الإرسال فشل، المكالمة مكمّلة زي ما هي */
+      }
     },
     get state() {
       return state.value;

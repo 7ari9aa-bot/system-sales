@@ -102,6 +102,43 @@ describe("openVoiceSession", () => {
 });
 
 describe("startBrowserCall", () => {
+  it("interrupt stops the speaker and tells the server, without ending the call", async () => {
+    const socket = fakeSocket();
+    const mic = fakeMic();
+    const player = fakePlayer();
+
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => socket,
+      micFactory: () => mic,
+      playerFactory: () => player,
+    });
+
+    call.interrupt();
+
+    // The speaker goes quiet immediately, and the frame the server reads as
+    // barge-in is a text control frame, never audio.
+    expect(player.stop).toHaveBeenCalledTimes(1);
+    expect(socket.sent).toContain(JSON.stringify({ type: "interrupt" }));
+    expect(socket.close).not.toHaveBeenCalled();
+    expect(mic.stop).not.toHaveBeenCalled();
+  });
+
+  it("a call that never opened ignores an interrupt instead of throwing", async () => {
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: async () => {
+        throw Object.assign(new Error("nope"), { status: 503 });
+      },
+      wsFactory: async () => fakeSocket(),
+      micFactory: () => fakeMic(),
+      playerFactory: () => fakePlayer(),
+    });
+
+    expect(() => call.interrupt()).not.toThrow();
+  });
+
   it("sends mic audio and plays what comes back, then closes everything once", async () => {
     const socket = fakeSocket();
     const mic = fakeMic();
