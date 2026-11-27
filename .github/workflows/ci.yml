@@ -8,6 +8,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A full run on demand. Without it, verifying a commit whose paths did not change (a
+  # backend fix already merged, a re-run after a cancelled run) needed a dummy push — and
+  # each dummy push cancelled the run it was meant to replace, because the concurrency group
+  # is per branch. A manual dispatch asks for the whole matrix on one SHA and changes nothing.
+  workflow_dispatch:
 
 # One run per BRANCH, not per ref: `github.ref` differs between the push and PR events
 # (refs/heads/<branch> vs refs/pull/<n>/merge), which is how the duplicate above slipped past
@@ -22,8 +27,8 @@ jobs:
   changes:
     runs-on: ubuntu-24.04
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.decide.outputs.backend }}
+      frontend: ${{ steps.decide.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
@@ -36,6 +41,17 @@ jobs:
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
+      # A manual run means "verify this SHA completely": the paths say what changed since the
+      # parent, not what the person asked for.
+      - id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=${{ steps.filter.outputs.backend }}" >> "$GITHUB_OUTPUT"
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> "$GITHUB_OUTPUT"
+          fi
 
   # The suite is 11k+ tests and took 1h53m in one serial job (run 45635012681:
   # "138 failed, 11175 passed … in 6811.16s"). xdist was tried and abandoned: its workers
