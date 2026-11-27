@@ -210,6 +210,15 @@ def resolve_voice_profile(settings: ShopVoiceSettings) -> VoiceProfile:
     )
 
 
+def session_start_config(profile: VoiceProfile) -> dict[str, str]:
+    """The two fields a live session takes from a shop's profile, and nothing else.
+
+    Kept here rather than in the runtime so the adapter never learns about shops, countries or
+    dialects: it receives a voice name and an instruction block, both already resolved.
+    """
+    return {"voice": profile.voice_id, "instructions": profile.instructions}
+
+
 def _language_name(code: str) -> str:
     return {
         "ar": "arabic",

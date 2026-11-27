@@ -145,3 +145,21 @@ class TestConfiguration:
     def test_an_empty_key_is_refused(self) -> None:
         with pytest.raises(GptLiveUnavailable):
             GptLiveConfig(api_key="")
+
+
+class TestTheSessionVoice:
+    async def test_a_session_voice_overrides_the_configured_default(self) -> None:
+        provider, transport = _provider()
+        await provider.create_session({"voice": "nuri", "instructions": "x"})
+        assert transport.sent[0]["session"]["audio"]["output"]["voice"] == "nuri"
+
+    async def test_no_session_voice_keeps_the_configured_one(self) -> None:
+        provider, transport = _provider()
+        await provider.create_session({})
+        assert transport.sent[0]["session"]["audio"]["output"]["voice"] == "marin"
+
+    async def test_an_empty_session_voice_is_refused(self) -> None:
+        provider, transport = _provider()
+        with pytest.raises(GptLiveProtocolError):
+            await provider.create_session({"voice": "   "})
+        assert transport.sent == []

@@ -111,6 +111,9 @@ class GptLiveProvider:
         forbidden = {"tenant_id", "persona", "principal_id", "capability"} & set(config)
         if forbidden:
             raise GptLiveProtocolError(f"{sorted(forbidden)} must not be sent to the voice model")
+        voice = str(config.get("voice") or self._config.voice)
+        if not voice.strip():
+            raise GptLiveProtocolError("a session needs a voice")
         transport = self._transport_factory(self._config)
         await transport.send_json(
             {
@@ -121,7 +124,7 @@ class GptLiveProvider:
                     "instructions": str(config.get("instructions", "")),
                     "audio": {
                         "format": {"type": "audio/pcm", "rate": PCM_RATE},
-                        "output": {"voice": self._config.voice},
+                        "output": {"voice": voice},
                     },
                 },
             }
