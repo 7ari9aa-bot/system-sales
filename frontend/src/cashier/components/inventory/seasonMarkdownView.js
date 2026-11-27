@@ -57,14 +57,14 @@ export function previewSummary(totals) {
 export function belowCostWarning(totals) {
   const n = Number(totals?.belowCost) || 0;
   if (n === 0) return null;
-  return `تنبيه: ${fmtInt(n)} مقاس هيتباع بأقل من تكلفة الشراء بعد التخفيض (باللون الأحمر). التخفيض مش هيتمنع، لكن راجعهم قبل ما تأكد.`;
+  return `تنبيه: ${fmtInt(n)} مقاس سيُباع بأقل من تكلفة الشراء بعد التخفيض (باللون الأحمر). لن يُمنع التخفيض، لكن راجعها قبل التأكيد.`;
 }
 
 /** A softer note when some sizes have no booked cost, so "not under cost" is not mistaken for "safe". */
 export function unknownCostNote(totals) {
   const n = Number(totals?.withoutCost) || 0;
   if (n === 0) return null;
-  return `${fmtInt(n)} مقاس ما له تكلفة شراء مسجّلة، فمش قادرين نقول لو هيتباع بخسارة.`;
+  return `${fmtInt(n)} مقاس ليس له تكلفة شراء مسجّلة، فلا يمكن القول هل سيُباع بخسارة.`;
 }
 
 /** The note about sizes held at the lowest possible price. */
@@ -94,9 +94,9 @@ export function canConfirm({ preview, busy }) {
 export function markdownErrorMessage(kind) {
   switch (kind) {
     case "stale":
-      return "الأسعار اتغيّرت من وقت المعاينة، أو مفيش مقاسات للموسم ده. اعمل معاينة جديدة وراجعها قبل التأكيد.";
+      return "تغيّرت الأسعار منذ المعاينة، أو لا توجد مقاسات لهذا الموسم. أنشئ معاينة جديدة وراجعها قبل التأكيد.";
     case "forbidden":
-      return "تخفيض الموسم لصاحب المحل، والمدير ينفّذه بس لو صاحب المحل سمح بكده من إعدادات المستخدمين. اطلب من صاحب المحل ينفّذه.";
+      return "تخفيض الموسم من صلاحية صاحب المتجر، ولا ينفّذه المدير إلا إذا سمح بذلك صاحب المتجر من إعدادات المستخدمين. اطلب من صاحب المتجر تنفيذه.";
     case "invalid":
       return "النسبة لازم تكون من 0.01 لـ90 وبحد أقصى رقمين بعد العلامة، واسم الموسم مطلوب.";
     case "offline":

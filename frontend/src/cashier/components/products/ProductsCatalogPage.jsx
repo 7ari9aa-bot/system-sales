@@ -142,12 +142,12 @@ export default function ProductsCatalogPage() {
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 p-10 text-center">
               <p className="text-[15px] font-semibold text-[#2a2622]">
-                {total === 0 && !filters.term ? "لسه مفيش منتجات في الكتالوج" : "مفيش منتج مطابق للفلاتر"}
+                {total === 0 && !filters.term ? "لا توجد منتجات في الكتالوج بعد" : "لا يوجد منتج مطابق للفلاتر"}
               </p>
               <p className="max-w-[420px] text-[13px] text-[#8a8277]">
                 {total === 0 && !filters.term
                   ? "ابدأ بإضافة منتج واحد، أو استورد ملف Excel فيه منتجاتك كلها."
-                  : "وسّع البحث أو شيل فلتر الحالة عشان تشوف المؤرشف والمسودة."}
+                  : "وسّع البحث أو أزل فلتر الحالة لترى المؤرشف والمسودة."}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
                 <Link to="/cashier/products/new" className={PRIMARY}><Plus className="h-4 w-4" /> إضافة منتج</Link>

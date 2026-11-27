@@ -9,10 +9,10 @@
 import { PrinterError } from "./printerErrors";
 
 const REASONS = {
-  usb_unsupported: "المتصفح ده مش بيدعم الطباعة عبر USB.",
-  bt_unsupported: "المتصفح ده مش بيدعم الطباعة عبر البلوتوث.",
-  no_characteristic: "الطابعة مش بتستقبل أوامر الطباعة.",
-  not_connected: "الطابعة مش موصولة.",
+  usb_unsupported: "هذا المتصفح لا يدعم الطباعة عبر USB.",
+  bt_unsupported: "هذا المتصفح لا يدعم الطباعة عبر البلوتوث.",
+  no_characteristic: "الطابعة لا تستقبل أوامر الطباعة.",
+  not_connected: "الطابعة غير موصولة.",
 };
 
 // Closing the browser's device picker is a decision, not a failure: say nothing about it.

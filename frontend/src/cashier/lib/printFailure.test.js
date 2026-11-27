@@ -12,7 +12,7 @@ describe("printFailureNotice", () => {
 
   it("names the reason when the bridge knows it", () => {
     const notice = printFailureNotice(new PrinterError("no_characteristic"), { receiptNumber: "7" });
-    expect(notice.message).toContain("مش بتستقبل أوامر الطباعة");
+    expect(notice.message).toContain("لا تستقبل أوامر الطباعة");
   });
 
   it("still warns without a reason for a raw hardware or browser error", () => {

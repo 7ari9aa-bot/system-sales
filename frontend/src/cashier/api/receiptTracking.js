@@ -113,6 +113,6 @@ export function groupQuery({ group = "", from = "", to = "", limit, offset } = {
 }
 
 export function trackingErrorMessage(err) {
-  if (err?.status === 403) return "ما عندكش صلاحية تشوف متابعة الإيصالات. اطلب من صاحب المحل.";
+  if (err?.status === 403) return "ما عندكش صلاحية تشوف متابعة الإيصالات. اطلب من صاحب المتجر.";
   return "ما قدرناش نجيب الإيصالات دلوقتي. جرّب تاني بعد شوية.";
 }

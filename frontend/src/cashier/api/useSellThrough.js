@@ -12,7 +12,7 @@ export function shapeSellThrough(data) {
 
 /**
  * التصريف في فترة، مفلتر بالعلامة والموسم والخامة. نفس استعلام الربح (نهاية الفترة مفتوحة)، ونفس
- * قاعدة الـ403: صاحب المحل، والمدير لو صاحب المحل سمح، فالطلب مش بيتعاد. `enabled` بيخلّيه يتبعت لما تابه يتفتح.
+ * قاعدة الـ403: صاحب المتجر، والمدير لو صاحب المتجر سمح، فالطلب مش بيتعاد. `enabled` بيخلّيه يتبعت لما تابه يتفتح.
  */
 export function useSellThrough({ period = "7d", brandId = "", season = "", material = "", enabled = true } = {}) {
   const query = sellThroughQuery({ period, brandId, season, material });

@@ -132,7 +132,7 @@ export default function ProductForm({
 
   const { options: shopOptions } = useShopOptions();
   // اقتراحات الخامة هي خامات المحل نفسه (زي ما المواسم بتيجي من مواسم المحل): قائمة مقترحة،
-  // والخانة نفسها نص حر فصاحب المحل يقدر يكتب خامة جديدة.
+  // والخانة نفسها نص حر فصاحب المتجر يقدر يكتب خامة جديدة.
   const { data: materials = [] } = useStockMaterials();
   const presetSizes = shopOptions.sizeSets[resolveSizePreset(shopOptions.sizeSets, sizePreset)] ?? [];
 

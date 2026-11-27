@@ -84,15 +84,15 @@ export const FRIENDLY = {
   },
   "einvoice.unit_code": {
     label: "وحدة البيع في الإيصال",
-    description: "القطعة هي الأغلب للمحلات. سيبها زي ما هي إلا لو المصلحة طلبت غير كده.",
+    description: "القطعة هي الأغلب للمحلات. اتركها كما هي إلا إذا طلبت المصلحة غير ذلك.",
   },
   "einvoice.warn_hours_before_deadline": {
     label: "نبّهني قبل ما مهلة تصحيح الإيصال المرفوض تخلص (بالساعات)",
-    description: "لو المصلحة رفضت إيصال، عندك مهلة لتصحيحه. دي عدد الساعات اللي تتنبه فيها قبل ما تخلص.",
+    description: "إذا رفضت المصلحة إيصالاً، فلديك مهلة لتصحيحه. هذه عدد الساعات التي تُنبَّه فيها قبل انتهائها.",
   },
   "einvoice.default_payment_method": {
     label: "طريقة الدفع لو البيع ما سجّلش طريقة",
-    description: "بتُستخدم بس لو البيع اتسجل من غير طريقة دفع (بيع على الحساب مثلًا). غير كده الإيصال بياخد طريقة الدفع الفعلية.",
+    description: "تُستخدم فقط إذا سُجّل البيع دون طريقة دفع (بيع على الحساب مثلاً). وإلا فيأخذ الإيصال طريقة الدفع الفعلية.",
   },
   "einvoice.vat_category": {
     label: "الأصناف خاضعة للضريبة؟",
@@ -130,7 +130,7 @@ export function readiness(values) {
   if (!clean(v["einvoice.branch_building_number"])) missing.push("رقم المبنى");
 
   const reasons = [];
-  if (!v["einvoice.settings_confirmed"]) reasons.push("لسه ما أكّدتش إعدادات الأسعار والضريبة والدفع. أكّدها عشان الإيصال يبدأ.");
+  if (!v["einvoice.settings_confirmed"]) reasons.push("لم تؤكد بعد إعدادات الأسعار والضريبة والدفع. أكّدها ليبدأ الإيصال.");
   if (missing.length) reasons.push(`بيانات ناقصة أو غلط: ${missing.join("، ")}.`);
   return reasons.length ? { state: "blocked", missing, reasons } : { state: "running", missing: [], reasons: [] };
 }

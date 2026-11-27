@@ -41,25 +41,25 @@ export function canSellOnAccount(rules, { customerId, customerPhone } = {}) {
 
 /** Why a sale cannot be queued offline, or null. A till that records payments cannot settle one later. */
 export function offlineTenderBlocked(rules) {
-  return rules?.take_payments ? "الكاشير ده بيسجّل طرق الدفع، فمينفعش يتسجل بيع من غير نت. استنى لحد ما النت يرجع." : null;
+  return rules?.take_payments ? "أمين الصندوق هذا يسجّل طرق الدفع، فلا يمكن تسجيل بيع دون إنترنت. انتظر حتى يعود الاتصال." : null;
 }
 
 export function buildTender(rules, total, lines, { onAccount = false } = {}) {
   if (!rules?.take_payments) return { ok: true, payload: {} };
-  if (onAccount && !rules.allow_on_account) return fail("البيع الآجل مش مفعّل على الكاشير ده.");
+  if (onAccount && !rules.allow_on_account) return fail("البيع الآجل غير مفعّل على أمين الصندوق هذا.");
 
   const allowed = new Set(rules.methods ?? []);
   const needsRef = new Set(rules.reference_required ?? []);
   const wire = [];
   let paid = "0.00";
   for (const line of lines ?? []) {
-    if (!allowed.has(line.method)) return fail("طريقة الدفع دي مش مفعّلة على الكاشير ده.");
+    if (!allowed.has(line.method)) return fail("طريقة الدفع هذه غير مفعّلة على أمين الصندوق هذا.");
     const amount = amountOf(line.amount);
     if (amount === null || toMinor(amount) <= 0) return fail("اكتب مبلغ صحيح أكبر من صفر لكل طريقة دفع.");
     const out = { method: line.method, amount };
     const ref = String(line.reference ?? "").trim();
     if (needsRef.has(line.method)) {
-      if (!ref) return fail("طريقة الدفع دي محتاجة رقم مرجعي (رقم الموافقة أو التحويل).");
+      if (!ref) return fail("طريقة الدفع هذه تحتاج رقم مرجعي (رقم الموافقة أو التحويل).");
       out.reference = ref;
     }
     const handed = String(line.tendered ?? "").trim();

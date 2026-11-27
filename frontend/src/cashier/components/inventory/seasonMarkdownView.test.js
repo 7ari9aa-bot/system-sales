@@ -107,8 +107,8 @@ describe("the messages", () => {
     const msgs = kinds.map(markdownErrorMessage);
     expect(new Set(msgs).size).toBe(kinds.length);
     expect(markdownErrorMessage("stale")).toMatch(/معاينة جديدة/);
-    expect(markdownErrorMessage("forbidden")).toMatch(/لصاحب المحل/);
-    expect(markdownErrorMessage("forbidden")).toMatch(/لو صاحب المحل سمح|سمح بكده/);
+    expect(markdownErrorMessage("forbidden")).toMatch(/صاحب المتجر/);
+    expect(markdownErrorMessage("forbidden")).toMatch(/صاحب المتجر|سمح/);
     expect(markdownErrorMessage("anything else")).toBe(markdownErrorMessage("failed"));
   });
   it("the success message says how many sizes changed", () => {

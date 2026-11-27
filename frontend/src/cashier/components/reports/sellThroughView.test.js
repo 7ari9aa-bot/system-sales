@@ -144,8 +144,8 @@ describe("the error notice", () => {
     for (const kind of ["forbidden", "unauthorized"]) {
       const n = sellThroughErrorNotice({ status: 403 }, kind);
       expect(n.tone).toBe("forbidden");
-      expect(n.message).toMatch(/لصاحب المحل/);
-      expect(n.message).toMatch(/لو صاحب المحل سمح/);
+      expect(n.message).toMatch(/لصاحب المتجر/);
+      expect(n.message).toMatch(/لو صاحب المتجر سمح/);
     }
   });
   it("offline and failed are different messages", () => {

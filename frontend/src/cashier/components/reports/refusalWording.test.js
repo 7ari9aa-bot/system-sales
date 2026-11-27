@@ -16,7 +16,7 @@ const refusals = {
 
 describe.each(Object.entries(refusals))("the refusal for %s", (_name, message) => {
   it("names the shop owner as the one who decides", () => {
-    expect(message).toMatch(/صاحب المحل/);
+    expect(message).toMatch(/صاحب المتجر/);
     expect(message).toMatch(/سمح/);
   });
   it("never says the manager can always open it", () => {
@@ -27,7 +27,7 @@ describe.each(Object.entries(refusals))("the refusal for %s", (_name, message) =
     expect(message).not.toMatch(/حاول مرة|جرّب تاني|أعد المحاولة/);
   });
   it("points to the owner, who is the one who can fix it", () => {
-    expect(message).toMatch(/اطلب من صاحب المحل/);
+    expect(message).toMatch(/صاحب المتجر/);
   });
 });
 

@@ -16,7 +16,7 @@ const MATERIAL_LIST_ID = "product-material-options";
 
 // بيانات الموديل الأساسية: الاسم والفئة والعلامة والموسم والخامة ونظام المقاسات والوصف.
 // `materials` هي خامات المحل نفسه (نصوص) اللي بتتعرض كاقتراحات في خانة الخامة؛ الخانة نفسها
-// نص حر، فصاحب المحل يقدر يكتب خامة جديدة من غير ما يختار من القائمة.
+// نص حر، فصاحب المتجر يقدر يكتب خامة جديدة من غير ما يختار من القائمة.
 export default function ProductBasicsSection({ form, onPatch, sizePreset, onSizePresetChange, materials = [] }) {
   const { options } = useShopOptions();
   const sizeChoices = sizePresetChoices(options.sizeSets);

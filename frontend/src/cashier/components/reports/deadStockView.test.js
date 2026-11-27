@@ -109,8 +109,8 @@ describe("the header and the notice", () => {
     expect(deadStockErrorNotice(null, "failed")).toBeNull();
     const n = deadStockErrorNotice({ status: 403 }, "forbidden");
     expect(n.tone).toBe("forbidden");
-    expect(n.message).toMatch(/لصاحب المحل/);
-    expect(n.message).toMatch(/لو صاحب المحل سمح/);
+    expect(n.message).toMatch(/لصاحب المتجر/);
+    expect(n.message).toMatch(/لو صاحب المتجر سمح/);
     expect(deadStockErrorNotice({ status: 401 }, "unauthorized").tone).toBe("forbidden");
   });
   it("offline and failed are different messages", () => {

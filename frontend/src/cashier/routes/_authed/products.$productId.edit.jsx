@@ -25,7 +25,7 @@ export default function ProductEditPage() {
         <EmptyState
           icon={WifiOff}
           title={refused ? "غير مسموح" : "تعذّر الاتصال بالخادم"}
-          description={refused ? "اطلب من صاحب المحل صلاحية تعديل المنتجات." : "المنتج موجود ولم يُحذف. جرّب تاني بعد لحظات."}
+          description={refused ? "اطلب من صاحب المتجر صلاحية تعديل المنتجات." : "المنتج موجود ولم يُحذف. جرّب تاني بعد لحظات."}
           action={
             refused ? undefined : (
               <Button onClick={() => refetch()} className="h-auto gap-2 rounded-[10px] border border-[#E8761A] !bg-[#E8761A] px-4 py-2.5 text-[13px] font-semibold !text-white hover:!bg-[#D1650F]">

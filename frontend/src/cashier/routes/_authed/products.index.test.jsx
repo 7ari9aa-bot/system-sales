@@ -88,7 +88,7 @@ describe("the products page is a catalogue, not the add form", () => {
     state.total = 0;
     state.hasMore = false;
     const html = draw();
-    expect(html).toContain("لسه مفيش منتجات في الكتالوج");
+    expect(html).toContain("لا توجد منتجات في الكتالوج بعد");
     expect(html).toContain("إضافة منتج");
     expect(html).toContain("استيراد من Excel");
     expect(html).toContain("/inventory/import");

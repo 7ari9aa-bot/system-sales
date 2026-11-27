@@ -259,8 +259,8 @@ describe("the notice shown instead of the table", () => {
       const n = profitErrorNotice({ status });
       expect(n.tone).toBe("forbidden");
       expect(n.kind).toBe(status === 403 ? "forbidden" : "unauthorized");
-      expect(n.message).toContain("لصاحب المحل");
-      expect(n.message).toContain("لو صاحب المحل سمح");
+      expect(n.message).toContain("لصاحب المتجر");
+      expect(n.message).toContain("لو صاحب المتجر سمح");
       expect(n.message).not.toContain("حاول مرة");
     }
   });
@@ -277,7 +277,7 @@ describe("the notice shown instead of the table", () => {
     const n = profitErrorNotice(new Error("boom"));
     expect(n.kind).toBe("failed");
     expect(n.message).not.toContain("الاتصال");
-    expect(n.message).not.toContain("لصاحب المحل");
+    expect(n.message).not.toContain("لصاحب المتجر");
   });
 });
 
