@@ -17,8 +17,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import AccessFacts, decide_access
 from app.modules.applications.manifests import get_manifest
+from app.modules.applications.repository import gather_facts
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,3 +71,19 @@ def require_application(
         return evaluate(facts_provider(application_key), application_key)
 
     return dependency
+
+
+async def workspace_gate(application_key: str, ctx) -> GateResult:
+    """Read the facts for this request's workspace, then judge one application."""
+    facts = await gather_facts(
+        ctx.session,
+        tenant_id=ctx.tenant_id,
+        workspace_id=ctx.workspace_id,
+        application_key=application_key,
+    )
+    if not facts.installation_states:
+        return evaluate(facts, application_key, workspace_configured=False)
+    result = evaluate(facts, application_key)
+    if not result.allowed:
+        raise PermissionDeniedError(result.reason)
+    return result

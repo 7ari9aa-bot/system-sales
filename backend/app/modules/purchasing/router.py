@@ -15,7 +15,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.applications.dependencies import workspace_gate
+from app.modules.identity.deps import TenantContext, get_tenant_ctx, require_permission
 from app.modules.purchasing.service import (
     CostService,
     GoodsReceiptService,
@@ -25,7 +26,13 @@ from app.modules.purchasing.service import (
     SupplierService,
 )
 
-router = APIRouter(tags=["purchasing"])
+
+async def _purchasing_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """The purchasing product is licensed, installed and active for this workspace."""
+    return await workspace_gate("retail.purchasing", ctx)
+
+
+router = APIRouter(tags=["purchasing"], dependencies=[Depends(_purchasing_gate)])
 
 ReadCtx = Annotated[TenantContext, Depends(require_permission("inventory:read"))]
 WriteCtx = Annotated[TenantContext, Depends(require_permission("inventory:write"))]
