@@ -101,3 +101,89 @@ def test_an_undecided_group_raises_instead_of_defaulting_to_open() -> None:
 
     with pytest.raises(KeyError, match="belongs to no application"):
         application_for_group("not-a-real-group")
+
+
+# --- application access: every gate, in order, with a reason ---------------
+
+
+def _facts(**overrides):
+    from app.modules.applications.access import AccessFacts
+
+    base = {
+        "application_key": "retail.purchasing",
+        "entitled_applications": frozenset({"retail.core", "retail.purchasing"}),
+        "installation_states": {"retail.core": "active", "retail.purchasing": "active"},
+        "industry": "apparel",
+    }
+    base.update(overrides)
+    return AccessFacts(**base)
+
+
+def test_a_fully_provisioned_application_is_allowed() -> None:
+    from app.modules.applications.access import decide_access
+
+    assert decide_access(_facts()).allowed
+
+
+def test_an_unknown_application_is_denied_not_ignored() -> None:
+    from app.modules.applications.access import decide_access
+
+    decision = decide_access(_facts(application_key="retail.purchasingg"))
+    assert not decision.allowed
+    assert decision.reason.startswith("unknown_application")
+
+
+def test_paying_is_not_installing() -> None:
+    """Entitled but never installed in this workspace: the screen must not exist."""
+    from app.modules.applications.access import decide_access
+
+    decision = decide_access(_facts(installation_states={"retail.core": "active"}))
+    assert not decision.allowed
+    assert decision.reason == "not_installed"
+
+
+def test_setup_required_is_not_active() -> None:
+    from app.modules.applications.access import decide_access
+
+    decision = decide_access(
+        _facts(installation_states={"retail.core": "active", "retail.purchasing": "setup_required"})
+    )
+    assert not decision.allowed
+    assert decision.reason == "installation_setup_required"
+
+
+def test_an_inactive_dependency_closes_the_door() -> None:
+    from app.modules.applications.access import decide_access
+
+    decision = decide_access(
+        _facts(installation_states={"retail.core": "suspended", "retail.purchasing": "active"})
+    )
+    assert not decision.allowed
+    assert decision.reason == "dependency_inactive:retail.core"
+
+
+def test_a_required_capability_that_is_off_blocks_the_application() -> None:
+    from app.modules.applications.access import decide_access
+
+    facts = _facts(
+        application_key="retail.inventory_advanced",
+        entitled_applications=frozenset(
+            {"retail.core", "retail.warehouse", "retail.inventory_advanced"}
+        ),
+        installation_states={
+            "retail.core": "active",
+            "retail.warehouse": "active",
+            "retail.inventory_advanced": "active",
+        },
+    )
+    decision = decide_access(facts)
+    assert not decision.allowed
+    assert decision.reason == "capability_missing:lot_expiry"
+
+
+def test_no_workspace_access_denies_even_a_paid_application() -> None:
+    from app.modules.applications.access import decide_access
+
+    decision = decide_access(_facts(user_has_workspace_access=False))
+    assert not decision.allowed
+    assert decision.reason == "no_workspace_access"
