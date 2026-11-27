@@ -8,10 +8,16 @@ directions. It holds no business logic — the provider decides what to send.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
 from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveUnavailable
+
+#: How long to wait for the gateway's half of the close handshake. A close that
+#: hangs must not hang the call's cleanup: the caller has already stopped paying
+#: attention, and the socket is ours to drop.
+CLOSE_TIMEOUT_SECONDS = 3.0
 
 
 class WebsocketTransport:
@@ -28,7 +34,18 @@ class WebsocketTransport:
         return json.loads(raw)
 
     async def close(self) -> None:
-        await self._connection.close()
+        """Close the socket without waiting forever for the peer.
+
+        Measured on a real session: the gateway did not always answer the close
+        frame, so ``connection.close()`` blocked until the caller gave up. A call
+        that ends must end, so after the timeout the socket is aborted instead.
+        """
+        try:
+            await asyncio.wait_for(self._connection.close(), timeout=CLOSE_TIMEOUT_SECONDS)
+        except TimeoutError:
+            transport = getattr(self._connection, "transport", None)
+            if transport is not None:
+                transport.abort()
 
 
 async def connect(config: GptLiveConfig) -> WebsocketTransport:

@@ -48,9 +48,24 @@ def arabic_pcm(text: str) -> bytes:
         mp3 = os.path.join(tmp, "q.mp3")
         gTTS(text=text, lang="ar").save(mp3)
         out = subprocess.run(
-            ["ffmpeg", "-v", "quiet", "-i", mp3, "-f", "s16le", "-acodec", "pcm_s16le",
-             "-ac", "1", "-ar", "24000", "-"],
-            capture_output=True, check=True,
+            [
+                "ffmpeg",
+                "-v",
+                "quiet",
+                "-i",
+                mp3,
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ac",
+                "1",
+                "-ar",
+                "24000",
+                "-",
+            ],
+            capture_output=True,
+            check=True,
         )
         return out.stdout
 
@@ -93,7 +108,9 @@ async def main() -> int:
         await provider.stream_audio(session, pcm[start : start + frame])
         await asyncio.sleep(0.1)
 
-    deadline = asyncio.get_running_loop().time() + 25
+    started = asyncio.get_running_loop().time()
+    deadline = started + 25
+    extensions = 0
     while asyncio.get_running_loop().time() < deadline:
         try:
             event = await asyncio.wait_for(provider.next_event(session), timeout=8)
@@ -113,11 +130,17 @@ async def main() -> int:
             print(f"delegation: {outcome}")
         elif kind == "session.closed":
             break
-        if heard and any(word in "".join(said_out) for word in ("اتناشر", "ألف")):
-            # The model has started speaking our answer; keep reading a little longer.
-            deadline = asyncio.get_running_loop().time() + 4
+        now = asyncio.get_running_loop().time()
+        answered = any(word in "".join(said_out) for word in ("اتناشر", "ألف"))
+        if heard and answered and extensions < 2:
+            # The model has started speaking our answer; read a little longer, twice at most.
+            extensions += 1
+            deadline = min(now + 4, started + 40)
 
-    await provider.close_session(session)
+    try:
+        await asyncio.wait_for(provider.close_session(session), timeout=8)
+    except (TimeoutError, Exception) as exc:  # noqa: BLE001 - a close that hangs is not a result
+        print("close:", type(exc).__name__)
 
     print("events:", dict(counts))
     print("heard by the model:", "".join(said_in).strip())
