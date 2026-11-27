@@ -371,6 +371,9 @@ export default function SalesAssistant() {
         error={sendError ? t("salesAssistant.sendFailed") : null}
         onSend={send}
         disabled={sending || createThread.isPending}
+        // بعد المكالمة نعيد قراءة نفس الثريد: الترانسكريبت اللي اتكتب على السيرفر
+        // أثناء الكلام لازم يظهر في نفس الشاشة، مش في محادثة تانية.
+        onCallEnd={() => queryClient.invalidateQueries({ queryKey: messagesKey(activeId), exact: true })}
       />
     </div>
   );

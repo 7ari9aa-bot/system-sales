@@ -6,8 +6,10 @@
  *  server). Spoken words never send by themselves: the owner reads them, fixes them, then sends. */
 
 import React from "react";
-import { ArrowUp, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, AudioLines, Mic, Plus, Square } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { openVoiceSession, startBrowserCall } from "@/voice/browserCall";
+import { createCallController } from "./callControl";
 import { ATTACH_EXTENSIONS, checkAttachment, mergeAttachment } from "./fileAttach";
 import {
   isVoiceSupported,
@@ -18,7 +20,7 @@ import {
   voiceErrorKey,
 } from "./voiceInput";
 
-export default function Composer({ value, onChange, onSend, disabled, error }) {
+export default function Composer({ value, onChange, onSend, disabled, error, onCallEnd }) {
   const { t, lang } = useI18n();
   const ref = React.useRef(null);
   const recRef = React.useRef(null);
@@ -30,6 +32,32 @@ export default function Composer({ value, onChange, onSend, disabled, error }) {
   const [attachError, setAttachError] = React.useState(null);
   const fileRef = React.useRef(null);
   const supported = isVoiceSupported();
+  // مكالمة حقيقية: المايك هنا بيبعت صوت للسيرفر، مش بيحوّل كلام لنص زي زر الإملاء.
+  const controllerRef = React.useRef(null);
+  const [calling, setCalling] = React.useState(false);
+  const [callError, setCallError] = React.useState(null);
+
+  const onCallEndRef = React.useRef(onCallEnd);
+  onCallEndRef.current = onCallEnd;
+
+  if (!controllerRef.current) {
+    controllerRef.current = createCallController({
+      openSession: () => openVoiceSession(),
+      startCall: (options) => startBrowserCall(options),
+      onChange: ({ calling: next, error }) => {
+        setCalling(next);
+        setCallError(error);
+      },
+      onEnd: () => onCallEndRef.current?.(),
+    });
+  }
+
+  const toggleCall = React.useCallback(() => {
+    controllerRef.current?.toggle();
+  }, []);
+
+  React.useEffect(() => () => controllerRef.current?.stop(), []);
+
 
   // auto-grow: the textarea tracks its content height up to a ceiling
   React.useEffect(() => {
@@ -148,6 +176,11 @@ export default function Composer({ value, onChange, onSend, disabled, error }) {
               : "border-border focus-within:border-foreground/25 focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.24)]"
         }`}
       >
+        {callError ? (
+          <p data-testid="assistant-call-error" className="mb-1 text-[11.5px] font-medium text-destructive">
+            {callError}
+          </p>
+        ) : null}
         {listening ? (
           <span data-testid="assistant-listening" className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-primary">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
@@ -194,6 +227,20 @@ export default function Composer({ value, onChange, onSend, disabled, error }) {
             <Plus className="h-[18px] w-[18px]" />
           </button>
           <span className="flex items-center gap-1">
+            <button
+              type="button"
+              data-testid="assistant-call"
+              onClick={toggleCall}
+              disabled={disabled}
+              aria-pressed={calling}
+              aria-label={calling ? t("salesAssistant.callStop") : t("salesAssistant.callStart")}
+              title={calling ? t("salesAssistant.callStop") : t("salesAssistant.callStart")}
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40 ${
+                calling ? "bg-destructive/15 text-destructive" : "text-muted-foreground hover:bg-surface hover:text-foreground"
+              }`}
+            >
+              {calling ? <Square className="h-3.5 w-3.5 fill-current" /> : <AudioLines className="h-[18px] w-[18px]" />}
+            </button>
             {supported ? (
               <button
                 type="button"
