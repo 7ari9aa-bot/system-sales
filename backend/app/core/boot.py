@@ -80,6 +80,17 @@ async def inspect_app_role_bypass_rls(session: AsyncSession) -> str | None:
     return None
 
 
+#: Policies that are not ``tenant_isolation`` but are load-bearing for a PUBLIC
+#: flow, keyed by (table, policy). Provisioning re-creates ``tenant_isolation``
+#: on every run; nothing re-creates these. On 27 Nov
+#: ``invitations_accept_read`` was absent from production while alembic still
+#: reported its migration applied, and every invitation accept answered 404 —
+#: a user-facing break that no log line mentioned.
+REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = (
+    ("invitations", "invitations_accept_read"),
+)
+
+
 async def inspect_tenant_rls_invariants(
     session: AsyncSession,
     *,
@@ -225,4 +236,24 @@ async def run_boot_reconciler(
             raise BootReconcilerError(msg)
 
     logger.info("boot_reconciler.passed: Invariant 13 verified across tenant tables")
+    for table, policy in REQUIRED_NAMED_POLICIES:
+        present = (
+            await session.execute(
+                text(
+                    """
+                    SELECT 1 FROM pg_policies
+                    WHERE schemaname = 'public'
+                      AND tablename = :t
+                      AND policyname = :p
+                    """
+                ),
+                {"t": table, "p": policy},
+            )
+        ).scalar_one_or_none()
+        if present is None:
+            violations.append(
+                f"{table}: required policy {policy} is MISSING — the public flow it "
+                "authorizes answers not-found for every valid request"
+            )
+
     return violations
