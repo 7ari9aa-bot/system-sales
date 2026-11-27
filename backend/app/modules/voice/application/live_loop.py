@@ -13,6 +13,7 @@ decided.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -119,7 +120,7 @@ class LiveCallLoop:
         )
         return self._provider_session
 
-    def interrupt(self) -> None:
+    async def interrupt(self) -> None:
         """The caller talked over the model: silence our side now.
 
         The provider is told as well (it owns the turn), but the guarantee this
@@ -131,7 +132,12 @@ class LiveCallLoop:
         self._muted = True
         interrupt = getattr(self._provider, "interrupt", None)
         if interrupt is not None and self._provider_session is not None:
-            interrupt(self._provider_session)
+            # The provider's interrupt is a coroutine: awaiting it is the whole
+            # point. Calling it without await left the model session unaware and
+            # printed "coroutine was never awaited" on a real run.
+            result = interrupt(self._provider_session)
+            if asyncio.iscoroutine(result):
+                await result
 
     @property
     def muted(self) -> bool:

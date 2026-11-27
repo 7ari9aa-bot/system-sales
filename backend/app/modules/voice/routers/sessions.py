@@ -304,7 +304,7 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
                 # Barge-in: the caller talked over the model. The loop stops
                 # playing immediately; the model still owns its own turn.
                 if control_frame(control) == "interrupt":
-                    call.interrupt()
+                    await call.interrupt()
                 continue
             chunk = message.get("bytes")
             if not chunk:

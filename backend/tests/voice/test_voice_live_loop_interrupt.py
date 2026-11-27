@@ -33,7 +33,9 @@ class FakeProvider:
     async def stream_audio(self, session_id, pcm):
         return None
 
-    def interrupt(self, session_id):
+    async def interrupt(self, session_id):
+        # Async on purpose: the real provider's interrupt is a coroutine, and
+        # calling it without awaiting it was the bug this test would have missed.
         self.interrupts.append(session_id)
 
     async def close_session(self, session_id):
@@ -61,7 +63,7 @@ async def test_audio_after_an_interrupt_is_not_played():
     loop, provider, sink = _loop([{"type": "session.output_audio.delta", "delta": AUDIO}])
     await loop.start(voice_session_id="vs-1", config={})
 
-    loop.interrupt()
+    await loop.interrupt()
     outcome = await loop.pump()
 
     assert outcome == "muted"
@@ -79,7 +81,7 @@ async def test_the_caller_talking_again_brings_the_speaker_back():
         ]
     )
     await loop.start(voice_session_id="vs-1", config={})
-    loop.interrupt()
+    await loop.interrupt()
 
     assert await loop.pump() == "transcript"
     assert await loop.pump() == "audio"
@@ -95,7 +97,7 @@ async def test_an_answer_is_not_swallowed_by_the_mute():
         ]
     )
     await loop.start(voice_session_id="vs-1", config={})
-    loop.interrupt()
+    await loop.interrupt()
 
     assert await loop.pump() == "answered"
     assert await loop.pump() == "audio"
@@ -108,7 +110,7 @@ async def test_interrupting_a_closed_call_does_nothing():
     await loop.start(voice_session_id="vs-1", config={})
     await loop.close()
 
-    loop.interrupt()
+    await loop.interrupt()
 
     assert loop.muted is False
     assert provider.interrupts == []
