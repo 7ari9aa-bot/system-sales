@@ -272,8 +272,10 @@ class ProfileUpdate(BaseModel):
     body is refused rather than answered with a no-op 200.
     """
 
-    # Trimmed and collapsed by the service; the bound only stops an absurd payload.
-    full_name: str | None = Field(default=None, max_length=255)
+    # Trimmed and collapsed by the service, which also refuses a name that is only whitespace
+    # (400 — a domain rule about an invisible identity). An EXPLICIT empty string is a field-level
+    # violation and stops here (422), so the form gets a message on the field itself.
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
     # Free-form as people write numbers ("+20 100 123 4567"). The service keeps
     # the digits and the leading + and refuses anything that is not a phone.
     phone: str | None = Field(default=None, max_length=32)

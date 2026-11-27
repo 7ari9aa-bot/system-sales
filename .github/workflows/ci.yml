@@ -399,7 +399,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The 15 minutes used to cover npm ci, a Chromium install, the build AND the suite. On a
+    # cold runner those first three took 10 of them (run 45916376327: setup 00:23:16 -> suite
+    # 00:33) and the job was killed mid-suite, which reads as a red e2e when no test failed.
+    # The job gets room for its setup; the suite keeps its own budget below.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
@@ -414,7 +418,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Browser checks run against the built Vite app served by vite preview.
       - run: npm run build
+      # The suite itself: 6.2 minutes on a warm run (45908426992), so 12 is twice the room.
       - run: npm run test:e2e
+        timeout-minutes: 12
       # Traces/screenshots are captured on the first retry — keep them when the
       # run fails so a red build is debuggable without a re-run.
       - uses: actions/upload-artifact@v7
