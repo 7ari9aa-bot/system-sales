@@ -126,7 +126,21 @@ def upgrade() -> None:
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
         op.execute(_canonical(table))
-        op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO sales_app")
+        # CI runs `alembic upgrade head` BEFORE scripts/provision.py creates sales_app, so a bare
+        # GRANT here dies with `role "sales_app" does not exist` and takes every shard with it.
+        # The guard is the pattern the other migrations already use: grant where the role exists
+        # (production, and any environment after provisioning), skip where it cannot exist yet.
+        op.execute(
+            f"""
+            DO $$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO sales_app';
+              END IF;
+            END
+            $$;
+            """
+        )
 
 
 def downgrade() -> None:
