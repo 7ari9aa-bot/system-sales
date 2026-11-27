@@ -10,6 +10,14 @@ finished, section by section, so that no page is invented twice and no setting i
 
 Twenty sections in five groups. They are **navigation groups**, not twenty sibling pages.
 
+A row's status is one of three words, and each means something exact:
+
+- **done** — the page exists, and every control on it reads or writes a real endpoint.
+- **moved** — the page is a record screen, not a configuration screen. It keeps its address and
+  hands over to the module that owns those rows (`frontend/src/components/settings/settingsManifest.js`,
+  `links:`). The Settings Center configures; the module operates.
+- **pending** — not built, with the reason written on the row.
+
 ---
 
 ## 1. Groups and sections
@@ -49,8 +57,8 @@ warehouse and several registers; they are not the same entity and must not share
 |---|---|---|
 | 11 Customer data | done | `/settings/customers/customer-data` — the real contact-quality work queue from `GET /customers/contact-data-issues` (name, phone, phone state); the fix happens on the customer's own record, which the page says |
 | 11 Customer segments | done | `/settings/customers/customer-segments` — the segments in force from `GET /segments`; a segment is its rule set, so the page shows them and points at the screen that creates them |
-| 11 Customer records | done | `/settings/customers/customer-records` — the real customer list from `GET /customers` with state and contact number |
-| 11 Inbox | done | `/settings/customers/inbox` — the live inbox read model (`GET /conversations`: channel, state, unread), so the page answers "what is the load" rather than pretending to configure it |
+| 11 Customer records | moved | `/settings/customers/customer-records` → **`/customers`** — the customer list lives in the customers module; the Center links there|
+| 11 Inbox | moved | `/settings/customers/inbox` → **`/inbox`** — the inbox is an operating screen; the Center links there|
 | 11 Conversation routing | done | `/settings/customers/conversation-routing` — the response-time policies routing works to (`GET /sla/policies`, optionally per channel); assigning staff stays on `/settings/team/access` |
 | 11 Reply templates | done | `/settings/customers/reply-templates` — the real templates from `GET /message-templates` with their language and approval state |
 | 11 Support hours | done | `/settings/customers/support-hours` — reads the published `hours` store policy and LINKS to its single editor on `/settings/store/working-hours`; a second editor here would be the duplicate the Center exists to prevent |
@@ -73,9 +81,9 @@ warehouse and several registers; they are not the same entity and must not share
 | 13 Testing and evaluation | done | `/settings/ai/testing-and-evaluation` — the evaluations from `GET /ai/evaluations` with prompt version, status and rollout state (canary/full/rolled back), which is what gates publishing |
 | 13 Versions and publishing | done | `/settings/ai/versions-and-publishing` — each agent's version and state; the version is the concurrency token that stops one edit overwriting another, and publishing runs on the publish path after a passing evaluation |
 | 13 | **AI & agents** | Agent management · Customer Agent · Analytics Agent · Knowledge sources · Models and routing · Tools and permissions · Policies and safety · Testing and evaluation · Versions and publishing |
-| 14 Dashboards | done | `/settings/analytics/dashboards` — the live overview from `GET /analytics/overview`, rendered as the figures the engine returned rather than a hand-written tile list |
+| 14 Dashboards | moved | `/settings/analytics/dashboards` → **`/analytics`** — the live overview moved to the analytics module; the Center keeps the address and links there|
 | 14 Metrics and indicators | done | `/settings/analytics/metrics-and-indicators` — the metric definitions the engine actually computes (`GET /analytics/metrics/definitions`), so no indicator is computed twice in two ways |
-| 14 Reports | done | `/settings/analytics/reports` — the revenue summary from `GET /analytics/revenue/summary`, produced from the real order and invoice rows |
+| 14 Reports | moved | `/settings/analytics/reports` → **`/cashier/reports`** — report runs are records, not settings; the Center links to the reports screen|
 | 14 Scheduled reports | pending | No report scheduler exists: the repo has no scheduler module and no stored report job, so a schedule editor here would write rows nothing reads. Needs a report job table plus a worker before the page is real |
 | 14 Analysis settings | pending | There is no analysis configuration to edit: periods, groupings and thresholds are arguments of the analytics calls, not stored settings. `GET /analytics/retention` and its per-class policies are real but belong to section 17 |
 | 14 Report permissions | pending | Report visibility is not modelled: there is no per-report or per-dashboard grant, so the page would be a second, weaker copy of the team roles in section 02 |
@@ -85,7 +93,7 @@ warehouse and several registers; they are not the same entity and must not share
 | 15 Triggers and events | done | `/settings/automation/triggers-and-events` — the trigger events the engine really fires (`trigger_event`, e.g. `order.created`), not a list of theoretical events |
 | 15 Schedules | pending | The engine triggers on events only: there is no time-based trigger and no stored schedule, so a schedule editor here would write rows no worker reads. Needs a scheduled trigger type in the engine first |
 | 15 Approvals | pending | The automation engine has no approval step: a workflow's definition is steps and conditions, with no gate that waits for a person. The approvals that DO exist are the settings change workflow's, and they belong to section 18 |
-| 15 Execution attempts | done | `/settings/automation/execution-attempts` — `GET /automation/{id}/executions` per workflow: state, version, start time and the stored `error`, because "it failed" without the reason is not an attempt record |
+| 15 Execution attempts | moved | `/settings/automation/execution-attempts` → **`/automation`** — a run log belongs to the automation module that owns the runs; the Center links there|
 | 15 | **Automation & workflows** | Rules · Workflows · Triggers and events · Schedules · Approvals · Execution attempts |
 | 16 Notification channels | done | `/settings/notifications/notification-channels` — `notifications.email_enabled` and `notifications.push_enabled`, the two switches `notifications/service.py::dispatch` and the delivery worker actually read |
 | 16 Notification rules | done | `/settings/notifications/notification-rules` — `notifications.order_received` (orders/service.py) and `notifications.low_stock_alert` (the scheduler worker), the two rules that fire without a person asking |
@@ -271,14 +279,14 @@ section.
 | 09 Warehouses | done | `/settings/inventory/warehouses` — the active warehouses from `GET /inventory/warehouses`, with where they are really created and edited stated on the page |
 | 09 Stock states | done | `/settings/inventory/stock-states` — `auto_reserve`, `reserve_ttl_minutes`, `expiry_alert_days`, `dead_stock_days`: how stock is classified, which is not the same question as how it is costed |
 | 09 Stock limits | done | `/settings/inventory/stock-limits` — `inventory.safety_stock_default`, the rule behind a low-stock warning (the quantities themselves stay operational data) |
-| 09 Counts and adjustments | done | `/settings/inventory/counts-and-adjustments` — `inventory.stocktake_approval_required` (high impact) over the real stocktake list from `GET /inventory/stocktakes` |
-| 09 Transfers | done | `/settings/inventory/transfers` — `show_warehouse_transfers`, `quality_check_on_receipt` over the real transfer list from `GET /inventory/transfers` |
+| 09 Counts and adjustments | done | `/settings/inventory/counts-and-adjustments` — the settings stay here (`inventory.stocktake_approval_required`); the stocktake RUNS moved to the inventory module, linked from the page (`/cashier/inventory/stocktake`)|
+| 09 Transfers | done | `/settings/inventory/transfers` — the settings stay here (`show_warehouse_transfers`, `quality_check_on_receipt`); the transfer records moved to the inventory module, linked from the page (`/cashier/inventory/movements`)|
 | 09 Inventory cost | done | `/settings/inventory/inventory-cost` — `inventory.fifo_enabled` (high impact: it decides how the cost of goods sold is worked out) |
-| 10 Suppliers | done | `/settings/purchasing/suppliers` — reads `GET /purchasing/suppliers` (the real list) and says where a supplier is created |
+| 10 Suppliers | moved | `/settings/purchasing/suppliers` → **`/cashier/suppliers`** — the supplier master is edited in the module that owns it; the Center links there|
 | 10 Purchasing settings | done | `/settings/purchasing/purchasing-settings` — `purchasing.centralized` |
-| 10 Purchase orders | done | `/settings/purchasing/purchase-orders` — reads `GET /purchasing/purchase-orders` with number, date, total, status and the DERIVED payment state |
-| 10 Receiving and inspection | done | `/settings/purchasing/receiving-and-inspection` — `allow_partial_receipt`, `allow_over_receipt` |
-| 10 Supplier returns | done | `/settings/purchasing/supplier-returns` — reads `GET /purchasing/supplier-returns` with number, date, total and status |
+| 10 Purchase orders | moved | `/settings/purchasing/purchase-orders` → **`/cashier/purchases`** — purchase orders are records; the Center links there|
+| 10 Receiving and inspection | done | `/settings/purchasing/receiving-and-inspection` — the settings stay here (`allow_partial_receipt`, `allow_over_receipt`); receiving happens on the purchase order, linked from the page (`/cashier/purchases`)|
+| 10 Supplier returns | moved | `/settings/purchasing/supplier-returns` → **`/cashier/supplier-returns`** — supplier returns are records; the Center links there|
 | 10 Approval limits | done | `/settings/purchasing/approval-limits` — `approval_required` and `approval_threshold`, both high impact: one removes approval entirely, the other sets the amount above which it applies |
 | 18 Security policies | done | `/settings/security/security-policies` — the four `security.*` keys at their registry home: strong passwords, API key rotation, audit retention and the IP allowlist. All four are read by real code (`identity/services/auth.py`, `core/api_key_rotation.py`, the audit sweep, `identity/deps.py`), so none of them is a switch wired to nothing |
 | 18 Session control | done | `/settings/security/session-control` — `GET /settings/security-posture`: the resolved `security.*` values plus the access and refresh token lifetimes the running process was started with. Read-only by design: the lifetimes are deployment configuration, and the page says so and links to the page that owns the editable half |

@@ -62,7 +62,8 @@ import {
   SettingsRestorePanel,
 } from "@/components/settings/SecurityPanels";
 import { useSettings } from "@/components/settings/useSettings";
-import { sectionPages } from "@/components/settings/settingsManifest";
+import { pageLink, sectionPages } from "@/components/settings/settingsManifest";
+import { ModuleLinkPage, ModuleRecordsNote } from "@/components/settings/ModuleLinkPage";
 import { useSettingsAccess } from "@/components/settings/SettingsAccessContext";
 import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
@@ -253,6 +254,8 @@ export default function SettingsSection({ section }) {
   const { canWrite } = useSettingsAccess();
   const mayWrite = canWrite !== false;
   const pages = sectionPages(section);
+  // A record screen's tab is a short link to the module that owns the rows (see pageLink).
+  const moduleHref = pageLink(section, page);
   const currentPage = pages.find((entry) => entry.slug === page);
   const title = currentPage
     ? t(currentPage.labelKey)
@@ -264,6 +267,18 @@ export default function SettingsSection({ section }) {
   // The preview panel renders the diff the server just confirmed, so it appears only while the
   // page has unsaved edits — exactly as /settings/all does.
   const showPreview = Boolean(s.preview) && s.dirty;
+
+  // A record screen is not configured here. Before this, the Center carried its own copy of the
+  // supplier list, the purchase orders, the inbox, the reports and the run log — a second
+  // editor for rows another module owns, and always the staler one. The page now says where the
+  // rows live and links there, so the Center configures and the module operates.
+  if (moduleHref) {
+    return (
+      <SettingsShell title={title} subtitle={desc}>
+        <ModuleLinkPage to={moduleHref} title={title} isAr={isAr} />
+      </SettingsShell>
+    );
+  }
 
   if (s.loading) {
     return (
@@ -950,40 +965,9 @@ export default function SettingsSection({ section }) {
         />
       )}
 
-      {`${section}/${page}` === "inventory/transfers" && (
-        <InventoryRecordsPanel
-          endpoint="/inventory/transfers"
-          titleKey="settings.inventory.transfers.title"
-          descKey="settings.inventory.transfers.desc"
-          emptyKey="settings.inventory.transfers.empty"
-          loadingKey="settings.inventory.transfers.loading"
-          loadErrorKey="settings.inventory.transfers.loadError"
-          footerKey="settings.inventory.transfers.whereToEdit"
-          columns={[
-            { key: "from_warehouse_id", kind: "num" },
-            { key: "to_warehouse_id", kind: "num" },
-            { key: "status", kind: "badge" },
-            { key: "created_at", kind: "num" },
-          ]}
-        />
-      )}
+      {`${section}/${page}` === "inventory/transfers" && <ModuleRecordsNote to="/cashier/inventory/movements" isAr={isAr} />}
 
-      {`${section}/${page}` === "inventory/counts-and-adjustments" && (
-        <InventoryRecordsPanel
-          endpoint="/inventory/stocktakes"
-          titleKey="settings.inventory.stocktakes.title"
-          descKey="settings.inventory.stocktakes.desc"
-          emptyKey="settings.inventory.stocktakes.empty"
-          loadingKey="settings.inventory.stocktakes.loading"
-          loadErrorKey="settings.inventory.stocktakes.loadError"
-          footerKey="settings.inventory.stocktakes.whereToEdit"
-          columns={[
-            { key: "warehouse_id", kind: "num" },
-            { key: "status", kind: "badge" },
-            { key: "created_at", kind: "num" },
-          ]}
-        />
-      )}
+      {`${section}/${page}` === "inventory/counts-and-adjustments" && <ModuleRecordsNote to="/cashier/inventory/stocktake" isAr={isAr} />}
 
       {/* The till's devices screen is the real implementation; this page reuses it rather than
           growing a second register editor beside it. */}
