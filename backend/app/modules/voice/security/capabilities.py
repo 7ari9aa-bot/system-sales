@@ -99,6 +99,10 @@ VOICE_TOOLS: Final[dict[str, VoiceTool]] = {
 }
 
 
+# نطاق الدخول للمساعد الصوتي: بيفتح الجلسة، ومش بيقرأ أي بيانات لوحده.
+ENTRY_SCOPE: Final = "assistant:use"
+
+
 @dataclass(frozen=True, slots=True)
 class SessionCapability:
     """What one voice session may do, fixed at creation and re-checked on every call."""
@@ -159,8 +163,13 @@ def resolve_capability(
         if principal_id is None:
             raise PermissionDeniedError("merchant voice needs an identified user")
         granted = persona.read_scopes & held_scopes
-        if not granted:
+        # الدخول للصوت مش قراءة بيانات: «assistant:use» لوحدها كفاية لفتح جلسة، والقراءة
+        # نفسها بتفضل مقصورة على نطاق البيرسونا + اللي المستخدم شايله فعلاً. من غير كده
+        # كان فتح المكالمة بيطلب orders:read، وده عكس القرار المعماري.
+        if not granted and ENTRY_SCOPE not in held_scopes:
             raise PermissionDeniedError("this user holds no shop scope a voice assistant may read")
+        if ENTRY_SCOPE in held_scopes:
+            granted = frozenset(granted | {ENTRY_SCOPE})
         level = AuthenticationLevel.VERIFIED
     else:
         # A customer's public scopes need no proof; own-orders/own-returns are added only when
