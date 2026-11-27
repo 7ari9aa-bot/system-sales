@@ -12,6 +12,8 @@ from dataclasses import replace
 
 import pytest
 
+from app.modules.applications.access import AccessFacts
+from app.modules.applications.dependencies import GateResult, evaluate, require_application
 from app.modules.applications.manifests import (
     REGISTRY,
     all_manifests,
@@ -187,3 +189,53 @@ def test_no_workspace_access_denies_even_a_paid_application() -> None:
     decision = decide_access(_facts(user_has_workspace_access=False))
     assert not decision.allowed
     assert decision.reason == "no_workspace_access"
+
+
+# --- the route gate -------------------------------------------------------
+
+
+def test_a_licensed_and_active_application_is_allowed() -> None:
+    facts = AccessFacts(
+        application_key="retail.core",
+        entitled_applications=frozenset({"retail.core"}),
+        installation_states={"retail.core": "active"},
+    )
+    assert evaluate(facts, "retail.core") == GateResult(True, "allowed")
+
+
+def test_paying_for_an_application_without_installing_it_is_not_enough() -> None:
+    facts = AccessFacts(
+        application_key="retail.core",
+        entitled_applications=frozenset({"retail.core"}),
+        installation_states={"retail.core": "setup_required"},
+    )
+    verdict = evaluate(facts, "retail.core")
+    assert not verdict.allowed
+    assert verdict.reason == "installation_setup_required"
+
+
+def test_an_unlicensed_application_is_refused_by_name() -> None:
+    facts = AccessFacts(application_key="retail.purchasing")
+    verdict = evaluate(facts, "retail.purchasing")
+    assert not verdict.allowed
+    assert verdict.reason == "not_entitled"
+
+
+def test_an_unknown_application_raises_instead_of_opening() -> None:
+    with pytest.raises(KeyError, match="unknown application"):
+        evaluate(AccessFacts(application_key="nope.nope"), "nope.nope")
+
+
+def test_an_unconfigured_workspace_is_the_documented_transition_case() -> None:
+    """Every account today has zero installations; closing them all at once is
+    a lockout, not enforcement. The reason says so out loud."""
+    verdict = evaluate(
+        AccessFacts(application_key="retail.core"), "retail.core", workspace_configured=False
+    )
+    assert verdict == GateResult(True, "workspace_not_configured")
+
+
+def test_the_dependency_fails_loudly_until_a_facts_provider_is_wired() -> None:
+    dependency = require_application("retail.core")
+    with pytest.raises(RuntimeError, match="no facts provider"):
+        dependency()
