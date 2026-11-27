@@ -33,7 +33,7 @@ jobs:
       # must come from the triggering run and be used for BOTH the checkout and
       # the tag, or the image would be built from one commit and tagged with
       # another.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
