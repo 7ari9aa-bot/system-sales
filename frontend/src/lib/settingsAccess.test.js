@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canSeeSection,
   canWriteSettings,
+  loadSettingsAccess,
+  resetSettingsAccess,
   visibleNavGroups,
   SETTINGS_READ,
   SETTINGS_WRITE,
@@ -60,6 +62,39 @@ describe("settings access", () => {
   it("answers null while the grant is unknown instead of guessing", () => {
     expect(canSeeSection(null, sectionBySlug("store"))).toBeNull();
     expect(canWriteSettings(null)).toBeNull();
+  });
+});
+
+describe("the answer from /roles/me", () => {
+  afterEach(() => {
+    resetSettingsAccess();
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (body) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
+      )
+    );
+  };
+
+  it("reads a real answer into the role and its codes", async () => {
+    answer({ role_code: "owner", permissions: [SETTINGS_READ, SETTINGS_WRITE] });
+    const access = await loadSettingsAccess();
+    expect(access.roleCode).toBe("owner");
+    expect(canWriteSettings(access)).toBe(true);
+  });
+
+  it("refuses to read a payload that is not a role as 'no permissions at all'", async () => {
+    // A list, a string or an error body is not a grant of zero codes. Reading it that way put
+    // every settings screen behind "you do not have this section" on one bad response.
+    for (const body of [[], "denied", { permissions: [SETTINGS_READ] }, null]) {
+      resetSettingsAccess();
+      answer(body);
+      await expect(loadSettingsAccess()).rejects.toThrow();
+    }
   });
 });
 
