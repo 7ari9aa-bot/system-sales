@@ -12,6 +12,10 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+# The voice tables now carry real foreign keys into the conversation tables, so resolving
+# `sorted_tables` needs those tables registered too. Importing the registry is also what
+# provision.py itself does — this is the faithful set of tables, not a convenience import.
+import app.core.model_registry  # noqa: E402,F401
 from app.core.db import Base
 from app.modules.voice.domain.models import VoiceSessionRow, VoiceTurnRow
 from app.modules.voice.domain.personas import PersonaType, PrincipalType

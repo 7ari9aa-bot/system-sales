@@ -33,7 +33,12 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 
 # A voice session is opened by a signed-in shop user; the capability resolver then narrows the
 # scopes to what that user already holds, so this dependency is the floor, not the ceiling.
-VoiceCtx = Annotated[TenantContext, Depends(require_permission("orders:read"))]
+# Opening a voice session is opening the assistant, so it asks for the same permission the text
+# assistant asks for (``AnalyticsAICtx`` in app/modules/ai/routers/_deps.py). It used to require
+# ``orders:read``, which meant an employee allowed to see analytics but not orders could type to
+# the assistant and not speak to it — one assistant, two different doors. What the session may
+# then READ is decided per tool by the capability scopes, never by this gate.
+VoiceCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
 
 
 class StartSessionRequest(BaseModel):

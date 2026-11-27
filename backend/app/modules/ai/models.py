@@ -845,6 +845,12 @@ class AIChatMessage(TenantMixin, AppendOnlyCreatedAtMixin, Base):
     # Where this answer's time went and what the model thought, measured while it was written:
     # append-only start/end events plus one summary. NULL = not traced. See chat/trace.py.
     trace: Mapped[list | None] = mapped_column(JSONB)
+    # How this message arrived and how it was answered. The row stays the single record of the
+    # conversation; a spoken turn is a message with modality "live_voice", not a second table.
+    input_modality: Mapped[str | None] = mapped_column(String(16))
+    output_modality: Mapped[str | None] = mapped_column(String(16))
+    voice_session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    transcript_status: Mapped[str | None] = mapped_column(String(15))
 
     __table_args__ = (
         UniqueConstraint(

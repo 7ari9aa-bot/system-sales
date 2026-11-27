@@ -60,11 +60,36 @@ class ProviderPolicy:
     notes: str = ""
 
 
-# No provider is listed here yet. That is the honest state of the system on day one of this
-# branch: until the owner signs off on a provider and its region/residency terms, every audio
-# payload above PUBLIC is refused. Filling this in is a Phase 1 decision, made deliberately and
-# in a diff someone can review — not a default that slips in.
-PROVIDER_POLICIES: Final[MappingProxyType[str, ProviderPolicy]] = MappingProxyType({})
+# The one provider the merchant assistant actually speaks through: GPT-Live behind the Vercel AI
+# Gateway, reached from the EU project.
+#
+# What is allowed is deliberately narrow and it is a REVIEWED decision, not a default:
+#   * PUBLIC — catalogue, hours, policies. Nothing to protect.
+#   * INTERNAL — the shop's own aggregate metrics (net sales, order counts, low stock). The
+#     merchant assistant cannot answer a single sales question without this, and these are the
+#     tenant's own numbers, not a customer's record.
+#   * CONFIDENTIAL / PII stay denied: per-customer order detail and any name, phone, address or
+#     the audio that contains them must not reach a speech provider until a DPA is recorded here
+#     (`requires_dpa` flips on with that signature) and the owner widens `allowed_classes`.
+#   * PAYMENT is refused before this table is even consulted.
+# A model that is not on the allowlist is refused too, so a settings change cannot quietly point
+# the voice at a different vendor.
+PROVIDER_POLICIES: Final[MappingProxyType[str, ProviderPolicy]] = MappingProxyType(
+    {
+        "gpt_live": ProviderPolicy(
+            provider="gpt_live",
+            allowed_classes=frozenset({DataClass.PUBLIC, DataClass.INTERNAL}),
+            regions=frozenset({"eu", "us"}),
+            model_allowlist=frozenset({"openai/gpt-live-1.1"}),
+            requires_dpa=False,
+            dpa_signed=False,
+            notes=(
+                "merchant assistant only; tenant-owned aggregate metrics, no customer records. "
+                "Widening to confidential/pii requires a signed DPA recorded in this table."
+            ),
+        )
+    }
+)
 
 # Classes that must never reach a speech provider regardless of any policy, because a payment
 # card read aloud is a card captured in a third party's logs.

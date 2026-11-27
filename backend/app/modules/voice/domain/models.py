@@ -42,6 +42,13 @@ class VoiceSessionRow(Base):
     # so a permission revoked mid-call stops working on the next turn (invariant 7).
     scopes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     agent_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # The conversation this call belongs to. A voice session is not a second conversation: it is
+    # one way of talking in the thread the user already has, so the thread is the identity and
+    # this row only carries the call. SET NULL, not CASCADE: deleting a thread must not delete the
+    # record that a paid call happened.
+    ai_chat_thread_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_chat_threads.id", ondelete="SET NULL"), nullable=True
+    )
     policy_version: Mapped[str] = mapped_column(String(24), nullable=False, default="v1")
     provider_session_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     provider_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -66,6 +73,7 @@ class VoiceSessionRow(Base):
             unique=True,
             postgresql_where=sa.text("client_key IS NOT NULL"),
         ),
+        Index("ix_voice_sessions_thread", "tenant_id", "ai_chat_thread_id"),
         Index("ix_voice_sessions_tenant_state", "tenant_id", "state"),
         Index("ix_voice_sessions_trace", "trace_id"),
     )
@@ -95,6 +103,15 @@ class VoiceTurnRow(Base):
     state: Mapped[str] = mapped_column(String(24), nullable=False)
     input_modality: Mapped[str | None] = mapped_column(String(16), nullable=True)
     output_modality: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The two messages this turn became. A turn is not a parallel conversation: the transcript is
+    # written into ai_chat_messages and the turn keeps the ids, so the timeline shows the same
+    # thing whether it was typed or spoken.
+    user_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_chat_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    assistant_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_chat_messages.id", ondelete="SET NULL"), nullable=True
+    )
     transcript_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
     tool_calls: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     latency_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
