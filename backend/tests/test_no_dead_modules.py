@@ -88,6 +88,12 @@ _VOICE_UNWIRED_WHY = (
 
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # --- voice: unwired until the assistant turn service owns the call ---
+    "app.modules.voice.application.assistant_turn": (
+        "the spoken-turn entry point: it resolves the session's thread and calls "
+        "AssistantTurnService with modality=live_voice, but nothing calls IT yet. The live loop "
+        "that receives GPT-Live's delegation is the next task (gpt-live-delegation); delete this "
+        "line when that route lands."
+    ),
     "app.modules.voice.application.customer_context": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.hardening": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.inbound_calls": _VOICE_UNWIRED_WHY,
