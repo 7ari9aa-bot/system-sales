@@ -110,6 +110,13 @@ class Settings(BaseSettings):
     livekit_url: str = ""
     livekit_api_key: str = ""
     livekit_api_secret: str = ""
+
+    # The voice model. Empty key means the merchant assistant runs without a live voice
+    # path; the adapter then refuses to open a session instead of failing mid-sentence.
+    gpt_live_api_key: str = ""
+    gpt_live_url: str = "wss://ai-gateway.vercel.sh/v1/live/sessions"
+    gpt_live_model: str = "openai/gpt-live-1.1"
+    gpt_live_voice: str = "marin"
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
     # HttpOnly cookie auth (the XSS-hardening wave). None means AUTO:
