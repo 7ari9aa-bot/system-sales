@@ -34,6 +34,10 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   const supported = isVoiceSupported();
   // مكالمة حقيقية: المايك هنا بيبعت صوت للسيرفر، مش بيحوّل كلام لنص زي زر الإملاء.
   const controllerRef = React.useRef(null);
+  // مفتاح ثابت للشاشة: الدوسة التانية تكمّل نفس الجلسة بدل ما تفتح مكالمة تانية مدفوعة.
+  const clientKeyRef = React.useRef(
+    typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `screen-${Date.now()}`,
+  );
   const [calling, setCalling] = React.useState(false);
   const [callError, setCallError] = React.useState(null);
 
@@ -42,7 +46,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
 
   if (!controllerRef.current) {
     controllerRef.current = createCallController({
-      openSession: () => openVoiceSession(),
+      openSession: () => openVoiceSession({ clientKey: clientKeyRef.current }),
       startCall: (options) => startBrowserCall(options),
       onChange: ({ calling: next, error }) => {
         setCalling(next);

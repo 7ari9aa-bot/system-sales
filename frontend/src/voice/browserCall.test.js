@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   STREAM_STATE,
+  openVoiceSession,
   describeStreamState,
   floatToPcm16,
   resampleTo,
@@ -77,6 +78,26 @@ describe("browserCall helpers", () => {
     const input = new Float32Array(4800);
     expect(resampleTo(input, 48000, 24000)).toHaveLength(2400);
     expect(resampleTo(input, 24000, 24000)).toBe(input);
+  });
+});
+
+describe("openVoiceSession", () => {
+  it("sends the caller's client key so a re-press resumes the same session", async () => {
+    const apiFn = vi.fn(async () => ({ id: "sess-9" }));
+
+    const id = await openVoiceSession({ apiFn, clientKey: "screen-key" });
+
+    expect(id).toBe("sess-9");
+    expect(apiFn.mock.calls[0][0]).toBe("/voice/sessions");
+    expect(apiFn.mock.calls[0][1].body).toEqual({ channel: "web_voice", client_key: "screen-key" });
+  });
+
+  it("still opens a session when no key is supplied", async () => {
+    const apiFn = vi.fn(async () => ({ id: "sess-10" }));
+
+    await openVoiceSession({ apiFn });
+
+    expect(apiFn.mock.calls[0][1].body.client_key).toBeTruthy();
   });
 });
 
