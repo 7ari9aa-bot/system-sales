@@ -27,11 +27,16 @@ from app.core.routing import (
 class FakeSession:
     """The two things the middleware asks of a session: is a transaction open, commit it."""
 
-    def __init__(self, *, in_transaction: bool = True, pending: bool = True) -> None:
+    def __init__(
+        self, *, in_transaction: bool = True, pending: bool = True, wrote: bool = False
+    ) -> None:
         self._in_transaction = in_transaction
         self.new = [object()] if pending else []
         self.dirty: list[object] = []
         self.deleted: list[object] = []
+        # ``after_flush`` sets this; a SAVEPOINT flush empties ``new`` while the write is
+        # still uncommitted.
+        self.info: dict[str, object] = {"wrote": True} if wrote else {}
         self.commits = 0
         self.committed_before_body = False
 
@@ -131,6 +136,44 @@ def test_pending_writes_helper():
     assert _has_pending_writes(FakeSession(pending=True))
     assert not _has_pending_writes(FakeSession(pending=False))
     assert not _has_pending_writes(object())
+
+
+def test_a_write_flushed_inside_a_savepoint_still_counts():
+    """``session.begin_nested()`` + ``flush()`` moves the row out of ``session.new``.
+
+    Catalog's add_variant writes that way, so the identity-map heuristic read the request as
+    read-only, the early commit was skipped, and the client's next request 404'd on the row it
+    had just been told existed (live-api: "variant <id> not found", fixed only by a retry).
+    """
+    session = FakeSession(pending=False, wrote=True)
+    assert _has_pending_writes(session), "a flushed write is still an uncommitted write"
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 201, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    _run(app, {"db_session": session})
+    assert session.commits == 1, "the savepoint write must be durable before the client is answered"
+
+
+def test_an_event_stream_is_never_committed_under_itself():
+    """A stream keeps reading through the same session; committing at response start would
+    close the transaction under it, drop the tenant GUC, and RLS would hide every row."""
+    session = FakeSession(wrote=True)
+
+    async def app(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/event-stream; charset=utf-8")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"data: 1\n\n"})
+
+    _run(app, {"db_session": session})
+    assert session.commits == 0
+    assert session.in_transaction()
 
 
 @pytest.mark.skipif(

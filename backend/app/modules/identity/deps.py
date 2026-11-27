@@ -16,12 +16,13 @@ from typing import Annotated
 
 import sqlalchemy as sa
 from fastapi import Depends, Header, Request
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_scope, bind_tenant
 from app.core.errors import NotFoundError, PermissionDeniedError
+from app.core.routing import _mark_write
 from app.core.security import decode_token
 from app.core.tenancy import DEFAULT_CURRENCY, set_current_scope, set_current_tenant
 from app.modules.identity import cookies
@@ -118,6 +119,12 @@ async def get_db(request: Request) -> AsyncSession:
 
     async with SessionLocal() as session:
         request.state.db_session = session
+        # Tell the early-commit middleware that this session wrote, even when the write was
+        # flushed inside a SAVEPOINT and left ``session.new`` empty (catalog's add_variant does
+        # exactly that). Without the marker the middleware judged the request read-only, the
+        # commit fell back to this dependency's exit — after the client already had its 201 —
+        # and the next request 404'd on the row it had just created.
+        event.listen(session.sync_session, "after_flush", _mark_write)
         async with session.begin():
             yield session
 
