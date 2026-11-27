@@ -35,6 +35,7 @@ from app.modules.identity.models import (
     User,
     UserLocationAccess,
     Workspace,
+    WorkspaceMembership,
     role_permissions,
 )
 
@@ -250,6 +251,27 @@ class TenantContext:
     location_id: uuid.UUID | None = None
 
 
+async def _require_workspace_membership(
+    session: AsyncSession, *, workspace_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    """Access to a business is a grant, never a side effect of the account.
+
+    Belonging to the tenant used to be enough: a staff member of the Cairo shop
+    could name the distribution company's id and read it. The row is the grant,
+    and its absence is a 403 rather than a silent widening.
+    """
+    row = (
+        await session.execute(
+            select(WorkspaceMembership.workspace_id).where(
+                WorkspaceMembership.workspace_id == workspace_id,
+                WorkspaceMembership.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise PermissionDeniedError("no access grant for this workspace")
+
+
 async def resolve_scope(
     session: AsyncSession,
     *,
@@ -288,6 +310,10 @@ async def resolve_scope(
         ).scalar_one_or_none()
         if grant is None:
             raise PermissionDeniedError("no access grant for this location")
+        if loc.workspace_id is not None:
+            await _require_workspace_membership(
+                session, workspace_id=loc.workspace_id, user_id=user_id
+            )
         return loc.workspace_id, loc.id
     if workspace_id is not None:
         ws = (
@@ -299,6 +325,7 @@ async def resolve_scope(
         ).scalar_one_or_none()
         if ws is None:
             raise PermissionDeniedError("workspace not available for this tenant")
+        await _require_workspace_membership(session, workspace_id=ws.id, user_id=user_id)
         return ws.id, None
     return None, None
 
