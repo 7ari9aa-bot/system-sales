@@ -331,6 +331,7 @@ export default {
   "salesAssistant.micStart": "Dictate with your voice",
   "salesAssistant.callStart": "Talk to me",
   "salesAssistant.callStop": "End the call",
+  "salesAssistant.callInterrupt": "Cut in",
   "salesAssistant.calling": "You are talking",
   "salesAssistant.micStop": "Stop dictation",
   "salesAssistant.voiceDenied": "Can't reach the microphone. Allow it for this site in your browser settings.",

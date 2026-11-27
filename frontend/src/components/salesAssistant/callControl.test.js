@@ -87,4 +87,30 @@ describe("the composer shows the call button", () => {
 
     expect(html).toContain('data-testid="assistant-call"');
   });
+
+  it("interrupt silences the call without ending it", async () => {
+    const handle = { stop: vi.fn(), interrupt: vi.fn(), state: STREAM_STATE.LIVE };
+    const controller = createCallController({
+      openSession: async () => "s-1",
+      startCall: async () => handle,
+    });
+
+    await controller.toggle();
+    expect(controller.interrupt()).toBe(true);
+
+    expect(handle.interrupt).toHaveBeenCalledTimes(1);
+    // المقاطعة مش إنهاء: المكالمة لسه شغالة والزر لسه في وضع "شغّال".
+    expect(handle.stop).not.toHaveBeenCalled();
+    expect(controller.calling).toBe(true);
+  });
+
+  it("interrupt before a call does nothing and says so", () => {
+    const controller = createCallController({
+      openSession: async () => "s-1",
+      startCall: async () => ({ stop: vi.fn(), state: STREAM_STATE.LIVE }),
+    });
+
+    expect(controller.interrupt()).toBe(false);
+  });
+
 });

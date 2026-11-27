@@ -331,6 +331,7 @@ export default {
   "salesAssistant.micStart": "سجّل بصوتك",
   "salesAssistant.callStart": "اتكلم معايا",
   "salesAssistant.callStop": "اقفل المكالمة",
+  "salesAssistant.callInterrupt": "قاطع الكلام",
   "salesAssistant.calling": "بتتكلم دلوقتي",
   "salesAssistant.micStop": "إيقاف التسجيل",
   "salesAssistant.voiceDenied": "مقدرتش أوصل للميكروفون. اسمح للمتصفح باستخدامه من إعدادات الموقع.",

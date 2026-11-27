@@ -6,7 +6,7 @@
  *  server). Spoken words never send by themselves: the owner reads them, fixes them, then sends. */
 
 import React from "react";
-import { ArrowUp, AudioLines, Mic, Plus, Square } from "lucide-react";
+import { ArrowUp, AudioLines, Mic, Plus, Square, VolumeX } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { openVoiceSession, startBrowserCall } from "@/voice/browserCall";
 import { createCallController } from "./callControl";
@@ -245,6 +245,18 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
             >
               {calling ? <Square className="h-3.5 w-3.5 fill-current" /> : <AudioLines className="h-[18px] w-[18px]" />}
             </button>
+            {calling ? (
+              <button
+                type="button"
+                data-testid="assistant-interrupt"
+                onClick={() => controllerRef.current?.interrupt()}
+                aria-label={t("salesAssistant.callInterrupt")}
+                title={t("salesAssistant.callInterrupt")}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+              >
+                <VolumeX className="h-[18px] w-[18px]" />
+              </button>
+            ) : null}
             {supported ? (
               <button
                 type="button"

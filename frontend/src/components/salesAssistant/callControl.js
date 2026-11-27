@@ -67,6 +67,12 @@ export function createCallController({ openSession, startCall, onChange = () => 
 
   return {
     toggle,
+    /** بارج-إن: العميل بيتكلم فوق المساعد. المكالمة بتفضل مفتوحة. */
+    interrupt() {
+      if (!handle?.interrupt) return false;
+      handle.interrupt();
+      return true;
+    },
     stop() {
       handle?.stop();
       handle = null;
