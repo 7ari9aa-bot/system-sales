@@ -88,6 +88,20 @@ class SqlSessionStore:
             "updated_at": datetime.now(UTC),
         }
         existing = await self._session.get(VoiceSessionRow, record.session_id)
+        if existing is None and record.client_key is not None:
+            # The key belongs to one live call. A finished call on the same screen keeps its row
+            # but must let go of the key, otherwise the next press hits
+            # ux_voice_sessions_client_key and the merchant gets a 500 for pressing again.
+            await self._session.execute(
+                update(VoiceSessionRow)
+                .where(
+                    VoiceSessionRow.tenant_id == record.tenant_id,
+                    VoiceSessionRow.client_key == record.client_key,
+                    VoiceSessionRow.id != record.session_id,
+                    VoiceSessionRow.state.not_in([state.value for state in _LIVE]),
+                )
+                .values(client_key=None)
+            )
         if existing is None:
             self._session.add(VoiceSessionRow(**values))
         else:

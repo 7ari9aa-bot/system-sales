@@ -54,6 +54,44 @@ async def test_a_redial_with_the_same_key_continues_the_open_call(db, tenant_ctx
     assert rows == 1
 
 
+async def test_a_finished_call_frees_its_key_so_the_next_press_opens_a_new_one(
+    db, tenant_ctx
+) -> None:
+    """A closed call must not hold the key forever.
+
+    Measured in production: the second press on the same screen raised
+    UniqueViolationError on ux_voice_sessions_client_key, so the merchant saw a 500
+    instead of a new call. The key is per live call, not per screen lifetime.
+    """
+    key = f"phone-{uuid.uuid4().hex[:8]}"
+
+    first = await _start(db, tenant_ctx.tenant_id, tenant_ctx.user.id, key)
+    await VoiceSessionManager(SqlSessionStore(db)).close(first.session_id, reason="hung_up")
+
+    second = await _start(db, tenant_ctx.tenant_id, tenant_ctx.user.id, key)
+
+    assert second.session_id != first.session_id
+    # The old row is still there, with its key released and its reason kept.
+    released = (
+        await db.execute(
+            sa.text(
+                "SELECT client_key, close_reason FROM voice_sessions "
+                "WHERE id = :i AND tenant_id = :t"
+            ),
+            {"i": str(first.session_id), "t": str(tenant_ctx.tenant_id)},
+        )
+    ).one()
+    assert released[0] is None
+    assert released[1] == "hung_up"
+    held = (
+        await db.execute(
+            sa.text("SELECT count(*) FROM voice_sessions WHERE tenant_id = :t AND client_key = :k"),
+            {"t": str(tenant_ctx.tenant_id), "k": key},
+        )
+    ).scalar_one()
+    assert held == 1
+
+
 async def test_the_database_itself_refuses_a_second_row_for_the_same_key(db, tenant_ctx) -> None:
     """The manager's lookup is an optimisation; the unique index is the guarantee."""
     key = f"phone-{uuid.uuid4().hex[:8]}"

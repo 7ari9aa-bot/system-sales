@@ -83,7 +83,7 @@ describe("browserCall helpers", () => {
 
 describe("openVoiceSession", () => {
   it("sends the caller's client key so a re-press resumes the same session", async () => {
-    const apiFn = vi.fn(async () => ({ id: "sess-9" }));
+    const apiFn = vi.fn(async () => ({ session_id: "sess-9" }));
 
     const id = await openVoiceSession({ apiFn, clientKey: "screen-key" });
 
@@ -93,7 +93,7 @@ describe("openVoiceSession", () => {
   });
 
   it("names the open conversation so the call joins it instead of opening a second one", async () => {
-    const apiFn = vi.fn(async () => ({ id: "sess-11" }));
+    const apiFn = vi.fn(async () => ({ session_id: "sess-11" }));
 
     await openVoiceSession({ apiFn, clientKey: "screen-key", threadId: "thread-7" });
 
@@ -106,7 +106,7 @@ describe("openVoiceSession", () => {
   });
 
   it("sends no thread field when the screen has no conversation yet", async () => {
-    const apiFn = vi.fn(async () => ({ id: "sess-12" }));
+    const apiFn = vi.fn(async () => ({ session_id: "sess-12" }));
 
     await openVoiceSession({ apiFn, clientKey: "screen-key", threadId: null });
 
@@ -257,5 +257,28 @@ describe("startBrowserCall", () => {
     expect(call.state).toBe(STREAM_STATE.FAILED);
     expect(socket.closed).toEqual([1000]);
     expect(player.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the session_id the server actually returns", async () => {
+    // الشكل الحقيقي من POST /voice/sessions: {"session_id": ..., "tenant_id": ..., "state": ...}
+    const apiFn = vi.fn(async () => ({
+      session_id: "8f14e45f-ceea-467a-9f0b-1c0d1e2f3a4b",
+      tenant_id: "b7c1f0d2-1111-4222-8333-944455556666",
+      persona: "merchant_assistant",
+      state: "CONFIGURING",
+      scopes: ["analytics:read"],
+      trace_id: "voice-8f14e45f",
+      last_completed_turn: 0,
+    }));
+
+    const id = await openVoiceSession({ apiFn, clientKey: "screen-key" });
+
+    expect(id).toBe("8f14e45f-ceea-467a-9f0b-1c0d1e2f3a4b");
+  });
+
+  it("returns null when the server sends no id at all", async () => {
+    const apiFn = vi.fn(async () => ({ state: "CONFIGURING" }));
+
+    expect(await openVoiceSession({ apiFn, clientKey: "screen-key" })).toBeNull();
   });
 });

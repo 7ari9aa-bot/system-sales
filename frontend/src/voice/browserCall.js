@@ -95,7 +95,9 @@ export async function openVoiceSession({ apiFn = api, clientKey, threadId } = {}
       ? { channel: "web_voice", client_key: key, thread_id: threadId }
       : { channel: "web_voice", client_key: key },
   });
-  return session?.id ?? null;
+  // السيرفر بيرجّع `session_id`. القارئ القديم كان بيقرا `id`، فكل دوسة كانت بتفتح جلسة
+  // ناجحة (201) وبعدين تقرا null وتقول "الجلسة مش موجودة" من غير ما تطلب تذكرة أصلاً.
+  return session?.session_id ?? session?.id ?? null;
 }
 
 async function defaultWsFactory(url) {
