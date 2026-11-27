@@ -6,12 +6,15 @@ a real provider over the real gateway, a ``LiveCallLoop`` that pumps audio both
 ways, and ``ClientDelegationService`` that answers the model's delegations with
 the same assistant turn the text path runs.
 
-Honest gap, stated here rather than discovered later: the transcript of what the
-caller SAID is not captured yet, because the gateway's transcript event names
-have not been measured on a real call. Until they are, ``transcript_provider``
-returns nothing and a delegation is answered with the failure note instead of an
-invented question — the loop, the ticket and the door are real, the ears are the
-remaining piece.
+What the caller said is captured by the loop itself: the gateway sends
+``session.input_transcript.delta`` fragments (documented in the live-delegation
+guide), and ``TranscriptBuffer`` keeps the pending question apart from a bounded
+history, so a delegation is answered with the words that were actually spoken.
+
+Honest gap, stated here rather than discovered later: a stream session has a
+tenant from its ticket but no resolved capability scopes yet. Permissions parity
+is a launch requirement, so the runner refuses out loud instead of faking a
+permission it was never given.
 """
 
 from __future__ import annotations
@@ -40,7 +43,6 @@ async def build_browser_call(
         provider,
         delegations,
         audio_sink=_sync_sink(send_audio),
-        transcript_provider=lambda: "",
     )
     await loop.start(voice_session_id=session_id, config=config or {})
     return loop

@@ -23,7 +23,58 @@ from app.modules.voice.runtime.gpt_live import GptLiveProtocolError
 logger = logging.getLogger(__name__)
 
 OUTPUT_AUDIO_DELTA = "session.output_audio.delta"
+INPUT_TRANSCRIPT_DELTA = "session.input_transcript.delta"
+OUTPUT_TRANSCRIPT_DELTA = "session.output_transcript.delta"
 SESSION_CLOSED = "session.closed"
+
+#: How much of what the caller said is kept. Enough to understand "yes", a
+#: correction like "الخميس مش الجمعة", or a detail given three sentences ago;
+#: short enough that one long call cannot grow without bound.
+TRANSCRIPT_HISTORY_CHARS = 2000
+
+
+class TranscriptBuffer:
+    """What the caller said, so a delegation can be answered with it.
+
+    The gateway sends transcript fragments, never the task text on the delegation
+    itself, and a fragment is not a turn. Two things are therefore kept apart:
+
+    * ``pending`` — everything said since the last answered delegation, which is
+      the question being asked right now;
+    * ``history`` — a bounded tail of the whole call, used when a delegation
+      arrives before any fresh fragment (the caller was already talking).
+
+    ``take()`` empties ``pending`` so the next delegation cannot be answered with
+    the previous question.
+    """
+
+    def __init__(self, limit: int = TRANSCRIPT_HISTORY_CHARS) -> None:
+        self._limit = limit
+        self._pending: list[str] = []
+        self._history: list[str] = []
+
+    def append(self, text: str) -> None:
+        if not text:
+            return
+        self._pending.append(text)
+        self._history.append(text)
+        self._trim()
+
+    def take(self) -> str:
+        """The current question, and forget it."""
+        question = "".join(self._pending).strip()
+        self._pending.clear()
+        if question:
+            return question
+        return "".join(self._history)[-self._limit :].strip()
+
+    def _trim(self) -> None:
+        # Both sides are bounded: a caller who talks for ten minutes before a
+        # delegation must not turn the question into an unbounded prompt.
+        for name in ("_history", "_pending"):
+            joined = "".join(getattr(self, name))
+            if len(joined) > self._limit:
+                setattr(self, name, [joined[-self._limit :]])
 
 
 class LiveCallLoop:
@@ -40,7 +91,8 @@ class LiveCallLoop:
         self._provider = provider
         self._delegations = delegations
         self._audio_sink = audio_sink
-        self._transcript_provider = transcript_provider or (lambda: "")
+        self._transcripts = TranscriptBuffer()
+        self._transcript_provider = transcript_provider
         self._voice_session_id: str | None = None
         self._provider_session: str | None = None
         self._closed = False
@@ -87,6 +139,18 @@ class LiveCallLoop:
                 return self._count("audio")
             return "ignored"
 
+        if kind == INPUT_TRANSCRIPT_DELTA:
+            # Only the caller's own words answer a delegation; what the model said
+            # is never fed back to it as the question.
+            delta = event.get("delta")
+            if isinstance(delta, str) and delta:
+                self._transcripts.append(delta)
+                return self._count("transcript")
+            return "ignored"
+
+        if kind == OUTPUT_TRANSCRIPT_DELTA:
+            return "ignored"
+
         if kind == SESSION_CLOSED:
             # The model closed the call (timeout, provider decision). Nothing is
             # sent after this: the loop reports it and the control plane closes
@@ -98,7 +162,7 @@ class LiveCallLoop:
             outcome = await self._delegations.on_event(
                 self._provider_session,
                 event,
-                transcript=self._transcript_provider(),
+                transcript=self._current_transcript(),
             )
             return self._count(outcome)
 
@@ -111,6 +175,12 @@ class LiveCallLoop:
         self._closed = True
         if self._provider_session is not None:
             await self._provider.close_session(self._provider_session)
+
+    def _current_transcript(self) -> str:
+        """What the caller asked, taken from the buffer unless a caller overrides it."""
+        if self._transcript_provider is not None:
+            return self._transcript_provider()
+        return self._transcripts.take()
 
     def _count(self, outcome: str) -> str:
         self.counts[outcome] = self.counts.get(outcome, 0) + 1
