@@ -37,6 +37,11 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              # backend/tests/test_openapi_lock.py reads desktop/openapi.lock.json, so a
+              # lock-only commit used to skip every job that checks it: run 45926309615 on
+              # 96027d5 reported "success" with backend, live-api and coverage all skipped,
+              # which is a green run that tested nothing.
+              - 'desktop/**'
               - '.github/workflows/ci.yml'
             frontend:
               - 'frontend/**'
