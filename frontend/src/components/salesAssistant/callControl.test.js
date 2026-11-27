@@ -39,14 +39,14 @@ describe("callControl", () => {
   });
 
   it("surfaces a refusal and never reports the call as live", async () => {
-    const h = harness({ state: STREAM_STATE.REFUSED, message: "الجلسة دي مش بتاخد صوت مباشر دلوقتي." });
+    const h = harness({ state: STREAM_STATE.REFUSED, message: "هذه الجلسة لا تدعم الصوت المباشر حالياً." });
 
     await h.controller.toggle();
 
     expect(h.controller.calling).toBe(false);
     expect(h.changes.at(-1)).toEqual({
       calling: false,
-      error: "الجلسة دي مش بتاخد صوت مباشر دلوقتي.",
+      error: "هذه الجلسة لا تدعم الصوت المباشر حالياً.",
       state: STREAM_STATE.REFUSED,
     });
     expect(h.stop).toHaveBeenCalledTimes(1);

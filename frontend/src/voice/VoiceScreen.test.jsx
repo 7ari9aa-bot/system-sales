@@ -8,7 +8,7 @@ import VoiceScreen, { formatElapsed, screenView } from "./VoiceScreen";
 describe("screenView", () => {
   it("بيوري إنه بيفتح قبل ما الصوت يبدأ", () => {
     expect(screenView({ state: "opening" })).toEqual({
-      text: "بجهّز المايك…",
+      text: "جارٍ تهيئة الميكروفون…",
       failed: false,
       canInterrupt: false,
     });
@@ -16,14 +16,14 @@ describe("screenView", () => {
 
   it("وقت الكلام النص بيقول كده والقاطع مسموح", () => {
     const view = screenView({ state: "live" });
-    expect(view.text).toBe("بتتكلم دلوقتي");
+    expect(view.text).toBe("أنت تتحدث الآن");
     expect(view.canInterrupt).toBe(true);
     expect(view.failed).toBe(false);
   });
 
   it("رسالة السيرفر بتغلب النص الافتراضي وحالة الفشل بتتعرف", () => {
-    const view = screenView({ state: "not_found", message: "الجلسة مش موجودة أو مش بتاعتك." });
-    expect(view.text).toBe("الجلسة مش موجودة أو مش بتاعتك.");
+    const view = screenView({ state: "not_found", message: "الجلسة غير موجودة أو لا تخص حسابك." });
+    expect(view.text).toBe("الجلسة غير موجودة أو لا تخص حسابك.");
     expect(view.failed).toBe(true);
     expect(view.canInterrupt).toBe(false);
   });
@@ -59,9 +59,9 @@ describe("VoiceScreen", () => {
   });
 
   it("بيسيب أثر السوكت مكتوب لما يتطلب", () => {
-    const html = renderToStaticMarkup(<VoiceScreen open state="live" note="سوكت: close 1006" />);
+    const html = renderToStaticMarkup(<VoiceScreen open state="live" note="قناة الصوت: مغلقة (1006)" />);
     expect(html).toContain('data-testid="voice-screen-note"');
-    expect(html).toContain("سوكت: close 1006");
+    expect(html).toContain("قناة الصوت: مغلقة (1006)");
     const without = renderToStaticMarkup(<VoiceScreen open state="live" />);
     expect(without).not.toContain('data-testid="voice-screen-note"');
   });

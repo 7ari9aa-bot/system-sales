@@ -62,7 +62,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         startBrowserCall({
           ...options,
           onSocket: (event) =>
-            setSocketNote(event.type === "close" ? `سوكت: close ${event.code ?? "?"}` : `سوكت: ${event.type}`),
+            setSocketNote(event.type === "close" ? `قناة الصوت: مغلقة (${event.code ?? "?"})` : `قناة الصوت: ${event.type === "open" ? "متصلة" : "غير متاحة"}`),
         }),
       // الجلسة المحفوظة لو بقت مش موجودة، المفتاح بيتبدّل فبتفتح جلسة جديدة.
       resetSession: async () => {

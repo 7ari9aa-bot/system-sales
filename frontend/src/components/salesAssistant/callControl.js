@@ -67,7 +67,7 @@ export function createCallController({
         call = await begin();
       }
     } catch {
-      publish(false, "تعذّر بدء المكالمة، جرّب تاني.");
+      publish(false, "تعذّر بدء المكالمة، يرجى المحاولة مرة أخرى.");
       return;
     }
     if (call?.state === STREAM_STATE.LIVE) {

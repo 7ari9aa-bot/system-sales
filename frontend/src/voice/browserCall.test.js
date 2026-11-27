@@ -58,7 +58,7 @@ describe("browserCall helpers", () => {
     expect(streamStateForClose(1008)).toBe(STREAM_STATE.REFUSED);
     expect(streamStateForClose(1011)).toBe(STREAM_STATE.UNAVAILABLE);
     expect(streamStateForClose(1000)).toBe(STREAM_STATE.CLOSED);
-    expect(describeStreamState(STREAM_STATE.REFUSED)).toContain("صوت");
+    expect(describeStreamState(STREAM_STATE.REFUSED)).toContain("الصوت المباشر");
   });
 
   it("talks to the same origin as the API, over ws", () => {

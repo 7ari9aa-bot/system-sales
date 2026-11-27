@@ -26,7 +26,7 @@ const FAILED_STATES = ["refused", "unavailable", "not_found", "failed", "closed"
 
 /** الحالة زي ما بتتعرض: النص، وهل القاطع مسموح، وهل هي حالة فشل. */
 export function screenView({ state = "opening", message = "", labels = {} } = {}) {
-  const fallback = state === "live" ? labels.live ?? "بتتكلم دلوقتي" : labels.opening ?? "بجهّز المايك…";
+  const fallback = state === "live" ? labels.live ?? "أنت تتحدث الآن" : labels.opening ?? "جارٍ تهيئة الميكروفون…";
   return {
     text: message || fallback,
     failed: FAILED_STATES.includes(state),
@@ -150,13 +150,13 @@ export default function VoiceScreen({
           disabled={!view.canInterrupt}
           className="rounded-full border border-white/15 bg-white/10 px-5 py-3 text-sm font-medium text-white/90 backdrop-blur transition hover:bg-white/20 disabled:opacity-40"
         >
-          {interrupted ? "المساعد ساكت" : "قاطع"}
+          {interrupted ? "تم إسكات المساعد" : "مقاطعة"}
         </button>
         <button
           type="button"
           data-testid="voice-screen-close"
           onClick={onClose}
-          aria-label="اقفل المكالمة"
+          aria-label="إنهاء المكالمة"
           className="grid h-14 w-14 place-items-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30 transition hover:bg-red-600"
         >
           <span className="text-xl" aria-hidden>

@@ -21,13 +21,13 @@ export const STREAM_STATE = {
 };
 
 const MESSAGES = {
-  [STREAM_STATE.OPENING]: "بجهّز المايك…",
-  [STREAM_STATE.LIVE]: "بتتكلم دلوقتي",
-  [STREAM_STATE.REFUSED]: "الجلسة دي مش بتاخد صوت مباشر دلوقتي.",
-  [STREAM_STATE.UNAVAILABLE]: "خدمة الصوت مش متاحة حالياً، جرّب تاني بعد شوية.",
-  [STREAM_STATE.NOT_FOUND]: "الجلسة مش موجودة أو مش بتاعتك.",
-  [STREAM_STATE.FAILED]: "تعذّر فتح المايك أو الاتصال.",
-  [STREAM_STATE.CLOSED]: "المكالمة اتقفلت.",
+  [STREAM_STATE.OPENING]: "جارٍ تهيئة الميكروفون…",
+  [STREAM_STATE.LIVE]: "أنت تتحدث الآن",
+  [STREAM_STATE.REFUSED]: "هذه الجلسة لا تدعم الصوت المباشر حالياً.",
+  [STREAM_STATE.UNAVAILABLE]: "خدمة الصوت غير متاحة حالياً، يرجى المحاولة بعد قليل.",
+  [STREAM_STATE.NOT_FOUND]: "الجلسة غير موجودة أو لا تخص حسابك.",
+  [STREAM_STATE.FAILED]: "تعذّر فتح الميكروفون أو الاتصال بالخادم.",
+  [STREAM_STATE.CLOSED]: "تم إنهاء المكالمة.",
 };
 
 export function describeStreamState(state) {

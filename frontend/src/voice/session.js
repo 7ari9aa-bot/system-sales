@@ -22,11 +22,11 @@ export const VOICE_STATE = {
 
 /** رسالة لكل رفض، بالمصري، بتقول للمستخدم يعمل إيه بدل ما تسيب الشاشة ساكتة. */
 const MESSAGES = {
-  [VOICE_STATE.REFUSED]: "الجلسة دي مش بتاخد صوت مباشر دلوقتي.",
-  [VOICE_STATE.UNAVAILABLE]: "خدمة الصوت مش متاحة حالياً، جرّب تاني بعد شوية.",
-  [VOICE_STATE.NOT_FOUND]: "الجلسة مش موجودة أو مش بتاعتك.",
-  [VOICE_STATE.FAILED]: "تعذّر فتح المايك أو الاتصال بالغرفة.",
-  [VOICE_STATE.CLOSED]: "المكالمة اتقفلت.",
+  [VOICE_STATE.REFUSED]: "هذه الجلسة لا تدعم الصوت المباشر حالياً.",
+  [VOICE_STATE.UNAVAILABLE]: "خدمة الصوت غير متاحة حالياً، يرجى المحاولة بعد قليل.",
+  [VOICE_STATE.NOT_FOUND]: "الجلسة غير موجودة أو لا تخص حسابك.",
+  [VOICE_STATE.FAILED]: "تعذّر فتح الميكروفون أو الاتصال بالغرفة.",
+  [VOICE_STATE.CLOSED]: "تم إنهاء المكالمة.",
 };
 
 export function describeState(state) {
