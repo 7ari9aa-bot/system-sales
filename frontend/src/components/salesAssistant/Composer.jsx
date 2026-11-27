@@ -8,7 +8,7 @@
 import React from "react";
 import { ArrowUp, AudioLines, Mic, Plus, Square, VolumeX } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { openVoiceSession, startBrowserCall, STREAM_STATE } from "@/voice/browserCall";
+import { MIC_ERROR_TEXT, openVoiceSession, startBrowserCall, STREAM_STATE } from "@/voice/browserCall";
 import VoiceScreen from "@/voice/VoiceScreen";
 import { createLevelMeter } from "@/voice/orb/levels";
 import { createCallController } from "./callControl";
@@ -51,6 +51,8 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   const [audioNote, setAudioNote] = React.useState("");
   // المايك المعلّق: المتصفح مش بيشغّل الصوت قبل دوسة، والشاشة لازم تقول كده.
   const [micPrompt, setMicPrompt] = React.useState(false);
+  // سبب فشل المايك بكود: الشاشة كانت بتفضل تقول "جارٍ تهيئة الميكروفون" للأبد.
+  const [micError, setMicError] = React.useState("");
 
   const onCallEndRef = React.useRef(onCallEnd);
   onCallEndRef.current = onCallEnd;
@@ -83,6 +85,10 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
             if (levels?.mic != null) meter.setMic(levels.mic);
           },
           onNeedsGesture: () => setMicPrompt(true),
+          onMicError: ({ code }) => {
+            setMicPrompt(false);
+            setMicError(code);
+          },
         }),
       // الجلسة المحفوظة لو بقت مش موجودة، المفتاح بيتبدّل فبتفتح جلسة جديدة.
       resetSession: async () => {
@@ -98,6 +104,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         onCallEndRef.current?.();
         setScreenOpen(false);
         setMicPrompt(false);
+        setMicError("");
         setAudioNote("");
       },
     });
@@ -109,6 +116,7 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
       setCallError(null);
       setCallState(STREAM_STATE.OPENING);
       setMicPrompt(false);
+      setMicError("");
       setAudioNote("");
       setScreenOpen(true);
     }
@@ -220,7 +228,13 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
         state={callState}
         message={callError ?? ""}
         meter={meterRef.current}
-        note={micPrompt ? "اضغط على الشاشة لتشغيل الميكروفون" : audioNote || socketNote}
+        note={
+          micPrompt
+            ? "اضغط على الشاشة لتشغيل الميكروفون"
+            : micError
+              ? MIC_ERROR_TEXT[micError] ?? MIC_ERROR_TEXT.mic_failed
+              : audioNote || socketNote
+        }
         onGesture={
           micPrompt
             ? async () => {

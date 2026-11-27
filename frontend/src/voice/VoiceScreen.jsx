@@ -41,10 +41,13 @@ export function screenView({
   message = "",
   labels = {},
 } = {}) {
+  // الفشل له نصّه: الشاشة كانت بتفضل تقول "جارٍ تهيئة الميكروفون…" حتى بعد ما المكالمة تسقط.
   const fallback =
     state === "live"
       ? (labels.live ?? "أنت تتحدث الآن")
-      : (labels.opening ?? "جارٍ تهيئة الميكروفون…");
+      : FAILED_STATES.includes(state)
+        ? (labels.failed ?? "تعذّر بدء المكالمة")
+        : (labels.opening ?? "جارٍ تهيئة الميكروفون…");
   return {
     text: message || fallback,
     failed: FAILED_STATES.includes(state),

@@ -114,17 +114,61 @@ async function defaultWsFactory(url) {
   return new WebSocket(url);
 }
 
+/** مهلة طلب المايك: بعدها بنقول للمستخدم إن المتصفح ما ردّش بدل ما الشاشة تفضل تقول "بيتهيّأ".
+ *  المتصفح بيسيب الطلب معلّق لو نافذة الإذن اتفتحت وما اتجاوبتش (أو التاب مش في المقدمة). */
+export const MIC_TIMEOUT_MS = 12000;
+
+/** كل سبب فشل للمايك وترجمته لتعليمة واحدة تنفّذها. الشاشة ما بتعرضش رسالة المتصفح الإنجليزي. */
+export const MIC_ERROR_TEXT = {
+  mic_denied: "المتصفح رفض إذن الميكروفون. اسمح بالوصول من أيقونة القفل ثم افتح المكالمة من جديد.",
+  mic_timeout: "لم يصل رد من المتصفح على طلب الميكروفون. اضغط على الشاشة واسمح بالوصول ثم أعد المحاولة.",
+  mic_missing: "لا يوجد ميكروفون متصل بهذا الجهاز.",
+  mic_failed: "تعذّر تشغيل الميكروفون على هذا المتصفح.",
+};
+
+/** خطأ المايك بكود نعرف نترجمه لتعليمة للمستخدم، مش نص إنجليزي من المتصفح. */
+export function micError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+/** طلب الميكروفون بمهلة. لو المتصفح ردّ بعد ما المهلة خلصت، بنقفل الستريم فوراً عشان مايفضلش شغال. */
+function requestStream(win, timeoutMs) {
+  const request = win.navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  let timer = null;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      request.then(
+        (late) => late?.getTracks?.().forEach((track) => track.stop()),
+        () => {}
+      );
+      reject(micError("mic_timeout"));
+    }, timeoutMs);
+  });
+  return Promise.race([request, guard]).catch((error) => {
+    if (error?.code) throw error;
+    const name = error?.name || "";
+    if (name === "NotAllowedError" || name === "SecurityError") throw micError("mic_denied");
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") throw micError("mic_missing");
+    throw micError("mic_failed");
+  }).finally(() => clearTimeout(timer));
+}
+
 /** المايك الحقيقي: worklet بيسيب 100ms كل مرة، ولو مش مدعوم بنرجع لـScriptProcessor. */
-export function createMicSource({ win = typeof window !== "undefined" ? window : undefined } = {}) {
+export function createMicSource({
+  win = typeof window !== "undefined" ? window : undefined,
+  timeoutMs = MIC_TIMEOUT_MS,
+} = {}) {
   let context = null;
   let stream = null;
   let node = null;
 
   async function start(onChunk, onLevel = () => {}) {
-    if (!win?.navigator?.mediaDevices?.getUserMedia) throw new Error("no microphone");
-    stream = await win.navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-    });
+    if (!win?.navigator?.mediaDevices?.getUserMedia) throw micError("mic_missing");
+    stream = await requestStream(win, timeoutMs);
     const Ctx = win.AudioContext || win.webkitAudioContext;
     context = new Ctx();
     const source = context.createMediaStreamSource(stream);
@@ -236,6 +280,7 @@ export async function startBrowserCall({
   onAudio = () => {},
   onLevel = () => {},
   onNeedsGesture = () => {},
+  onMicError = () => {},
   openTimeoutMs = 8000,
 } = {}) {
   const state = { value: STREAM_STATE.IDLE };
@@ -266,6 +311,23 @@ export async function startBrowserCall({
   const player = playerFactory();
   let socket = null;
   let stopped = false;
+
+  // المايك الأول وبعدين السوكت: الشاشة كانت بتقول "قناة الصوت: متصلة" والمايك لسه معلّق
+  // على نافذة إذن المتصفح، فنفتح جلسة صوتية مدفوعة لشخص مستحيل يسمعه. لو الإذن مرفوض أو
+  // ما اتجاوبش، بنفشل قبل أي حجز وبنقول السبب.
+  try {
+    await mic.start(
+      (chunk) => {
+        if (socket && socket.readyState === 1) socket.send(chunk);
+      },
+      (level) => onLevel({ mic: level })
+    );
+  } catch (error) {
+    onMicError({ code: error?.code || "mic_failed" });
+    setState(STREAM_STATE.FAILED);
+    mic.stop();
+    return { stop: () => mic.stop(), interrupt: () => {}, get state() { return state.value; } };
+  }
 
   const cleanup = () => {
     if (stopped) return;
@@ -349,19 +411,6 @@ export async function startBrowserCall({
   if (!(await opened)) {
     onSocket({ type: "unopened", code: closeCode });
     if (!stopped) setState(closeCode === null ? STREAM_STATE.FAILED : streamStateForClose(closeCode));
-    cleanup();
-    return { stop: cleanup, get state() { return state.value; } };
-  }
-
-  try {
-    await mic.start(
-      (chunk) => {
-        if (socket.readyState === 1) socket.send(chunk);
-      },
-      (level) => onLevel({ mic: level })
-    );
-  } catch {
-    setState(STREAM_STATE.FAILED);
     cleanup();
     return { stop: cleanup, get state() { return state.value; } };
   }

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  MIC_ERROR_TEXT,
   STREAM_STATE,
+  createMicSource,
   openVoiceSession,
   describeStreamState,
   floatToPcm16,
@@ -246,8 +248,11 @@ describe("startBrowserCall", () => {
     expect(states.at(-1)).toBe(STREAM_STATE.REFUSED);
   });
 
-  it("closes the socket when the mic is refused", async () => {
+  it("never opens the voice socket when the mic is refused", async () => {
+    // الشاشة كانت بتوصل "قناة الصوت: متصلة" والمايك لسه معلّق على نافذة الإذن، فالعميل بيدفع
+    // جلسة صوتية لشخص مستحيل يسمعه. الترتيب بقى المايك الأول: مفيش مايك = مفيش سوكت خالص.
     const socket = fakeSocket();
+    const wsFactory = vi.fn(async () => socket);
     const mic = {
       start: vi.fn(async () => {
         throw new Error("no microphone");
@@ -255,18 +260,99 @@ describe("startBrowserCall", () => {
       stop: vi.fn(),
     };
     const player = fakePlayer();
+    const onMicError = vi.fn();
 
     const call = await startBrowserCall({
       sessionId: SESSION,
       apiFn: ticketOk,
-      wsFactory: async () => socket,
+      wsFactory,
       micFactory: () => mic,
       playerFactory: () => player,
+      onMicError,
     });
 
     expect(call.state).toBe(STREAM_STATE.FAILED);
-    expect(socket.closed).toEqual([1000]);
-    expect(player.stop).toHaveBeenCalledTimes(1);
+    expect(wsFactory).not.toHaveBeenCalled();
+    expect(socket.closed).toEqual([]);
+    expect(mic.stop).toHaveBeenCalledTimes(1);
+    expect(onMicError).toHaveBeenCalledWith({ code: "mic_failed" });
+  });
+
+  it("starts the mic before it dials, so a granted mic still opens the call", async () => {
+    const order = [];
+    const socket = fakeSocket();
+    const mic = {
+      start: vi.fn(async () => {
+        order.push("mic");
+      }),
+      stop: vi.fn(),
+      isSuspended: () => false,
+    };
+
+    const call = await startBrowserCall({
+      sessionId: SESSION,
+      apiFn: ticketOk,
+      wsFactory: async () => {
+        order.push("socket");
+        return socket;
+      },
+      micFactory: () => mic,
+      playerFactory: () => fakePlayer(),
+    });
+
+    expect(order).toEqual(["mic", "socket"]);
+    expect(call.state).toBe(STREAM_STATE.LIVE);
+  });
+
+  it("tells the user why the mic failed instead of preparing it forever", async () => {
+    // الطلب المعلّق: المتصفح بيسيب getUserMedia معلّقة لو نافذة الإذن ما اتجاوبتش.
+    const hanging = { getUserMedia: () => new Promise(() => {}) };
+    const source = createMicSource({ win: { navigator: { mediaDevices: hanging } }, timeoutMs: 10 });
+    await expect(source.start(() => {})).rejects.toMatchObject({ code: "mic_timeout" });
+
+    const denied = {
+      getUserMedia: async () => {
+        throw Object.assign(new Error("Permission denied"), { name: "NotAllowedError" });
+      },
+    };
+    await expect(createMicSource({ win: { navigator: { mediaDevices: denied } } }).start(() => {})).rejects.toMatchObject({
+      code: "mic_denied",
+    });
+
+    const missing = {
+      getUserMedia: async () => {
+        throw Object.assign(new Error("no device"), { name: "NotFoundError" });
+      },
+    };
+    await expect(createMicSource({ win: { navigator: { mediaDevices: missing } } }).start(() => {})).rejects.toMatchObject({
+      code: "mic_missing",
+    });
+
+    const none = { navigator: {} };
+    await expect(createMicSource({ win: none }).start(() => {})).rejects.toMatchObject({ code: "mic_missing" });
+  });
+
+  it("stops a mic stream that arrives after the deadline", async () => {
+    const track = { stop: vi.fn() };
+    let release;
+    const late = {
+      getUserMedia: () =>
+        new Promise((resolve) => {
+          release = () => resolve({ getTracks: () => [track] });
+        }),
+    };
+    const source = createMicSource({ win: { navigator: { mediaDevices: late } }, timeoutMs: 5 });
+    await expect(source.start(() => {})).rejects.toMatchObject({ code: "mic_timeout" });
+    release();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(track.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("every mic failure has one instruction the user can act on", async () => {
+    for (const code of ["mic_denied", "mic_timeout", "mic_missing", "mic_failed"]) {
+      expect(MIC_ERROR_TEXT[code]).toBeTruthy();
+      expect(MIC_ERROR_TEXT[code]).not.toMatch(/[a-z]{4,}/i); // مفيش إنجليزي وسط الرسالة
+    }
   });
 
   it("reads the session_id the server actually returns", async () => {
