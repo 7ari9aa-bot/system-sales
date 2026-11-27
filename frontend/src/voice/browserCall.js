@@ -50,11 +50,20 @@ export function streamStateForClose(code) {
 }
 
 /** نفس أصل الـAPI بس بـws/wss، عشان السوكت يروح لنفس السيرفر. */
-export function websocketUrl(path, apiUrlFn = apiUrl) {
+/** الـAPI نفسه، مش الواجهة: Vercel بيوكّل الـHTTP بس ومابيعدّيش ترقية الـwebsocket،
+ *  فالطلب على fihrist.world كان بيرجع 404 عادي بدل ما يفتح السوكت. الـorigin بيتغيّر
+ *  من VITE_VOICE_WS_ORIGIN لو الاستضافة اتغيّرت. */
+export const VOICE_WS_ORIGIN = (
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_VOICE_WS_ORIGIN) ||
+  "wss://p01--system-sales--smkyc4wjfbtq.code.run"
+).replace(/\/+$/, "");
+
+export function websocketUrl(path, apiUrlFn = apiUrl, wsOrigin = VOICE_WS_ORIGIN) {
   const absolute = apiUrlFn(path);
   if (typeof absolute === "string" && /^https?:\/\//.test(absolute)) {
     return absolute.replace(/^http/, "ws");
   }
+  if (wsOrigin) return `${wsOrigin}${absolute}`;
   if (typeof window === "undefined" || !window.location) return absolute;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}${absolute}`;

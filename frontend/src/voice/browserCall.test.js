@@ -9,6 +9,7 @@ import {
   streamStateForClose,
   streamStateForStatus,
   websocketUrl,
+  VOICE_WS_ORIGIN,
 } from "./browserCall";
 
 const SESSION = "11111111-1111-1111-1111-111111111111";
@@ -63,6 +64,15 @@ describe("browserCall helpers", () => {
   it("talks to the same origin as the API, over ws", () => {
     expect(websocketUrl("/api/v1/voice/sessions/x/stream", () => "https://api.example.com/api/v1/voice/sessions/x/stream"))
       .toBe("wss://api.example.com/api/v1/voice/sessions/x/stream");
+  });
+
+  it("opens the socket on the API host, because the site proxy drops the upgrade", () => {
+    // الـAPI بيرجّع مسار نسبي على الإنتاج، والواجهة بتوكّله HTTP. الـwebsocket لازم يقابل
+    // الـAPI نفسه وإلا الطلب يرجع 404 عادي (اللي حصل فعلاً على fihrist.world).
+    expect(websocketUrl("/api/v1/voice/sessions/x/stream", (p) => p, "wss://api.example.com"))
+      .toBe("wss://api.example.com/api/v1/voice/sessions/x/stream");
+    expect(VOICE_WS_ORIGIN.startsWith("wss://")).toBe(true);
+    expect(VOICE_WS_ORIGIN.endsWith("/")).toBe(false);
   });
 
   it("clamps instead of wrapping when a sample is out of range", () => {
