@@ -67,11 +67,23 @@ _SESSION_MOVES: Final[dict[VoiceSessionState, frozenset[VoiceSessionState]]] = {
     VoiceSessionState.AUTHENTICATING: frozenset(
         {VoiceSessionState.CONFIGURING, VoiceSessionState.REJECTED, VoiceSessionState.FAILED}
     ),
+    # A caller may ask for a human before the agent ever speaks, so the two pre-live states can go
+    # straight to HANDOFF_PENDING. What they may never do is reach ACTIVE without a media path.
     VoiceSessionState.CONFIGURING: frozenset(
-        {VoiceSessionState.CONNECTING, VoiceSessionState.REJECTED, VoiceSessionState.FAILED}
+        {
+            VoiceSessionState.CONNECTING,
+            VoiceSessionState.HANDOFF_PENDING,
+            VoiceSessionState.REJECTED,
+            VoiceSessionState.FAILED,
+        }
     ),
     VoiceSessionState.CONNECTING: frozenset(
-        {VoiceSessionState.ACTIVE, VoiceSessionState.FAILED, VoiceSessionState.CLOSING}
+        {
+            VoiceSessionState.ACTIVE,
+            VoiceSessionState.HANDOFF_PENDING,
+            VoiceSessionState.FAILED,
+            VoiceSessionState.CLOSING,
+        }
     ),
     # DEGRADED is the state a session lives in when the media path lost quality but the call is
     # real: it may recover, it may end, but it never pretends to be healthy again by itself.
