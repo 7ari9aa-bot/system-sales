@@ -88,18 +88,6 @@ _VOICE_UNWIRED_WHY = (
 
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # --- voice: unwired until the assistant turn service owns the call ---
-    "app.modules.voice.application.live_loop": (
-        "the live call pump: it opens the GPT-Live session, pushes caller audio, decodes model "
-        "audio to a sink and hands every delegation to ClientDelegationService. Nothing builds it "
-        "because the worker that owns live calls end to end (and closes the voice session when the "
-        "model closes the call) is the remaining piece; delete this line when it lands."
-    ),
-    "app.modules.voice.application.client_delegation": (
-        "the delegation answerer: parse_delegation + ClientDelegationService turn a real "
-        "session.delegation.created into the same assistant turn and send it back with "
-        "session.commentary.append. Nothing calls it yet because the live loop that owns the "
-        "socket and feeds events to it is the remaining piece; delete this line when that lands."
-    ),
     "app.modules.voice.application.assistant_turn": (
         "the spoken-turn entry point: it resolves the session's thread and calls "
         "AssistantTurnService with modality=live_voice, but nothing calls IT yet. The live loop "
@@ -121,7 +109,6 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     "app.modules.voice.domain.recording": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.resilience": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.routing": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.runtime.gpt_live": _VOICE_UNWIRED_WHY,
     "app.modules.voice.runtime.livekit_sip": _VOICE_UNWIRED_WHY,
     "app.modules.voice.runtime.providers": _VOICE_UNWIRED_WHY,
     "app.modules.voice.runtime.recovery": _VOICE_UNWIRED_WHY,

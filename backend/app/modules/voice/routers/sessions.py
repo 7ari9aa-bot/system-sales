@@ -9,11 +9,12 @@ assistant by sending ``persona: merchant_assistant``.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import (
@@ -22,12 +23,19 @@ from app.core.errors import (
     StorageUnavailableError,
 )
 from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.voice.application.browser_call import build_browser_call
 from app.modules.voice.application.session_manager import VoiceSessionManager
 from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.application.transport import VoiceTransportService
 from app.modules.voice.domain.personas import PrincipalType
 from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.modules.voice.runtime.gpt_live import GptLiveProtocolError, GptLiveUnavailable
 from app.modules.voice.runtime.livekit import MediaPlaneUnavailable
+from app.modules.voice.runtime.stream_ticket import (
+    StreamTicketInvalid,
+    StreamTicketIssuer,
+    StreamTicketUnavailable,
+)
 from app.modules.voice.security.capabilities import ChannelType
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -174,3 +182,96 @@ async def open_transport(ctx: VoiceCtx, session_id: uuid.UUID) -> TransportRespo
         identity=credential.identity,
         expires_at=credential.expires_at,
     )
+
+
+class StreamTicketResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticket: str
+    expires_in: int
+    path: str
+
+
+def _stream_issuer() -> StreamTicketIssuer:
+    return StreamTicketIssuer.from_settings()
+
+
+def _call_factory():
+    """The call builder; replaced in tests so no test opens a real gateway socket."""
+    return build_browser_call
+
+
+@router.post("/sessions/{session_id}/stream-ticket", response_model=StreamTicketResponse)
+async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTicketResponse:
+    """Mint the one-minute ticket a browser presents on the audio websocket.
+
+    The browser cannot hold the gateway key, so it streams PCM to us and the
+    socket to GPT-Live stays on the server. That door is a credential of its own:
+    signed with the app secret, bound to this session and this shop, and valid for
+    a minute — long enough to open one stream, too short to be worth stealing.
+    """
+    record = await _authorized(ctx, session_id)
+    try:
+        issuer = _stream_issuer()
+    except StreamTicketUnavailable as exc:
+        raise StorageUnavailableError("voice streaming is not configured") from exc
+    return StreamTicketResponse(
+        ticket=issuer.issue(session_id=record.id, tenant_id=record.tenant_id),
+        expires_in=issuer.ttl_seconds,
+        path=f"/api/v1/voice/sessions/{record.id}/stream",
+    )
+
+
+async def _pump(call, websocket: WebSocket) -> None:
+    """Read model frames until the call closes or the transport breaks."""
+    try:
+        while not call.closed:
+            await call.pump()
+    except (GptLiveProtocolError, RuntimeError):
+        return
+
+
+@router.websocket("/sessions/{session_id}/stream")
+async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str = "") -> None:
+    """Carry one browser call: PCM in, model audio out.
+
+    The ticket is the whole authentication story for this socket, so it is
+    verified before a single byte of audio is read; a ticket for another session
+    is refused exactly like a forged one. If the voice runtime is not configured
+    the socket closes with 1011 instead of pretending to listen.
+    """
+    await websocket.accept()
+    try:
+        claims = _stream_issuer().verify(ticket, session_id=session_id)
+    except (StreamTicketInvalid, StreamTicketUnavailable):
+        await websocket.close(code=1008)
+        return
+
+    try:
+        call = await _call_factory()(
+            session_id=session_id,
+            tenant_id=claims.tenant_id,
+            send_audio=websocket.send_bytes,
+        )
+    except (GptLiveUnavailable, MediaPlaneUnavailable):
+        await websocket.close(code=1011)
+        return
+
+    pump = asyncio.create_task(_pump(call, websocket))
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            chunk = message.get("bytes")
+            if not chunk:
+                continue
+            try:
+                await call.push_audio(chunk)
+            except GptLiveProtocolError:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        pump.cancel()
+        await call.close()

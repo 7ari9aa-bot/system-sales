@@ -199,6 +199,10 @@ class GptLiveProvider:
         finally:
             await transport.close()
 
+    async def next_event(self, session_id: str) -> dict[str, Any]:
+        """Read ONE frame. The live loop drives the call; the adapter only reads."""
+        return await self._transport(session_id).recv_event()
+
     async def append_thinking(
         self,
         session_id: str,

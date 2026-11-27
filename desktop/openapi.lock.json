@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 722,
-    "sha256": "422f12f5964804f4447eeca0cf1967b86fe613c51a1bb3c719630df114c859ff",
-    "typed_operations": 405
+    "operations": 723,
+    "sha256": "1b3b9616386f2309ca1cd316f4ed716cd90f3818ae966f8ce00fbfe0ddf1d99d",
+    "typed_operations": 406
   },
   "spec": {
     "components": {
@@ -23171,6 +23171,30 @@
             }
           },
           "title": "StorePolicySaveRequest",
+          "type": "object"
+        },
+        "StreamTicketResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "expires_in": {
+              "title": "Expires In",
+              "type": "integer"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "ticket": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ticket",
+            "expires_in",
+            "path"
+          ],
+          "title": "StreamTicketResponse",
           "type": "object"
         },
         "StreamTokenOut": {
@@ -104738,6 +104762,114 @@
             }
           },
           "summary": "Interrupt Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/stream-ticket": {
+        "post": {
+          "description": "Mint the one-minute ticket a browser presents on the audio websocket.\n\nThe browser cannot hold the gateway key, so it streams PCM to us and the\nsocket to GPT-Live stays on the server. That door is a credential of its own:\nsigned with the app secret, bound to this session and this shop, and valid for\na minute — long enough to open one stream, too short to be worth stealing.",
+          "operationId": "open_stream_ticket_api_v1_voice_sessions__session_id__stream_ticket_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StreamTicketResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Stream Ticket",
           "tags": [
             "voice"
           ]
