@@ -78,6 +78,20 @@ export function createVercelConfig({
     destination: "/index.html",
   });
 
+  // The voice call streams audio over a websocket straight to the API: the Vercel proxy
+  // forwards HTTP but does not upgrade websockets, so the socket goes to the API origin
+  // itself. Without it in connect-src the browser refuses the connection before it leaves
+  // the page, and the call dies with no request in the server log at all.
+  const connectSources = [
+    "'self'",
+    "https://connect.facebook.net",
+    "https://www.facebook.com",
+    "https://graph.facebook.com",
+    apiOrigin ? apiOrigin.replace(/^https:/, "wss:") : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return {
     headers: [
       {
@@ -85,7 +99,7 @@ export function createVercelConfig({
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://connect.facebook.net https://www.facebook.com https://graph.facebook.com; frame-src 'self' https://www.facebook.com https://web.facebook.com; worker-src 'self' blob:; upgrade-insecure-requests",
+            value: `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src ${connectSources}; frame-src 'self' https://www.facebook.com https://web.facebook.com; worker-src 'self' blob:; upgrade-insecure-requests`,
           },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },

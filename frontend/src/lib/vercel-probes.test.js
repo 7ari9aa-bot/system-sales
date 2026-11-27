@@ -31,3 +31,32 @@ describe("vercel probe routing", () => {
     expect(sources).not.toContain("/api/v1/:path*");
   });
 });
+
+/**
+ * The voice call streams PCM over a websocket to the API. Vercel proxies HTTP
+ * rewrites but does not upgrade websockets, so the socket targets the API origin
+ * directly — and the browser refuses it unless connect-src names that origin.
+ * Measured on production: the call created a session (201), minted a ticket (200),
+ * and then nothing reached the server, because this directive blocked it.
+ */
+describe("content security policy for the voice socket", () => {
+  const csp = createVercelConfig({ environment: "production" })
+    .headers[0].headers.find((h) => h.key === "Content-Security-Policy").value;
+  const connectSrc = csp.match(/connect-src ([^;]+)/)[1].split(/\s+/);
+
+  it("allows the API websocket origin the call actually opens", () => {
+    expect(connectSrc).toContain("wss://p01--system-sales--smkyc4wjfbtq.code.run");
+  });
+
+  it("still keeps the REST API same-origin and Meta's own hosts", () => {
+    expect(connectSrc).toContain("'self'");
+    expect(connectSrc).toContain("https://graph.facebook.com");
+    expect(connectSrc).not.toContain("ws:");
+  });
+
+  it("names no websocket origin when the deployment has no backend", () => {
+    const preview = createVercelConfig({ environment: "preview" })
+      .headers[0].headers.find((h) => h.key === "Content-Security-Policy").value;
+    expect(preview).not.toContain("wss://");
+  });
+});

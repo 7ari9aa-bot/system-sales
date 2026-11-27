@@ -46,6 +46,10 @@ assert.equal(headers.get("x-content-type-options"), "nosniff");
 assert.equal(headers.get("x-frame-options"), "DENY");
 assert.ok(csp.includes("connect-src 'self'"), "API requests should stay same-origin through the Vercel proxy");
 assert.ok(
+  csp.includes("wss://p01--system-sales--smkyc4wjfbtq.code.run"),
+  "The voice socket connects to the API origin, so the CSP must allow it",
+);
+assert.ok(
   production.rewrites.some((rule) => rule.destination.startsWith("https://p01--system-sales--smkyc4wjfbtq.code.run/")),
   "Production must keep its configured backend proxy",
 );
