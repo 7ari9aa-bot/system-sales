@@ -88,6 +88,12 @@ _VOICE_UNWIRED_WHY = (
 
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # --- voice: unwired until the assistant turn service owns the call ---
+    "app.modules.voice.application.live_loop": (
+        "the live call pump: it opens the GPT-Live session, pushes caller audio, decodes model "
+        "audio to a sink and hands every delegation to ClientDelegationService. Nothing builds it "
+        "because the worker that owns live calls end to end (and closes the voice session when the "
+        "model closes the call) is the remaining piece; delete this line when it lands."
+    ),
     "app.modules.voice.application.client_delegation": (
         "the delegation answerer: parse_delegation + ClientDelegationService turn a real "
         "session.delegation.created into the same assistant turn and send it back with "
