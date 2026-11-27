@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useSettingsAccess } from "@/components/settings/SettingsAccessContext";
 
 /** What the server sends instead of a value the caller may not read (router MASKED_VALUE). */
 export const MASKED_VALUE = "******";
@@ -37,7 +38,17 @@ export function SettingField({ defn, value, onChange, isAr }) {
   const desc = isAr ? defn.description_ar : defn.description_en;
   // A key the engine does not enforce is a promise nothing keeps: the row still says what it is
   // (and that it is not active), but it must not offer a control that looks like it saves.
-  const inert = defn.enforced === false;
+  //
+  // The same is true of a key this member may not WRITE. The registry says which permission
+  // owns each key (`settings:write` for shop settings, `settings:branch_write` for a branch's
+  // own), and a manager holds `settings:read` without `settings:write`: the field looked
+  // editable, the value was typed, and the save came back 403. Asking the grant first makes
+  // the control honest — it shows the value and says it is read-only, and where it is.
+  const { can } = useSettingsAccess();
+  const permission = defn.permission || "settings:write";
+  const mayWrite = can(permission);
+  const readOnly = mayWrite === false;
+  const inert = defn.enforced === false || readOnly;
 
   const renderControl = () => {
     if (isProtectedValue(value)) {
@@ -138,7 +149,13 @@ export function SettingField({ defn, value, onChange, isAr }) {
     <SettingRow label={label} desc={desc} stretch={defn.type === "list" || defn.type === "string"}>
       <div className="flex items-center gap-2">
         {renderControl()}
-        {defn.apply_mode === "approval_required" && (
+        {readOnly && (
+          <Badge tone="muted" className="shrink-0" data-testid="setting-read-only">
+            <Lock className="mr-1 h-3 w-3" />
+            {isAr ? "قراءة فقط" : "Read-only"}
+          </Badge>
+        )}
+        {defn.apply_mode === "approval_required" && !readOnly && (
           <Badge tone="warning" className="shrink-0">
             <ShieldAlert className="mr-1 h-3 w-3" />
             {isAr ? "تتطلب موافقة" : "Approval"}

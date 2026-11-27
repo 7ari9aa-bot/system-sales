@@ -166,6 +166,27 @@ class CurrentTenant(BaseModel):
     currency: str | None = None
 
 
+class MyAccessOut(BaseModel):
+    """What the CALLER may do in the active tenant.
+
+    The Settings Center used to decide what to show from a role code alone, so a staff member
+    with no settings grant was offered every section and only found out when a save came back
+    403. The server already computes the answer on every request (``TenantContext
+    .permission_codes``, read from ``role_permissions``); this exposes it to the caller's own
+    screen.
+
+    Readable by anyone signed in, deliberately: it describes the caller's own membership and
+    nothing else. Requiring ``settings:read`` to ask "may I read settings?" would be circular,
+    and the alternative — guessing from the role name — is exactly the bug.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    role_code: str | None = None
+    # Sorted so the payload is stable and a diff means a real change.
+    permissions: list[str] = []
+
+
 class CurrentUser(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

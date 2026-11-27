@@ -2205,4 +2205,9 @@ export default {
   "settings.automation.subtitle": "The automation engine: workflows, their triggers and their execution attempts.",
   "settings.data.subtitle": "Import, retention, privacy, deletion and backup.",
   "settings.channels.subtitle": "Every channel, its connection and state, and the data that arrives from it.",
+  "settings.access.checking": "Checking your access…",
+  "settings.access.denied.title": "You do not have this section",
+  "settings.access.denied.body": "Your role in this workspace has no settings permission. If you need it, ask the account owner or a manager.",
+  "settings.access.denied.back": "Back to My account",
+  "settings.access.readOnly": "You can read these values. Changing them needs the settings write permission, which only the owner grants.",
 };

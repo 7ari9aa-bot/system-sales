@@ -2203,4 +2203,9 @@ export default {
   "settings.automation.subtitle": "محرك الأتمتة: سير العمل ومشغّلاته ومحاولات التنفيذ.",
   "settings.data.subtitle": "الاستيراد والاحتفاظ والخصوصية والحذف والنسخ الاحتياطي.",
   "settings.channels.subtitle": "كل قناة واتصالها وحالته، ومزامنة البيانات اللي بتيجي منها.",
+  "settings.access.checking": "بنتأكد من صلاحيتك…",
+  "settings.access.denied.title": "مش مسموح لك بالقسم ده",
+  "settings.access.denied.body": "دورك في المساحة دي مش فيه صلاحية إعدادات. لو محتاج تشوفه، اطلبه من مالك الحساب أو المدير.",
+  "settings.access.denied.back": "ارجع لحسابي",
+  "settings.access.readOnly": "بتشوف القيم بس. تعديل الإعدادات محتاج صلاحية كتابة إعدادات، والمالك بس هو اللي بيمنحها.",
 };

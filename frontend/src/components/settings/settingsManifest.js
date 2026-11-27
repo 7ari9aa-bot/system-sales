@@ -69,6 +69,9 @@ export const SETTINGS_GROUP_KEYS = [
 export const SETTINGS_SECTIONS = [
   {
     id: "01",
+    // Personal screens: they edit the signed-in person, not the shop, so no settings grant
+    // gates them. A staff member with no settings code at all still changes their own password.
+    personal: true,
     slug: "profile",
     labelKey: "settings.nav.profile",
     to: "/settings",
@@ -344,11 +347,11 @@ export const SETTINGS_SECTIONS = [
  * carry the rest — that is how the Center stays twenty sections instead of thirty siblings.
  */
 export const ACCOUNT_PAGE_ITEMS = [
-  { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true },
-  { to: "/settings/login", icon: KeyRound, labelKey: "settings.nav.login" },
-  { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security" },
-  { to: "/settings/preferences", icon: SlidersHorizontal, labelKey: "settings.nav.preferences" },
-  { to: "/settings/notifications", icon: Bell, labelKey: "settings.nav.notifications" },
+  { to: "/settings", icon: User, labelKey: "settings.nav.profile", end: true, personal: true },
+  { to: "/settings/login", icon: KeyRound, labelKey: "settings.nav.login", personal: true },
+  { to: "/settings/security", icon: ShieldCheck, labelKey: "settings.nav.security", personal: true },
+  { to: "/settings/preferences", icon: SlidersHorizontal, labelKey: "settings.nav.preferences", personal: true },
+  { to: "/settings/notifications", icon: Bell, labelKey: "settings.nav.notifications", personal: true },
 ];
 
 const byId = (id) => SETTINGS_SECTIONS.find((section) => section.id === id);
@@ -493,3 +496,30 @@ export function pagePath(slug, page) {
 export const SETTINGS_PAGE_ROUTES = SETTINGS_SECTIONS.filter(
   (section) => section.id !== "01" && section.pages.length > 0
 ).flatMap((section) => section.pages.map((page) => pagePath(section.slug, page)));
+
+/**
+ * The section a pathname belongs to, for the route guard.
+ *
+ * Longest prefix wins, so `/settings/workspace/data` is the workspace section and
+ * `/settings/data/import` is the data section — the two names collide and a naive
+ * `startsWith` on `/settings/data` would put the workspace's page under the wrong rule. The
+ * account pages (`/settings/profile`, `/settings/sign-in`, …) are section 01 and answer `null`
+ * from `permission`-gated lookups only because they are personal screens, never shop settings.
+ */
+export function sectionByPath(pathname) {
+  const path = (pathname || "").replace(/\/+$/, "");
+  // The personal addresses are checked FIRST, because three of them are also a section slug:
+  // /settings/security is the person's own password screen while /settings/security/audit-log
+  // is section 18, and /settings/notifications is personal while
+  // /settings/notifications/notification-channels is section 16. A slug-prefix match alone
+  // would put a staff member's own security page behind a settings grant they do not hold.
+  const personal = ACCOUNT_PAGE_ITEMS.find((item) => (item.end ? path === item.to : path === item.to));
+  if (personal) return byId("01");
+  const candidates = SETTINGS_SECTIONS.filter(
+    (section) =>
+      section.id !== "01" &&
+      (path === `/settings/${section.slug}` || path.startsWith(`/settings/${section.slug}/`))
+  );
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => b.slug.length - a.slug.length)[0];
+}

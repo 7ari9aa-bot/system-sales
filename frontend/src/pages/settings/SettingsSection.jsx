@@ -63,6 +63,7 @@ import {
 } from "@/components/settings/SecurityPanels";
 import { useSettings } from "@/components/settings/useSettings";
 import { sectionPages } from "@/components/settings/settingsManifest";
+import { useSettingsAccess } from "@/components/settings/SettingsAccessContext";
 import ScopeSelector from "@/components/settings/ScopeSelector";
 import PreviewPanel from "@/components/settings/PreviewPanel";
 import { Button } from "@/components/ui/button";
@@ -246,6 +247,11 @@ export default function SettingsSection({ section }) {
   // The tab strip and the page's own title come from the manifest, never from a second list
   // kept here: a page added to the map appears as a tab in the same commit, and a page the map
   // marks pending has no tab to land on an empty screen.
+  // A save the server will refuse must not look available. `canWrite` is the same grant the
+  // fields read, so a manager sees the values, sees that they are read-only, and the Save
+  // button is not offered at all instead of failing after the fact.
+  const { canWrite } = useSettingsAccess();
+  const mayWrite = canWrite !== false;
   const pages = sectionPages(section);
   const currentPage = pages.find((entry) => entry.slug === page);
   const title = currentPage
@@ -291,7 +297,7 @@ export default function SettingsSection({ section }) {
               {isAr ? "معاينة" : "Preview"}
             </Button>
           )}
-          {hasApprovalChanges && (
+          {hasApprovalChanges && mayWrite && (
             <Button
               size="sm"
               variant="outline"
@@ -302,7 +308,7 @@ export default function SettingsSection({ section }) {
               {s.saving ? "…" : isAr ? "طلب تغيير" : "Request change"}
             </Button>
           )}
-          {hasDirectChanges && (
+          {hasDirectChanges && mayWrite && (
             <Button size="sm" onClick={s.save} disabled={!s.dirty || s.saving}>
               <Save className="h-3.5 w-3.5" />
               {s.saving ? "…" : isAr ? "حفظ" : "Save"}
@@ -311,6 +317,11 @@ export default function SettingsSection({ section }) {
         </div>
       }
     >
+      {!mayWrite && (
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] text-muted-foreground">
+          {t("settings.access.readOnly")}
+        </p>
+      )}
       {pages.length > 1 && (
         <nav className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
           {pages.map((entry) => {

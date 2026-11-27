@@ -4,8 +4,9 @@ import { ArrowLeft, ChevronDown, LogOut, Menu, Settings2, X } from "lucide-react
 import { useI18n, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
-import { activeTenant } from "@/lib/activeTenant";
-import { SETTINGS_NAV_GROUPS } from "@/components/settings/settingsManifest";
+import { SETTINGS_NAV_GROUPS, sectionByPath } from "@/components/settings/settingsManifest";
+import { SettingsAccessProvider, useSettingsAccess } from "@/components/settings/SettingsAccessContext";
+import { visibleNavGroups } from "@/lib/settingsAccess";
 import Logo from "@/components/dashboard/Logo";
 import AccountAvatar from "@/components/dashboard/AccountAvatar";
 import {
@@ -29,13 +30,15 @@ import {
 // automation, workspace notifications, data) never appeared in the navigation: adding a route
 // did not add an entry. `settingsManifest.js` is the one place that says what the Center holds;
 // this component only filters it by role and draws it.
-const visibleGroupsFor = (roleCode) =>
-  SETTINGS_NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => !item.roles || item.roles.includes(roleCode)),
-  })).filter((group) => group.items.length > 0);
-
 export default function SettingsLayout() {
+  return (
+    <SettingsAccessProvider>
+      <SettingsLayoutBody />
+    </SettingsAccessProvider>
+  );
+}
+
+function SettingsLayoutBody() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const t = useT();
@@ -44,10 +47,13 @@ export default function SettingsLayout() {
   const [open, setOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = user?.full_name || user?.email?.split("@")[0] || "—";
-  // The role of the membership this person holds in the ACTIVE workspace decides which nav
-  // entries exist at all. An item with no `roles` is shown to everyone.
-  const roleCode = activeTenant(user)?.role_code || null;
-  const visibleGroups = visibleGroupsFor(roleCode);
+  // What the person may SEE comes from their grant in the active workspace, read once by
+  // `SettingsAccessProvider` from /roles/me. The role code is still what the tenant switcher
+  // shows; it no longer decides the navigation.
+  const { canSee, loading: accessLoading } = useSettingsAccess();
+  const visibleGroups = visibleNavGroups(SETTINGS_NAV_GROUPS, canSee);
+  const section = sectionByPath(pathname);
+  const maySeeSection = section ? canSee(section) : true;
   const logoutLabel = lang === "ar" ? "تسجيل الخروج" : "Sign out";
 
   async function handleLogout() {
@@ -90,7 +96,12 @@ export default function SettingsLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-3">
-          {visibleGroups.map((group) => (
+          {accessLoading && (
+            <p className="px-3 text-[12px] text-muted-foreground" aria-busy="true">
+              {t("settings.access.checking")}
+            </p>
+          )}
+          {!accessLoading && visibleGroups.map((group) => (
             <div key={group.key}>
               <div className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {t(group.key)}
@@ -172,7 +183,29 @@ export default function SettingsLayout() {
           <h1 className={cn("font-display text-[16px] font-semibold whitespace-nowrap truncate", "min-w-0")}>{t("settings.title")}</h1>
         </header>
         <main className="w-full px-4 sm:px-6 lg:px-8 py-4">
-          <Outlet />
+          {/* The ROUTE guard, in the one place every settings page passes through. Typing a
+              section's address used to open it for anyone signed in; the server refused the
+              reads, so the page rendered its shell over empty data. */}
+          {accessLoading && section ? (
+            <p className="px-1 py-8 text-[13px] text-muted-foreground" aria-busy="true">
+              {t("settings.access.checking")}
+            </p>
+          ) : maySeeSection === false ? (
+            <div className="max-w-lg rounded-xl border border-border bg-card p-6">
+              <h1 className="font-display text-[18px] font-semibold">{t("settings.access.denied.title")}</h1>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                {t("settings.access.denied.body")}
+              </p>
+              <Link
+                to="/settings/profile"
+                className="mt-4 inline-block rounded-lg bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground"
+              >
+                {t("settings.access.denied.back")}
+              </Link>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
     </div>

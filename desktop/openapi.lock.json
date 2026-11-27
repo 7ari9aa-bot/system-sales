@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 714,
-    "sha256": "f4bfa1583ca5ec6cfaca19c33292b96c22c52a67c81d9d6fa3448816fc08663e",
-    "typed_operations": 397
+    "operations": 715,
+    "sha256": "1d365d74d1ee16e80f8375b115c9a9e9b30bdd8658862d1caa9a45c0b05d96fa",
+    "typed_operations": 398
   },
   "spec": {
     "components": {
@@ -14693,6 +14693,32 @@
             "quantity"
           ],
           "title": "MovementRequest",
+          "type": "object"
+        },
+        "MyAccessOut": {
+          "description": "What the CALLER may do in the active tenant.\n\nThe Settings Center used to decide what to show from a role code alone, so a staff member\nwith no settings grant was offered every section and only found out when a save came back\n403. The server already computes the answer on every request (``TenantContext\n.permission_codes``, read from ``role_permissions``); this exposes it to the caller's own\nscreen.\n\nReadable by anyone signed in, deliberately: it describes the caller's own membership and\nnothing else. Requiring ``settings:read`` to ask \"may I read settings?\" would be circular,\nand the alternative — guessing from the role name — is exactly the bug.",
+          "properties": {
+            "permissions": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Permissions",
+              "type": "array"
+            },
+            "role_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role Code"
+            }
+          },
+          "title": "MyAccessOut",
           "type": "object"
         },
         "NoteBody": {
@@ -90349,6 +90375,104 @@
             }
           },
           "summary": "Permission Matrix",
+          "tags": [
+            "roles"
+          ]
+        }
+      },
+      "/api/v1/roles/me": {
+        "get": {
+          "description": "The caller's own role and permission codes in the active tenant.\n\nNo ``require_permission`` gate, and that is the point: the matrix above needs\n``settings:read``, so the one account that most needs to know it has no settings grant\ncannot read it there. This answers \"what am I\" instead of \"what does everyone hold\".",
+          "operationId": "my_access_api_v1_roles_me_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MyAccessOut"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "My Access",
           "tags": [
             "roles"
           ]

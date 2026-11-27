@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.modules.identity import schemas
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import TenantContext, get_tenant_ctx, require_permission
 from app.modules.identity.services.roles import RoleService
 
 roles_router = APIRouter(prefix="/roles", tags=["roles"])
@@ -20,3 +20,14 @@ roles_router = APIRouter(prefix="/roles", tags=["roles"])
 async def permission_matrix(ctx: TenantContext = Depends(require_permission("settings:read"))):
     payload = await RoleService.matrix(ctx.session)
     return schemas.PermissionMatrixOut(**payload)
+
+
+@roles_router.get("/me", response_model=schemas.MyAccessOut)
+async def my_access(ctx: TenantContext = Depends(get_tenant_ctx)) -> schemas.MyAccessOut:
+    """The caller's own role and permission codes in the active tenant.
+
+    No ``require_permission`` gate, and that is the point: the matrix above needs
+    ``settings:read``, so the one account that most needs to know it has no settings grant
+    cannot read it there. This answers "what am I" instead of "what does everyone hold".
+    """
+    return schemas.MyAccessOut(role_code=ctx.role_code, permissions=sorted(ctx.permission_codes))
