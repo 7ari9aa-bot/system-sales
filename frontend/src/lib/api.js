@@ -10,6 +10,53 @@ const API = import.meta.env.VITE_API_URL ?? "/api/v1";
 
 export const API_PREFIX = "/api/v1";
 
+/** سياق النشاط والفرع اللي الطلب بيشتغل جواه.
+ *
+ *  الـbackend بيتحقق من X-Workspace-Id وX-Location-Id ويقدر يعزل بيانات
+ *  نشاطين في نفس الحساب — لكنه ما يقدرش يعزل حاجة العميل ما بيبعتهاش. قبل
+ *  كده كل طلب كان بيوصل بلا سياق، فالعزل كان موجود في القاعدة ومش مستخدم.
+ *
+ *  الاختيار بيتحفظ عشان يفضل بعد الريفريش، والخادم هو اللي بيحسمه في كل طلب:
+ *  القيمة هنا اختيار مش صلاحية، ومستخدم بلا عضوية في النشاط بيترفض بـ403. */
+const SCOPE_KEYS = { workspace: "fihrist:workspace-id", location: "fihrist:location-id" };
+
+function readStoredScope(kind) {
+  try {
+    return window.localStorage.getItem(SCOPE_KEYS[kind]) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function getWorkspaceScope() {
+  return { workspaceId: readStoredScope("workspace"), locationId: readStoredScope("location") };
+}
+
+export function setWorkspaceScope({ workspaceId, locationId } = {}) {
+  try {
+    if (workspaceId) window.localStorage.setItem(SCOPE_KEYS.workspace, workspaceId);
+    else window.localStorage.removeItem(SCOPE_KEYS.workspace);
+    if (locationId) window.localStorage.setItem(SCOPE_KEYS.location, locationId);
+    else window.localStorage.removeItem(SCOPE_KEYS.location);
+  } catch {
+    /* private mode: the request simply goes out unscoped */
+  }
+  // بيانات النشاط القديم ما تعيش بعد التبديل: كاش الذاكرة وTanStack Query
+  // الاتنين بيتنضفوا قبل أي طلب جديد، وإلا أول شاشة بعد التبديل تعرض نشاط تاني.
+  invalidateCache();
+  import("./query-client")
+    .then(({ queryClientInstance }) => queryClientInstance.clear())
+    .catch(() => {});
+}
+
+function scopeHeaders() {
+  const { workspaceId, locationId } = getWorkspaceScope();
+  return {
+    ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
+    ...(locationId ? { "X-Location-Id": locationId } : {}),
+  };
+}
+
 export function apiUrl(path) {
   const rel = path.startsWith(API_PREFIX) ? path.slice(API_PREFIX.length) : path;
   if (API.startsWith("/")) {
@@ -258,6 +305,7 @@ export async function api(path, {
         ...(body !== undefined && !rawBody ? { "Content-Type": "application/json" } : {}),
         ...(contentType ? { "Content-Type": contentType } : {}),
         ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        ...scopeHeaders(),
         ...headers,
       },
       ...(body !== undefined ? { body: rawBody ? body : JSON.stringify(body) } : {}),
