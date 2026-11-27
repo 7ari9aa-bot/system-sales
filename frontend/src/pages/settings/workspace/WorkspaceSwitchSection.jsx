@@ -3,24 +3,33 @@ import { useNavigate } from "react-router-dom";
 import { Check, Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/lib/AuthContext";
-import { api } from "@/lib/api";
+import { api, getWorkspaceScope, invalidateCache, setWorkspaceScope } from "@/lib/api";
 import { activeTenantId } from "@/lib/activeTenant";
 import SettingsShell, { SettingCard, SettingRow } from "@/components/settings/SettingsShell";
 import { Button } from "@/components/ui/button";
 
 /** Every workspace this person belongs to, and the way into another one.
  *
- * Switching is a real session change (`POST /auth/switch-tenant`): it issues a new
- * token pair for the other workspace, so the app is reloaded into it rather than
- * pretending a different tenant's data is this one's. A workspace that is not
- * operational is listed but not enterable — the server refuses it, so the button is
- * disabled here instead of failing after the click.
+ * Switching is NOT a session change. It used to post the workspace id to
+ * `/auth/switch-tenant`, which swapped the ACCOUNT — so a shop owner with two
+ * businesses was signing out of one company into another, and the audit called
+ * that out. A workspace is a business inside the account, so entering one sets
+ * the scope the API client already sends (`X-Workspace-Id`) and drops the cached
+ * data of the business being left behind. The account, the plan and the session
+ * stay exactly as they were.
+ *
+ * A workspace that is not operational is listed but not enterable — the server
+ * refuses it in `resolve_scope`, so the button is disabled here instead of
+ * failing after the click.
  */
 export default function WorkspaceSwitchSection() {
   const t = useT();
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
-  const currentId = activeTenantId(user);
+  const { user } = useAuth();
+  // The business being viewed is the scope the client sends, not the account:
+  // comparing against the tenant id marked every row "current" in a one-workspace
+  // account and none of them in a multi-workspace one.
+  const currentId = getWorkspaceScope()?.workspaceId || activeTenantId(user);
 
   const [rows, setRows] = React.useState(null);
   const [error, setError] = React.useState("");
@@ -45,11 +54,14 @@ export default function WorkspaceSwitchSection() {
     setSwitching(workspace.id);
     setError("");
     try {
-      await api("/auth/switch-tenant", { method: "POST", body: { tenant_id: workspace.id } });
-      await refreshUser();
+      // The scope the client sends, not a different account: the server checks
+      // the membership row on the next request and answers 403 if there is none.
+      setWorkspaceScope({ workspaceId: workspace.id, locationId: null });
+      invalidateCache();
       navigate("/dashboard");
     } catch (failure) {
       setError(failure?.message || t("workspace.switch.failed"));
+    } finally {
       setSwitching("");
     }
   }
