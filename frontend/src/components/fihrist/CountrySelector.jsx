@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Globe2, ArrowRight, Check } from 'lucide-react';
 import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG } from '@/lib/markets';
 import { detectCountrySlug, rememberCountry } from '@/lib/country-detection';
@@ -213,16 +212,20 @@ export function MarketHeaderSelector() {
  * the header switcher still lets anyone choose by hand.
  */
 export function RootRedirect() {
-  const navigate = useNavigate();
   const { locale } = useCountry();
   const activeLocale = locale || 'ar';
 
+  // ``window.location.replace``, not the router: this component is also
+  // rendered by the prerender step, which has no <Router> above it and threw
+  // ``useNavigate() may be used only in the context of a <Router>`` — the
+  // production build failed on exactly that. A market landing deserves a real
+  // navigation anyway, and the effect never runs while prerendering.
   useEffect(() => {
     let alive = true;
     const go = (slug) => {
       if (!alive) return;
       rememberCountry(slug);
-      navigate(`/${slug}/${activeLocale}`, { replace: true });
+      window.location.replace(`/${slug}/${activeLocale}`);
     };
     detectCountrySlug()
       .then(go)
@@ -230,8 +233,21 @@ export function RootRedirect() {
     return () => {
       alive = false;
     };
-  }, [navigate, activeLocale]);
+  }, [activeLocale]);
 
   // A blank beat, never a picker: the redirect lands in a few hundred ms.
-  return <div className="min-h-[60vh]" aria-busy="true" />;
+  // The heading is not decoration — the prerender step requires one <h1> on
+  // every public page, and this page is still a real page for a crawler.
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 text-center">
+      <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+        {locale === 'en' ? 'Taking you to your market' : 'بنوديك على سوقك'}
+      </h1>
+      <p className="mt-3 text-sm text-muted-foreground" aria-busy="true">
+        {locale === 'en'
+          ? 'FIHRIST opens the pricing and features for the country you are in.'
+          : 'FIHRIST بيفتح الأسعار والميزات الخاصة بالبلد اللي إنت فيه.'}
+      </p>
+    </div>
+  );
 }
