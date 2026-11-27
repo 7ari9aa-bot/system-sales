@@ -171,3 +171,42 @@ async def test_request_thread_control_changes_nothing(monkeypatch) -> None:
     )
 
     assert applied is False
+
+
+@pytest.mark.asyncio
+async def test_a_media_only_reply_from_metas_inbox_is_stored_with_its_attachment(
+    monkeypatch,
+) -> None:
+    """A photo sent from Meta's inbox has no text; the attachment alone must store the reply."""
+    session, sent = _wire(monkeypatch)
+    echo = {
+        "customer_ref": "psid-1",
+        "mid": "m-media",
+        "app_id": "999888777",
+        "text": None,
+        "media_url": "https://cdn.example/photo.jpg",
+        "media_type": "image",
+    }
+
+    stored = await IngestService.apply_echoes(
+        session, TENANT, "messenger", [echo], own_app_id=OWN_APP
+    )
+
+    assert stored == 1
+    assert sent[0]["direction"] == "outbound"
+    assert sent[0]["media_url"] == "https://cdn.example/photo.jpg"
+    assert sent[0]["media_type"] == "image"
+    assert sent[0]["content_type"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_an_echo_with_neither_text_nor_attachment_is_still_dropped(monkeypatch) -> None:
+    session, sent = _wire(monkeypatch)
+    echo = {"customer_ref": "psid-1", "mid": "m-empty", "app_id": "999888777", "text": None}
+
+    stored = await IngestService.apply_echoes(
+        session, TENANT, "messenger", [echo], own_app_id=OWN_APP
+    )
+
+    assert stored == 0
+    assert sent == []
