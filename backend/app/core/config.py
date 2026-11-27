@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     # invalidates nothing until the old tokens expire on their own. Empty
     # (the default) means no rotation is in progress.
     jwt_secret_previous: str = ""
+
+    # The media plane. Empty values mean the control plane runs with no media path, and the
+    # transport endpoint answers 503 instead of handing out a credential nobody can use.
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
     # HttpOnly cookie auth (the XSS-hardening wave). None means AUTO:

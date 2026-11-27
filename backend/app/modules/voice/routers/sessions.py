@@ -9,17 +9,24 @@ assistant by sending ``persona: merchant_assistant``.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.errors import NotFoundError, PermissionDeniedError
+from app.core.errors import (
+    NotFoundError,
+    PermissionDeniedError,
+    StorageUnavailableError,
+)
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.voice.application.session_manager import VoiceSessionManager
+from app.modules.voice.application.transport import VoiceTransportService
 from app.modules.voice.domain.personas import PrincipalType
 from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.modules.voice.runtime.livekit import MediaPlaneUnavailable
 from app.modules.voice.security.capabilities import ChannelType
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -117,4 +124,43 @@ async def close_session(
 ) -> SessionResponse:
     return _respond(
         await _manager(ctx).close(session_id, reason=body.reason, tenant_id=ctx.tenant_id)
+    )
+
+
+class TransportResponse(BaseModel):
+    """Everything the client needs to join, and nothing about the shop behind the session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    url: str
+    token: str
+    room: str
+    identity: str
+    expires_at: dt.datetime
+
+
+def _transport() -> VoiceTransportService:
+    return VoiceTransportService.from_settings()
+
+
+@router.post("/sessions/{session_id}/transport", response_model=TransportResponse)
+async def open_transport(ctx: VoiceCtx, session_id: uuid.UUID) -> TransportResponse:
+    """Open the media path for a session the caller already owns.
+
+    A session from another shop answers 404 exactly like an id that never existed, and a control
+    plane with no media plane configured answers 503 rather than a credential that cannot connect.
+    """
+    record = await _authorized(ctx, session_id)
+    try:
+        credential = _transport().issue_for(record)
+    except MediaPlaneUnavailable as exc:
+        raise StorageUnavailableError("voice media plane is not configured") from exc
+    return TransportResponse(
+        provider=credential.provider,
+        url=credential.url,
+        token=credential.token,
+        room=credential.room,
+        identity=credential.identity,
+        expires_at=credential.expires_at,
     )

@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 720,
-    "sha256": "bebc04a7490b4d91bf3d0ebacdbf20807c43b1cc2cdb54b8a9b5971b5b415623",
-    "typed_operations": 403
+    "operations": 721,
+    "sha256": "7b0a8fb11046f1254ea57ba763368c3ba97b20e025b63c2d3e41fef20fc4ac56",
+    "typed_operations": 404
   },
   "spec": {
     "components": {
@@ -26395,6 +26395,47 @@
             }
           },
           "title": "TransferShipRequest",
+          "type": "object"
+        },
+        "TransportResponse": {
+          "additionalProperties": false,
+          "description": "Everything the client needs to join, and nothing about the shop behind the session.",
+          "properties": {
+            "expires_at": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "identity": {
+              "title": "Identity",
+              "type": "string"
+            },
+            "provider": {
+              "title": "Provider",
+              "type": "string"
+            },
+            "room": {
+              "title": "Room",
+              "type": "string"
+            },
+            "token": {
+              "title": "Token",
+              "type": "string"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url",
+            "token",
+            "room",
+            "identity",
+            "expires_at"
+          ],
+          "title": "TransportResponse",
           "type": "object"
         },
         "TrialBalanceItem": {
@@ -104663,6 +104704,114 @@
             }
           },
           "summary": "Interrupt Session",
+          "tags": [
+            "voice"
+          ]
+        }
+      },
+      "/api/v1/voice/sessions/{session_id}/transport": {
+        "post": {
+          "description": "Open the media path for a session the caller already owns.\n\nA session from another shop answers 404 exactly like an id that never existed, and a control\nplane with no media plane configured answers 503 rather than a credential that cannot connect.",
+          "operationId": "open_transport_api_v1_voice_sessions__session_id__transport_post",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "session_id",
+              "required": true,
+              "schema": {
+                "format": "uuid",
+                "title": "Session Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TransportResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Open Transport",
           "tags": [
             "voice"
           ]
