@@ -141,3 +141,47 @@ class TestSessionLifecycle:
     async def test_an_unknown_channel_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             api.StartSessionRequest.model_validate({"channel": "carrier_pigeon"})
+
+
+class _TicketIssuer:
+    ttl_seconds = 60
+
+    def issue(self, *, session_id, tenant_id, jti: str) -> str:
+        # The ticket is opaque here; what matters is that it was minted for THIS session.
+        return f"ticket:{session_id}:{jti}"
+
+
+class _GrantStub:
+    async def grant(self, *, session_id, tenant_id, user_id) -> str:
+        return f"jti-{session_id}"
+
+
+class TestStreamTicket:
+    """The ticket route had no coverage, and production paid for it.
+
+    Measured on the live service: POST /voice/sessions/{id}/stream-ticket returned 500
+    AttributeError 'VoiceSessionRecord' object has no attribute 'id' — the handler read
+    record.id while the domain object names it session_id. This test drives the real
+    handler with the real record the manager builds, so a wrong attribute fails here.
+    """
+
+    async def test_the_ticket_names_the_session_it_was_minted_for(
+        self, manager: VoiceSessionManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.modules.voice.domain.personas import PrincipalType
+
+        record = await manager.start(
+            principal_type=PrincipalType.MERCHANT_USER,
+            principal_id=USER,
+            tenant_id=TENANT,
+            held_scopes=frozenset({"orders:read", "inventory:read"}),
+            client_key="screen-ticket",
+        )
+        monkeypatch.setattr(api, "_stream_issuer", lambda: _TicketIssuer())
+        monkeypatch.setattr(api, "_grant_store", lambda: _GrantStub())
+
+        response = await api.open_stream_ticket(_ctx(), record.session_id)
+
+        assert response.path == f"/api/v1/voice/sessions/{record.session_id}/stream"
+        assert response.ticket == f"ticket:{record.session_id}:jti-{record.session_id}"
+        assert response.expires_in == 60

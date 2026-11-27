@@ -232,12 +232,12 @@ async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTick
     # Who the caller is is resolved HERE, once, by the same gate every other
     # endpoint uses; the socket redeems that resolution instead of repeating it.
     jti = await _grant_store().grant(
-        session_id=record.id, tenant_id=record.tenant_id, user_id=ctx.user.id
+        session_id=record.session_id, tenant_id=record.tenant_id, user_id=ctx.user.id
     )
     return StreamTicketResponse(
-        ticket=issuer.issue(session_id=record.id, tenant_id=record.tenant_id, jti=jti),
+        ticket=issuer.issue(session_id=record.session_id, tenant_id=record.tenant_id, jti=jti),
         expires_in=issuer.ttl_seconds,
-        path=f"/api/v1/voice/sessions/{record.id}/stream",
+        path=f"/api/v1/voice/sessions/{record.session_id}/stream",
     )
 
 
