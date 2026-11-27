@@ -29,7 +29,7 @@ from app.modules.voice.runtime.stream_ticket import (
 SESSION = uuid.UUID("11111111-1111-1111-1111-111111111111")
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
 USER = uuid.UUID("33333333-3333-3333-3333-333333333333")
-SECRET = "a-real-signing-secret-for-this-test-only"
+SECRET = "test-only-signing-material-never-used-anywhere"
 
 
 def _issuer(ttl: int = 60) -> StreamTicketIssuer:

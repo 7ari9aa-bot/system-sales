@@ -48,7 +48,7 @@ class SqlSessionStore:
         row = await self._session.get(VoiceSessionRow, session_id)
         return _to_record(row) if row is not None else None
 
-    async def by_client_key(
+    async def find_by_client_key(
         self, tenant_id: uuid.UUID, client_key: str
     ) -> VoiceSessionRecord | None:
         row = (

@@ -50,19 +50,33 @@ def upgrade() -> None:
         "ix_voice_sessions_thread", "voice_sessions", ["tenant_id", "ai_chat_thread_id"]
     )
 
-    for column in ("user_message_id", "assistant_message_id"):
-        op.add_column(
-            "voice_turns",
-            sa.Column(column, postgresql.UUID(as_uuid=True), nullable=True),
-        )
-        op.create_foreign_key(
-            f"fk_voice_turns_{column}",
-            "voice_turns",
-            "ai_chat_messages",
-            [column],
-            ["id"],
-            ondelete="SET NULL",
-        )
+    # Written out rather than looped: the model/migration drift check reads this file with the
+    # AST and only sees literal add_column arguments, so a loop hid these two columns from it and
+    # the guard reported real columns as drift. The DDL is identical.
+    op.add_column(
+        "voice_turns",
+        sa.Column("user_message_id", postgresql.UUID(as_uuid=True), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_voice_turns_user_message_id",
+        "voice_turns",
+        "ai_chat_messages",
+        ["user_message_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
+    op.add_column(
+        "voice_turns",
+        sa.Column("assistant_message_id", postgresql.UUID(as_uuid=True), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_voice_turns_assistant_message_id",
+        "voice_turns",
+        "ai_chat_messages",
+        ["assistant_message_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
 
     op.add_column("ai_chat_messages", sa.Column("input_modality", sa.String(16), nullable=True))
     op.add_column("ai_chat_messages", sa.Column("output_modality", sa.String(16), nullable=True))
