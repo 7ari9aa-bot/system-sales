@@ -305,6 +305,41 @@ class TenantUser(TimestampMixin, Base):
     is_default: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
 
+class WorkspaceMembership(TimestampMixin, Base):
+    """Which businesses inside an account a user may work in.
+
+    Tenant membership is not workspace membership. Belonging to the account must
+    not silently open every business inside it: one shop's catalog, stock and
+    cashier are not another's, and a staff member hired for the Cairo shop has
+    no business reading the distribution company's margins.
+
+    Rows are granted explicitly. The owner and the account administrator may be
+    given access to everything, but that is a grant like any other — nothing here
+    infers it from the tenant role.
+    """
+
+    __tablename__ = "workspace_memberships"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    #: Denormalised so RLS can scope a row without joining workspaces.
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL")
+    )
+    is_default: Mapped[bool] = mapped_column(Boolean, server_default="false")
+
+
 class RefreshToken(TimestampMixin, Base):
     """Server-side refresh token (hashed) enabling rotation + revocation."""
 
