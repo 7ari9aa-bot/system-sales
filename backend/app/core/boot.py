@@ -81,12 +81,24 @@ async def inspect_app_role_bypass_rls(session: AsyncSession) -> str | None:
 
 
 #: Policies that are not ``tenant_isolation`` but are load-bearing for a PUBLIC
-#: flow, keyed by (table, policy). Provisioning re-creates ``tenant_isolation``
-#: on every run; nothing re-creates these. On 27 Nov
-#: ``invitations_accept_read`` was absent from production while alembic still
-#: reported its migration applied, and every invitation accept answered 404 —
-#: a user-facing break that no log line mentioned.
-REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = (("invitations", "invitations_accept_read"),)
+#: flow, keyed by (table, policy).
+#:
+#: Empty on purpose. ``invitations_accept_read`` used to be listed here, but it was a
+#: second permissive policy on a tenant table: Postgres ORs permissive policies, so a
+#: session that could set ``app.invitation_token`` could read that invitation row beside
+#: ``tenant_isolation`` — the exact hole the schema-wide guard exists to close, and the
+#: guard rightly reported it. The accept flow never needed it: it resolves the tenant
+#: with ``public.invitation_tenant_by_token`` (SECURITY DEFINER, one row, token only) and
+#: then reads under the bound tenant like any other query. The load-bearing object is
+#: therefore that function, watched below, not a policy.
+REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = ()
+
+#: Functions a PUBLIC flow cannot work without, keyed by (schema, function). Nothing
+#: re-creates them on provisioning, and a stamped alembic revision never re-runs: on
+#: 27 Nov the invitation accept answered 404 for every valid token while
+#: ``alembic_version`` reported the lookup applied, so the missing object was invisible
+#: until a teammate could not join their shop. Probed on the open session below.
+REQUIRED_PUBLIC_FUNCTIONS: tuple[tuple[str, str], ...] = (("public", "invitation_tenant_by_token"),)
 
 
 async def inspect_tenant_rls_invariants(
@@ -232,6 +244,26 @@ async def run_boot_reconciler(
                         violations.append(
                             f"{table}: required policy {policy} is MISSING — the public flow it "
                             "authorizes answers not-found for every valid request"
+                        )
+                # Same rule as above for the objects a public flow calls: read on the open
+                # session, and a missing one is a violation, not a warning.
+                for schema, function in REQUIRED_PUBLIC_FUNCTIONS:
+                    found = (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT 1 FROM pg_proc p
+                                JOIN pg_namespace n ON n.oid = p.pronamespace
+                                WHERE n.nspname = :s AND p.proname = :f
+                                """
+                            ),
+                            {"s": schema, "f": function},
+                        )
+                    ).scalar_one_or_none()
+                    if found is None:
+                        violations.append(
+                            f"{schema}.{function}: required function is MISSING — the public "
+                            "flow that calls it answers not-found for every valid request"
                         )
     except Exception as exc:
         if should_fail_closed:
