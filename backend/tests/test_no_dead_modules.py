@@ -88,6 +88,12 @@ _VOICE_UNWIRED_WHY = (
 
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # --- voice: unwired until the assistant turn service owns the call ---
+    "app.modules.voice.application.client_delegation": (
+        "the delegation answerer: parse_delegation + ClientDelegationService turn a real "
+        "session.delegation.created into the same assistant turn and send it back with "
+        "session.commentary.append. Nothing calls it yet because the live loop that owns the "
+        "socket and feeds events to it is the remaining piece; delete this line when that lands."
+    ),
     "app.modules.voice.application.assistant_turn": (
         "the spoken-turn entry point: it resolves the session's thread and calls "
         "AssistantTurnService with modality=live_voice, but nothing calls IT yet. The live loop "

@@ -121,6 +121,13 @@ class GptLiveProvider:
                 "event_id": f"start-{uuid.uuid4().hex[:12]}",
                 "session": {
                     "model": self._config.model,
+                    # CLIENT delegation: GPT-Live listens and speaks, and hands the
+                    # thinking to our backend. Verified against the real gateway: the
+                    # mode is accepted at session.start, and a reply carrying an
+                    # unknown delegation_id is refused with
+                    # "Unknown client or Decision delegation", so the ids below are
+                    # the only ones this adapter will ever answer.
+                    "delegation": {"type": "client"},
                     "instructions": str(config.get("instructions", "")),
                     "audio": {
                         "format": {"type": "audio/pcm", "rate": PCM_RATE},
@@ -191,6 +198,73 @@ class GptLiveProvider:
             await transport.send_json({"type": "session.close"})
         finally:
             await transport.close()
+
+    async def append_thinking(
+        self,
+        session_id: str,
+        *,
+        delegation_id: str,
+        content: str,
+        event_id: str | None = None,
+    ) -> str:
+        """Give GPT-Live a fact it may use later without saying it now."""
+        return await self._append_context(
+            session_id,
+            "session.thinking.append",
+            delegation_id=delegation_id,
+            content=content,
+            event_id=event_id,
+        )
+
+    async def append_commentary(
+        self,
+        session_id: str,
+        *,
+        delegation_id: str,
+        content: str,
+        event_id: str | None = None,
+    ) -> str:
+        """Give GPT-Live something it should say, paraphrased in its own voice."""
+        return await self._append_context(
+            session_id,
+            "session.commentary.append",
+            delegation_id=delegation_id,
+            content=content,
+            event_id=event_id,
+        )
+
+    async def _append_context(
+        self,
+        session_id: str,
+        kind: str,
+        *,
+        delegation_id: str,
+        content: str,
+        event_id: str | None = None,
+    ) -> str:
+        """Answer a delegation that actually exists.
+
+        Measured against the real gateway: a context frame whose ``delegation_id``
+        is not one the server just handed us comes back as
+        ``invalid_request_error: Unknown client or Decision delegation`` and the
+        text is never spoken. So an invented id is refused HERE, before it reaches
+        the socket, instead of being sent and quietly doing nothing.
+        """
+        if not (delegation_id or "").strip():
+            raise GptLiveProtocolError("context must answer a delegation that exists")
+        if not isinstance(content, str):
+            raise GptLiveProtocolError("context content must be text")
+        transport = self._transport(session_id)
+        client_event_id = event_id or f"{kind.rsplit('.', 1)[-1]}-{uuid.uuid4().hex[:12]}"
+        await transport.send_json(
+            {
+                "type": kind,
+                "event_id": client_event_id,
+                "delegation_id": delegation_id,
+                "content": content,
+            }
+        )
+        return client_event_id
 
     def _session(self, session_id: str) -> GptLiveSession:
         session = self._sessions.get(session_id)
