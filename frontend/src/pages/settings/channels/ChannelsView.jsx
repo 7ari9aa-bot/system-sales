@@ -115,7 +115,7 @@ export default function ChannelsView({ s }) {
                 : channel.displayName?.trim();
 
               return (
-                <div key={channel.id} className="py-3.5 first:pt-1 last:pb-1">
+                <div key={channel.id} data-testid={`channel-${channel.id}`} className="py-3.5 first:pt-1 last:pb-1">
                   {/* Main channel row — RTL aligned */}
                   <div className="flex flex-wrap items-center gap-3" style={{ direction: isAr ? "rtl" : "ltr" }}>
                     <ChannelIcon channel={channel.id} />

@@ -2121,6 +2121,7 @@ export default {
   "settings.billing.plan.statuses.canceled": "ملغي",
   "settings.billing.plan.statuses.expired": "منتهي",
   "settings.billing.plan.whereToEdit": "الترقية وتغيير الخطة محتاجين مسار دفع، ومفيش مسار دفع متظبط في النظام دلوقتي، فالصفحة مش بتعرض زرار ترقية بيعمل صفر. قواعد التجديد اللي تحت بتتعدّل من هنا وبتتقرا فعلًا.",
+  "settings.billing.plan.usageLink": "الاستهلاك",
   "settings.billing.usage.title": "الاستهلاك مقابل حدود الخطة",
   "settings.billing.usage.desc": "كل ميزة عندها حد في الخطة، والمستهلك منها في الفترة الحالية.",
   "settings.billing.usage.empty": "مفيش حدود مستهلكة على الخطة الحالية.",

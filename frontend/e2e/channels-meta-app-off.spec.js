@@ -18,7 +18,14 @@ async function openAndConnect(page) {
     return json(route, []);
   });
   await page.goto("/settings/channels");
-  await page.getByRole("button", { name: /^(Connect|ربط)$/ }).first().click();
+  // The Facebook SDK path belongs to WhatsApp alone. Pressing the first Connect on the page
+  // pressed whichever channel now leads the list, and its popup reported a different error
+  // ("The server returned no authorize URL"), so this test never reached the message it guards.
+  await page
+    .getByTestId("channel-whatsapp")
+    .getByRole("button", { name: /^(Connect|ربط)$/ })
+    .first()
+    .click();
   return page.getByText(/App not active/).first();
 }
 

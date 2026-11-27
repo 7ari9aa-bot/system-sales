@@ -187,7 +187,8 @@ test("the settings sidebar is the map's five groups, and every section is reacha
   // Every section that used to be router-only is now a destination a person can click.
   for (const [label, path] of [
     ["Team & permissions", /\/settings\/team\/members$/],
-    ["Customers & support", /\/settings\/customers\/customer-records$/],
+    // customer-records is a link-away tab to /customers, so the section opens on customer-data
+    ["Customers & support", /\/settings\/customers\/customer-data$/],
     ["Analytics & reports", /\/settings\/analytics\/reports$/],
     ["Automation & workflows", /\/settings\/automation\/workflows$/],
     ["Workspace notifications", /\/settings\/notifications\/notification-channels$/],

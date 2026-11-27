@@ -136,7 +136,12 @@ export function SubscriptionPanel() {
         </>
       )}
       <p className="mt-3 border-t border-border pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-        {t("settings.billing.plan.whereToEdit")}
+        {t("settings.billing.plan.whereToEdit")}{" "}
+        {/* The note says the plan limits are counted elsewhere, so it carries the way there:
+            billing stays money only, and the numbers have one home. */}
+        <Link to="/settings/billing/usage" className="font-medium text-primary hover:underline">
+          {t("settings.billing.plan.usageLink")}
+        </Link>
       </p>
     </Frame>
   );
