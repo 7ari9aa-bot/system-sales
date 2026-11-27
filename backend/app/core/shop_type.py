@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tenancy import current_scope
 from app.modules.catalog.models import Category
 from app.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
@@ -53,11 +54,20 @@ def _settings(session: AsyncSession, tenant_id: UUID) -> SettingsService:
 
 
 async def _has_categories(session: AsyncSession, tenant_id: UUID) -> bool:
-    count = (
-        await session.execute(
-            select(func.count()).select_from(Category).where(Category.tenant_id == tenant_id)
-        )
-    ).scalar_one()
+    """Categories that belong to the scope this request is working in.
+
+    The count used to be tenant-wide, so one business's catalog silenced the
+    seeding for every other business in the same account: choosing apparel on a
+    fresh workspace found the first workspace's categories, planted nothing, and
+    the new workspace opened with an empty tree. A scoped request now asks about
+    its own workspace; an unscoped one (worker, job, script) keeps the
+    tenant-wide answer, because there is no workspace to be wrong about.
+    """
+    workspace_id, _location_id = current_scope()
+    stmt = select(func.count()).select_from(Category).where(Category.tenant_id == tenant_id)
+    if workspace_id is not None:
+        stmt = stmt.where(Category.workspace_id == workspace_id)
+    count = (await session.execute(stmt)).scalar_one()
     return count > 0
 
 
