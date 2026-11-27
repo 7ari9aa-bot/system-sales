@@ -345,7 +345,12 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # `settings` engine for the seven `pricing.*` keys that are its policy. Those three imports are
 # the module's reason to exist, not coupling added to an existing one — every existing count is
 # unchanged. Lower this again if the catalogue read ever moves behind a service.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 338
+# 338 -> 339: the voice module (merged from feat/voice-intelligence) imports
+# app.modules.identity.deps for `require_permission`, which is the gate that makes opening a voice
+# session ask for the same permission the text assistant asks for. It is the voice module's only
+# cross-module edge, and it is the right direction (voice -> identity, never identity -> voice).
+# Recorded as a deliberate ratchet step rather than absorbed silently.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 339
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,

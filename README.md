@@ -27,7 +27,7 @@ system-sales/
 └── .github/          CI
 ```
 
-Backend modules (`backend/app/modules/`): `identity`, `authority`, `privacy`,
+Backend modules (`backend/app/modules/`): `identity`, `authority`, `privacy`, `voice`,
 `customers`, `conversations`, `realtime`, `notifications`, `catalog`, `inventory`,
 `purchasing`, `orders`, `pos` (cashier), `expenses`, `imports` (merchant data import), `financial`, `billing`, `marketing`,
 `segments`, `analytics`, `automation`, `decisions`, `effects`, `evidence`, `activity`,

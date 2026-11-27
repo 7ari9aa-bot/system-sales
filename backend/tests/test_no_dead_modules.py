@@ -79,7 +79,36 @@ _ETA_CORE_WHY = (
     "(sender worker + POS hook) lands with the ETA rollout."
 )
 
+_VOICE_UNWIRED_WHY = (
+    "Voice layer, built and tested ahead of its caller: the merchant assistant is not yet "
+    "wired to a route (the AssistantTurnService and delegation tasks own that), so nothing "
+    "in app imports these yet. Recorded, not deleted; each entry drops when its caller "
+    "lands."
+)
+
 KNOWN_DEAD_MODULES: dict[str, str] = {
+    # --- voice: unwired until the assistant turn service owns the call ---
+    "app.modules.voice.application.customer_context": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.hardening": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.inbound_calls": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.merchant_intelligence": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.omnichannel": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.turn_orchestrator": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.voice_profile": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.calls": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.channels": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.contracts": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.metrics": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.recording": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.resilience": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.domain.routing": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.runtime.gpt_live": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.runtime.livekit_sip": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.runtime.providers": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.runtime.recovery": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.security.channel_identity": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.security.data_egress": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.security.identity_verification": _VOICE_UNWIRED_WHY,
     # E-invoicing (ZATCA SA, ETA EG, Peppol AE; commit 33b5364f). The provider engines, the
     # registry and the orchestrating service are built and unit-tested, but no route or worker
     # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,

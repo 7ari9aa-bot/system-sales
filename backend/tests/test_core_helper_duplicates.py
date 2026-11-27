@@ -31,6 +31,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from sqlalchemy import orm as _orm
 from starlette.requests import Request
 
 from app.core.events.schemas import build_envelope, serialize
@@ -93,6 +94,11 @@ async def test_get_db_opens_one_transaction_around_the_session(
 
         def begin(self) -> _Transaction:
             return _Transaction()
+
+        # get_db marks the request as a write by listening for after_flush on the session's
+        # sync twin (identity/deps.py). Every real AsyncSession has one, so the stand-in must
+        # too — without it this guard would pass while get_db crashed on a real request.
+        sync_session = _orm.Session()
 
     # get_db resolves the factory through app.core.db.get_sessionmaker PER
     # CALL (not an import-time binding) — that per-call resolution is what

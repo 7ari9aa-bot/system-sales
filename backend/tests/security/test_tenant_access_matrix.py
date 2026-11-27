@@ -59,6 +59,11 @@ from app.modules.platform.router import _require_platform_admin
 # ---------------------------------------------------------------------------
 _ALLOWED_PUBLIC_ROUTES: frozenset[str] = frozenset(
     {
+        # Public by design and proven so by its handler: GET /public/geo reads the visitor's
+        # country from an edge header (x-vercel-ip-country / cf-ipcountry) and returns it, or
+        # null. No database, no session, no tenant — the storefront uses it to pick a market
+        # instead of showing a country picker. See platform/routers/telemetry.py.
+        "GET /api/v1/public/geo",
         "POST /api/v1/auth/register",
         "POST /api/v1/auth/login",
         "POST /api/v1/auth/refresh",
