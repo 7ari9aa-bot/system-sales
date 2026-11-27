@@ -189,7 +189,9 @@ test("the settings sidebar is the map's five groups, and every section is reacha
     ["Team & permissions", /\/settings\/team\/members$/],
     // customer-records is a link-away tab to /customers, so the section opens on customer-data
     ["Customers & support", /\/settings\/customers\/customer-data$/],
-    ["Analytics & reports", /\/settings\/analytics\/reports$/],
+    // Reports and dashboards are link-aways to the modules that own those rows, so the
+    // section opens on its first real settings page instead of a second copy of them.
+    ["Analytics & reports", /\/settings\/analytics\/metrics-and-indicators$/],
     ["Automation & workflows", /\/settings\/automation\/workflows$/],
     ["Workspace notifications", /\/settings\/notifications\/notification-channels$/],
     ["Data & privacy", /\/settings\/data\/data-privacy$/],

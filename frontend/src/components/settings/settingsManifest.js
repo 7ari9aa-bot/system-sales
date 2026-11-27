@@ -281,7 +281,8 @@ export const SETTINGS_SECTIONS = [
     labelKey: "settings.nav.analytics",
     to: "/settings/analytics/metrics-and-indicators",
     icon: BarChart3,
-    // /settings/analytics/reports is the landing the router already redirects to.
+    // Reports and dashboards are record screens, so they are link-aways (below) and the
+    // section opens on the one page here that is settings: the metrics it reads.
     pages: ["reports", "dashboards", "metrics-and-indicators"],
     // Record screens, not settings: the module that owns these rows is where they are
     // read and changed. The tab stays as a short link so an old bookmark still lands
