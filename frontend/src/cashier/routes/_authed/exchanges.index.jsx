@@ -260,7 +260,7 @@ function ExchangeScreen({ session }) {
     if (found) return selectInvoice(found);
     if (salesQuery.isLoading || paramSearch.isLoading) return; // still looking: do not say "not found" yet
     setError(`لا توجد فاتورة بيع بالرقم ${invoiceParam}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [invoiceParam, sales, paramSearch.data, paramSearch.isLoading, salesQuery.isLoading]);
 
   // The promise outlives the page: a card reversal taken before a reload is still owed.
