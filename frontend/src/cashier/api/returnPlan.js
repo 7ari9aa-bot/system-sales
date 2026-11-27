@@ -82,10 +82,10 @@ export const estimateRefund = (saleDetail, lines) => fromMinor(estimateRefundMin
  */
 export const CONDITIONS = [
   { value: "sellable", label: "صالحة للبيع", effect: "ترجع للرف وتتاح للبيع" },
-  { value: "quarantine", label: "تحت الفحص", effect: "تتحسب في المخزن لكن مش متاحة للبيع" },
-  { value: "damaged", label: "تالفة", effect: "تتحسب في المخزن ومعزولة، مش متاحة للبيع" },
-  { value: "writeoff", label: "شطب", effect: "مش ترجع للمخزون خالص" },
-  { value: "supplier", label: "ترجع للمورد", effect: "مش ترجع للمخزون" },
+  { value: "quarantine", label: "تحت الفحص", effect: "تُحتسب في المخزن لكنها غير متاحة للبيع" },
+  { value: "damaged", label: "تالفة", effect: "تُحتسب في المخزن ومعزولة، غير متاحة للبيع" },
+  { value: "writeoff", label: "شطب", effect: "لا ترجع إلى المخزون إطلاقاً" },
+  { value: "supplier", label: "ترجع للمورد", effect: "لا ترجع إلى المخزون" },
 ];
 
 export const conditionLabel = (value) => CONDITIONS.find((c) => c.value === value)?.label ?? value;
@@ -169,7 +169,7 @@ export function returnSettlementSummary(result) {
   );
   const withPending = (text) =>
     pending > 0
-      ? `${text} — منها ${pending.toFixed(2)} ج.م على البطاقة/المحفظة لسه مستنية تأكيد الماكينة`
+      ? `${text} — منها ${pending.toFixed(2)} ج.م على البطاقة/المحفظة لا تزال تنتظر تأكيد الماكينة`
       : text;
   const withManual = (text) =>
     manual > 0
@@ -179,9 +179,9 @@ export function returnSettlementSummary(result) {
   const byMethod = result?.refund_by_method ?? {};
   const parts = [];
   if (result?.refund_mode === "record_only") {
-    parts.push("الكاشير مش بيسجّل مدفوعات، فالمبلغ مسجّل على الفاتورة فقط");
+    parts.push("أمين الصندوق لا يسجّل مدفوعات، فالمبلغ مسجّل على الفاتورة فقط");
   } else if (result?.refund_mode === "nothing_collected") {
-    parts.push("الفاتورة الأصلية ما حصّلتش المبلغ ده، فمفيش مبلغ يترد");
+    parts.push("الفاتورة الأصلية لم تحصّل هذا المبلغ، فلا يوجد مبلغ يُرد");
   } else {
     // ``refunded`` from the server is already the money that actually went back; the pending card
     // slice is reported separately below, so subtracting it here counted it twice and showed zero.

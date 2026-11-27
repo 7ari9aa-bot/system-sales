@@ -265,12 +265,12 @@ describe("filterOrders", () => {
 
 describe("purchasingErrorMessage", () => {
   it.each([
-    [{ status: 409, message: "this purchase order is already received" }, /اتسجلت/],
+    [{ status: 409, message: "this purchase order is already received" }, /سُجّلت/],
     [{ status: 409, message: "a received purchase order cannot be cancelled: register a supplier return instead" }, /مرتجع/],
     [{ status: 409, message: "the payment (700.00) is more than what is still owed on the order (600.00)" }, /المتبقي/],
     [{ status: 409, message: "a cash payment comes out of an open shift: open a shift first" }, /وردية/],
     [{ status: 409, message: "line 1: returning 6 but only 5 of the 5 bought on that order are still returnable" }, /المتاح/],
-    [{ status: 409, message: "this return was already accepted" }, /اتحسم/],
+    [{ status: 409, message: "this return was already accepted" }, /خُصم/],
     [{ status: 409, message: "a supplier named 'x' already exists" }, /نفس الاسم/],
     [{ status: 409, message: "Idempotency-Key reused with a different request body" }, /بيانات مختلفة/],
     [{ status: 403, message: "forbidden" }, /صلاحية/],

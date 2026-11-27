@@ -143,7 +143,7 @@ describe("what the screen says about the settlement", () => {
     expect(settlementPrompt("pay", 5000, { takePayments: true })).toContain("تحصّل");
     expect(settlementPrompt("refund", -5000, { takePayments: true })).toContain("ترجع للعميل");
     expect(settlementPrompt("even", 0, { takePayments: true })).toContain("من غير تحصيل");
-    expect(settlementPrompt("pay", 5000, { takePayments: false })).toContain("بيتسجّل");
+    expect(settlementPrompt("pay", 5000, { takePayments: false })).toContain("يُسجَّل");
   });
 
   it("reports what the SERVER settled, including the part never collected", () => {
@@ -160,7 +160,7 @@ describe("what the screen says about the settlement", () => {
     const text = settlementSummary({ settlement: "record_only", uncollected: "50.00" });
     expect(text).toContain("50.00");
     expect(text).toContain("الفاتورة");
-    expect(settlementSummary({ settlement: "record_only" })).toContain("مش بيسجّل مدفوعات");
+    expect(settlementSummary({ settlement: "record_only" })).toContain("أمين الصندوق لا يسجّل مدفوعات");
     expect(
       settlementSummary({ settlement: "refunded", settled_amount: "20.00", uncollected: "30.00" }),
     ).toContain("لم تُحصَّل أصلًا");
@@ -228,7 +228,7 @@ describe("the exchange message about money not yet returned", () => {
       awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
     });
     expect(text).toContain("اترد فرق 0.00");
-    expect(text).toContain("لسه مستنية تأكيد الماكينة");
+    expect(text).toContain("لا تزال تنتظر تأكيد الماكينة");
   });
 
   it("names the manual reversal a cash-only shop has to do", () => {

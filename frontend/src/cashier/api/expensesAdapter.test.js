@@ -159,11 +159,11 @@ describe("filterExpenses", () => {
 
 describe("expenseErrorMessage", () => {
   it.each([
-    [{ status: 409, detail: "this expense is already voided" }, /اتلغى/],
-    [{ status: 409, detail: "the shift that paid this expense is closed: record the correction" }, /اتقفلت/],
+    [{ status: 409, detail: "this expense is already voided" }, /أُلغي/],
+    [{ status: 409, detail: "the shift that paid this expense is closed: record the correction" }, /أُغلقت/],
     [{ status: 409, detail: "a cash expense is paid from an open shift: open a shift first" }, /وردية/],
     [{ status: 403, detail: "forbidden" }, /صلاحية/],
-    [{ status: 404, detail: "expense not found" }, /مش موجود/],
+    [{ status: 404, detail: "expense not found" }, /غير موجود/],
     [{ status: 0, message: "network" }, /الاتصال/],
     [{ status: 503, message: "x" }, /الاتصال/],
   ])("%j", (err, re) => expect(expenseErrorMessage(err)).toMatch(re));

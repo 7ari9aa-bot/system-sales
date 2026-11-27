@@ -39,7 +39,7 @@ describe("a control asks the registry before it is enabled", () => {
     const notice = capabilityNotice([{ key: "inbox", state: "available" }], "flows", true);
     expect(notice.enabled).toBe(false);
     expect(notice.known).toBe(false);
-    expect(notice.reason).toContain("مفيش تقرير");
+    expect(notice.reason).toContain("لا يوجد تقرير");
   });
 
   it("refuses a capability that needs a dashboard field, and says which state", () => {
@@ -49,7 +49,7 @@ describe("a control asks the registry before it is enabled", () => {
       true,
     );
     expect(notice.enabled).toBe(false);
-    expect(notice.label).toBe("الحقل مش مفعّل في لوحة Meta");
+    expect(notice.label).toBe("الحقل غير مفعّل في لوحة Meta");
     expect(notice.reason).toBe("فعّل message_echoes");
   });
 

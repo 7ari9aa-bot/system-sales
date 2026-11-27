@@ -253,12 +253,12 @@ describe("what the server did with the money", () => {
   });
   it("says what the sale never collected instead of pretending it was refunded", () => {
     const text = returnSettlementSummary({ refund_mode: "nothing_collected", refunded: "0.00", refund_by_method: {}, refund_uncollected: "80.00" });
-    expect(text).toContain("ما حصّلتش");
+    expect(text).toContain("لم تحصّل");
     expect(text).toContain("لم تُحصَّل أصلًا");
   });
   it("a record-only till says the money was only recorded", () => {
     expect(returnSettlementSummary({ refund_mode: "record_only", refunded: "0.00", refund_by_method: {}, refund_uncollected: "40.00" }))
-      .toContain("مش بيسجّل مدفوعات");
+      .toContain("أمين الصندوق لا يسجّل مدفوعات");
   });
 });
 
@@ -304,7 +304,7 @@ describe("what the message says about money not yet returned", () => {
       awaiting_confirmation: [{ refund_id: "r1", method: "card", amount: "100.00" }],
     });
     expect(text).toContain("اترد 0.00");
-    expect(text).toContain("لسه مستنية تأكيد الماكينة");
+    expect(text).toContain("لا تزال تنتظر تأكيد الماكينة");
   });
 
   it("counts only the confirmed part as refunded when it is split", () => {

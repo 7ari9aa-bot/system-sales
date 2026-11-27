@@ -13,20 +13,20 @@ const WORKING = new Set(["available"]);
 /** Every state the backend can report, with the label an owner should read. */
 export const STATE_LABELS = {
   available: ["متاح", "Available"],
-  needs_permission: ["محتاج صلاحية", "Needs permission"],
-  needs_advanced_access: ["محتاج Advanced Access", "Needs Advanced Access"],
-  needs_app_review: ["محتاج App Review", "Needs App Review"],
+  needs_permission: ["يتطلب صلاحية", "Needs permission"],
+  needs_advanced_access: ["يتطلب Advanced Access", "Needs Advanced Access"],
+  needs_app_review: ["يتطلب App Review", "Needs App Review"],
   account_ineligible: ["الحساب غير مؤهل", "Account ineligible"],
-  not_requested: ["لسه ما طلبتوش", "Not requested"],
-  eligibility_unknown: ["الأهلية لسه مجهولة", "Eligibility unknown"],
+  not_requested: ["لم يُطلب بعد", "Not requested"],
+  eligibility_unknown: ["الأهلية غير معروفة بعد", "Eligibility unknown"],
   region_restricted: ["ممنوع في بلدك", "Region restricted"],
-  unsupported_by_api: ["ميتا مش بتدعمه", "Not supported by Meta"],
-  not_implemented: ["لسه مش منفَّذ عندنا", "Not built yet"],
-  needs_connection: ["محتاج ربط القناة", "Not connected"],
+  unsupported_by_api: ["ميتا لا تدعمه", "Not supported by Meta"],
+  not_implemented: ["غير منفَّذ عندنا بعد", "Not built yet"],
+  needs_connection: ["يتطلب ربط القناة", "Not connected"],
   temporary_failure: ["فشل مؤقت", "Temporary failure"],
-  no_live_event_verified: ["لسه مجرّبناهوش", "No live event yet"],
-  dashboard_field_missing: ["الحقل مش مفعّل في لوحة Meta", "Dashboard field missing"],
-  asset_subscription_missing: ["الصفحة/الحساب مش مشترك في الحقل", "Asset subscription missing"],
+  no_live_event_verified: ["لم نجرّبه بعد", "No live event yet"],
+  dashboard_field_missing: ["الحقل غير مفعّل في لوحة Meta", "Dashboard field missing"],
+  asset_subscription_missing: ["الصفحة/الحساب غير مشترك في الحقل", "Asset subscription missing"],
 };
 
 /** What each capability is called, in the owner's words. */
@@ -86,7 +86,7 @@ export function capabilityNotice(capabilities, key, isAr) {
       state: "unknown",
       enabled: false,
       label: isAr ? "غير معروف" : "Unknown",
-      reason: isAr ? "مفيش تقرير عن الوظيفة دي" : "No report for this capability",
+      reason: isAr ? "لا يوجد تقرير عن هذه الوظيفة" : "No report for this capability",
     };
   }
   const enabled = WORKING.has(found.state);
@@ -97,7 +97,7 @@ export function capabilityNotice(capabilities, key, isAr) {
     enabled,
     label: stateLabel(state, isAr),
     // The backend's reason is Meta's own wording or ours; shown as it came, never rewritten.
-    reason: found.reason || (enabled ? "" : isAr ? "الوظيفة مش جاهزة" : "This capability is not ready"),
+    reason: found.reason || (enabled ? "" : isAr ? "الوظيفة غير جاهزة" : "This capability is not ready"),
   };
 }
 

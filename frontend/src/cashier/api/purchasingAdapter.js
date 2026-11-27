@@ -67,7 +67,7 @@ export function addLine(lines, { variantId, label, qty, unitCost }) {
     const merged = lines[at].qty + q;
     // Same variant bought twice at two prices cannot share one line: keep it honest instead of averaging silently.
     if (toMinor(lines[at].unitCost) !== toMinor(cost)) {
-      return { ok: false, error: "الصنف ده مضاف بسعر مختلف. عدّل البند الموجود بدل ما تضيفه مرتين" };
+      return { ok: false, error: "هذا الصنف مضاف بسعر مختلف. عدّل البند الموجود بدل إضافته مرتين" };
     }
     if (merged > 1_000_000) return { ok: false, error: "الكمية كبيرة جدًا" };
     const next = [...lines];
@@ -117,7 +117,7 @@ export function buildPayment(form, { owed = null, sessionId = null } = {}) {
   // the OPEN shift.
   const fromDrawer = Boolean(form.fromDrawer) && form.method === "cash";
   if (fromDrawer && !sessionId) {
-    return { ok: false, error: "مفيش وردية مفتوحة تتحسب عليها: افتح الوردية أو سجّل الدفعة من خارج الدرج" };
+    return { ok: false, error: "لا توجد وردية مفتوحة تُحتسب عليها: افتح الوردية أو سجّل الدفعة من خارج الدرج" };
   }
   return {
     ok: true,
@@ -312,18 +312,18 @@ export function filterOrders(rows, { term = "", supplierId = "", receipt = "", p
 export function purchasingErrorMessage(err) {
   const status = err?.status;
   const text = String(err?.detail ?? err?.message ?? "");
-  if (/already received/i.test(text)) return "الفاتورة دي اتسجلت كمستلمة قبل كده";
+  if (/already received/i.test(text)) return "سُجّلت هذه الفاتورة كمستلمة سابقاً";
   if (/supplier return instead/i.test(text)) return "الفاتورة المستلمة ما تتلغيش. سجّل مرتجع للمورد بدلها";
   if (/more than what is still owed/i.test(text)) return "المبلغ أكبر من المتبقي على الفاتورة";
-  if (/open a shift|OPEN shift/i.test(text)) return "الدفع النقدي محتاج وردية مفتوحة";
+  if (/open a shift|OPEN shift/i.test(text)) return "الدفع النقدي يتطلب وردية مفتوحة";
   if (/still returnable/i.test(text)) return "الكمية المرتجعة أكبر من المتاح للإرجاع على الفاتورة دي";
-  if (/already (accepted|rejected)/i.test(text)) return "المرتجع ده اتحسم قبل كده";
+  if (/already (accepted|rejected)/i.test(text)) return "خُصم هذا المرتجع سابقاً";
   if (/already exists/i.test(text)) return "فيه مورد بنفس الاسم";
-  if (/inactive/i.test(text)) return "المورد ده موقوف";
+  if (/inactive/i.test(text)) return "هذا المورد موقوف";
   if (/insufficient|cannot|below zero/i.test(text) && /stock/i.test(text)) return "المخزون الحالي أقل من الكمية المرتجعة";
   if (/Idempotency-Key reused/i.test(text)) return "الطلب اتبعت بنفس المفتاح ببيانات مختلفة. جرّب تاني";
-  if (status === 403) return "مش مسموح لك بالعملية دي. لازم صلاحية مدير";
-  if (status === 404) return "العنصر مش موجود";
+  if (status === 403) return "غير مسموح لك بهذه العملية. تلزم صلاحية مدير";
+  if (status === 404) return "العنصر غير موجود";
   if (status === 0 || status >= 500) return "تعذّر الاتصال بالخادم. جرّب تاني";
   return text || "حصل خطأ غير متوقع";
 }

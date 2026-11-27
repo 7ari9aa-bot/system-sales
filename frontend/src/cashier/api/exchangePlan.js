@@ -26,7 +26,7 @@ export function settlementKind(diffMinor) {
 /** What the cashier must do about the difference, in one line the screen can print. */
 export function settlementPrompt(kind, diffMinor, { takePayments = false } = {}) {
   if (kind === "even") return "لا فرق في القيمة: الاستبدال بيمشي من غير تحصيل ولا رد";
-  if (!takePayments) return "الكاشير ده مش بيسجّل مدفوعات: الفرق بيتسجّل على الفاتورة بس، ومش بيتحصّل ولا بيترد من هنا";
+  if (!takePayments) return "أمين الصندوق لا يسجّل مدفوعات: يُسجَّل الفرق على الفاتورة فقط، ولا يُحصَّل ولا يُرد من هنا";
   return kind === "pay"
     ? `لازم تحصّل ${fromMinor(diffMinor)} من العميل قبل ما تتم الاستبدال`
     : `${fromMinor(-diffMinor)} ترجع للعميل على وسيلة الدفع الأصلية`;
@@ -99,7 +99,7 @@ export function settlementSummary(result) {
     const confirmed = Number(result?.refunded ?? amount);
     parts.push(`اترد فرق ${confirmed.toFixed(2)} ج.م`);
     if (pending > 0) {
-      parts.push(`منها ${pending.toFixed(2)} ج.م لسه مستنية تأكيد الماكينة`);
+      parts.push(`منها ${pending.toFixed(2)} ج.م لا تزال تنتظر تأكيد الماكينة`);
     }
     if (manual > 0) {
       parts.push(`${manual.toFixed(2)} ج.م يترد يدويًا على الماكينة ويُسجَّل رقم المرجع`);
@@ -112,11 +112,11 @@ export function settlementSummary(result) {
     const gap = Number(result?.uncollected ?? 0);
     parts.push(
       gap > 0
-        ? `الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات): ${gap.toFixed(2)} ج.م`
-        : "الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات)",
+        ? `الفرق مسجّل على الفاتورة فقط (أمين الصندوق لا يسجّل مدفوعات): ${gap.toFixed(2)} ج.م`
+        : "الفرق مسجّل على الفاتورة فقط (أمين الصندوق لا يسجّل مدفوعات)",
     );
   }
-  else parts.push("الفرق مسجّل على الفاتورة فقط (الكاشير مش بيسجّل مدفوعات)");
+  else parts.push("الفرق مسجّل على الفاتورة فقط (أمين الصندوق لا يسجّل مدفوعات)");
   if (methods) parts.push(methods);
   if (uncollected > 0) parts.push(`منها ${uncollected.toFixed(2)} ج.م لم تُحصَّل أصلًا فلم تُرَد`);
   return parts.join(" — ");
@@ -135,7 +135,7 @@ export function exchangeErrorMessage(err) {
   if (/exchanges ride the open drawer|session is closed/i.test(m)) return "الوردية مغلقة. افتح الوردية أولًا لتسجيل الاستبدال.";
   if (/insufficient|not enough stock|out of stock/i.test(m)) return "الكمية المطلوبة من الصنف البديل غير متوفرة في المخزون.";
   if (/collect the difference/i.test(m)) return "لازم تحصّل فرق السعر قبل إتمام الاستبدال.";
-  if (/does not record payments/i.test(m)) return "الكاشير ده مش بيسجّل مدفوعات، فمينفعش يتحصّل أو يترد فرق من هنا.";
+  if (/does not record payments/i.test(m)) return "أمين الصندوق لا يسجّل مدفوعات، فلا يمكن تحصيل أو رد فرق من هنا.";
   return m ? m : "تعذّر تنفيذ الاستبدال";
 }
 

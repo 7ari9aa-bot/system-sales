@@ -83,8 +83,8 @@ export function buildExpense(form, { sessionId = null } = {}) {
   // shift — a closed or missing one would post a movement nobody can reconcile.
   const fromDrawer = (form.source ?? "external") === "drawer";
   if (fromDrawer) {
-    if (form.payment !== "cash") return { ok: false, error: "الدرج للنقدي فقط: سجّل المصروف ده كحساب خارج الدرج" };
-    if (!sessionId) return { ok: false, error: "مفيش وردية مفتوحة تتحسب عليها: افتح الوردية أو اختار حساب خارج الدرج" };
+    if (form.payment !== "cash") return { ok: false, error: "الدرج للنقدي فقط: سجّل هذا المصروف كحساب خارج الدرج" };
+    if (!sessionId) return { ok: false, error: "لا توجد وردية مفتوحة تُحتسب عليها: افتح الوردية أو اختر حساباً خارج الدرج" };
   }
   return {
     ok: true,
@@ -146,14 +146,14 @@ export function filterExpenses(rows, { term = "", category = "", payment = "", s
 export function expenseErrorMessage(err) {
   const status = err?.status;
   const text = String(err?.detail ?? err?.message ?? "");
-  if (/already voided/i.test(text)) return "المصروف ده اتلغى قبل كده";
+  if (/already voided/i.test(text)) return "أُلغي هذا المصروف سابقاً";
   if (/shift that paid this expense is closed/i.test(text))
-    return "الوردية اللي دفعت المصروف ده اتقفلت. سجّل التصحيح في الوردية الحالية";
-  if (/open a shift|OPEN shift/i.test(text)) return "المصروف النقدي محتاج وردية مفتوحة";
-  if (/inactive/i.test(text)) return "التصنيف ده موقوف";
+    return "الوردية التي دفعت هذا المصروف أُغلقت. سجّل التصحيح في الوردية الحالية";
+  if (/open a shift|OPEN shift/i.test(text)) return "المصروف النقدي يتطلب وردية مفتوحة";
+  if (/inactive/i.test(text)) return "هذا التصنيف موقوف";
   if (/2 decimal/i.test(text)) return "المبلغ فيه أكتر من خانتين عشريتين";
-  if (status === 403) return "مش مسموح لك بالعملية دي. لازم صلاحية مدير";
-  if (status === 404) return "المصروف أو التصنيف مش موجود";
+  if (status === 403) return "غير مسموح لك بهذه العملية. تلزم صلاحية مدير";
+  if (status === 404) return "المصروف أو التصنيف غير موجود";
   if (status === 0 || status >= 500) return "تعذّر الاتصال بالخادم. جرّب تاني";
   return text || "حصل خطأ غير متوقع";
 }
