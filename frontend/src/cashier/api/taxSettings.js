@@ -20,7 +20,7 @@ export const SECTIONS = [
   {
     id: "identity",
     title: "بيانات المحل الضريبية",
-    hint: "زي ما هي مسجلة في بطاقتك الضريبية. بتظهر في كل إيصال.",
+    hint: "كما هي مسجّلة في بطاقتك الضريبية. وتظهر في كل إيصال.",
     keys: ["business.legal_name", "business.trade_name", "business.tax_id"],
   },
   {

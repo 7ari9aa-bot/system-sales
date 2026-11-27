@@ -96,9 +96,9 @@ export default function ExpenseDialog({ open, onOpenChange, categories, methods,
             </Select>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {!sessionId
-                ? "مفيش وردية مفتوحة الآن: المصروف بيتسجّل على حساب خارج الدرج."
+                ? "لا توجد وردية مفتوحة الآن: يُسجَّل المصروف على حساب خارج الدرج."
                 : form.payment !== "cash"
-                  ? "الدرج للنقدي فقط: المصروف ده بيتسجّل على حساب خارج الدرج."
+                  ? "الدرج للنقدي فقط: يُسجَّل هذا المصروف على حساب خارج الدرج."
                   : fromDrawer
                     ? `هيتسجّل خروج نقدي من درج الوردية المفتوحة${expectedCash ? ` (المتوقع في الدرج ${fmtMoney(expectedCash)})` : ""}.`
                     : "بيتسجّل في الدفاتر من غير ما يلمس درج الوردية."}

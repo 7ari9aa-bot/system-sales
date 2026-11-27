@@ -65,7 +65,7 @@ export default function SupplierPaymentDialog({ open, onOpenChange, supplier, or
               <span>
                 <span className="font-semibold">الدفع من درج الوردية المفتوحة</span>
                 <span className="block text-[11px] text-muted-foreground">
-                  {sessionId ? "هيتسجّل خروج نقدي من الدرج ويظهر في حساب الإقفال." : "مفيش وردية مفتوحة: الدفعة هتتسجّل من خارج الدرج."}
+                  {sessionId ? "هيتسجّل خروج نقدي من الدرج ويظهر في حساب الإقفال." : "لا توجد وردية مفتوحة: ستُسجَّل الدفعة من خارج الدرج."}
                 </span>
               </span>
             </label>

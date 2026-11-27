@@ -61,7 +61,7 @@ export const CHOICE_LABELS_AR = {
     O: "أخرى (محفظة، إنستاباي، تحويل)",
   },
   "einvoice.split_payment_rule": {
-    largest: "الطريقة اللي دفعت أكبر مبلغ",
+    largest: "الطريقة التي دفعت أكبر مبلغ",
     cash_first: "نقدي لو فيه أي مبلغ نقدي",
   },
   "einvoice.vat_category": {

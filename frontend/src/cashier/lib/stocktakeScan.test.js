@@ -52,7 +52,7 @@ describe("scanToCount", () => {
     const known = [{ productName: "حزام جلد", sku: "BLT-1", barcode: "9999" }];
     const out = scanToCount(rows, "9999", { known });
     expect(out.kind).toBe("outside");
-    expect(scanRefusal("outside", "9999")).toContain("مش داخل في هذا الجرد");
+    expect(scanRefusal("outside", "9999")).toContain("غير داخل في هذا الجرد");
   });
 
   it("says a code that belongs to no item at all", () => {

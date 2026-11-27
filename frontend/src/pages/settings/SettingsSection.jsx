@@ -396,7 +396,7 @@ export default function SettingsSection({ section }) {
                 : "Direct edits saved; the rest became a change request awaiting approval"
               : s.notice === "saved_request_failed"
               ? isAr
-                ? "التعديلات المباشرة اتحفظت فعلاً، لكن طلب التغيير فشل — القيم لسه في الشاشة، جرّب تبعته تاني"
+                ? "حُفظت التعديلات المباشرة فعلاً، لكن طلب التغيير فشل — القيم لا تزال في الشاشة، أعد إرساله"
                 : "The direct edits really were saved; the change request failed. The values are still on screen — try sending it again"
               : s.notice === "change_request_submitted"
                 ? isAr
@@ -421,7 +421,7 @@ export default function SettingsSection({ section }) {
       {s.conflict && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12.5px]">
           {isAr
-            ? "حد تاني عدّل نفس الإعداد. راجع القيم وحدّث الصفحة قبل الحفظ."
+            ? "عدّل شخص آخر الإعداد نفسه. راجع القيم وحدّث الصفحة قبل الحفظ."
             : "Someone else changed these settings. Review the values and reload before saving."}
         </div>
       )}

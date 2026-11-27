@@ -316,7 +316,7 @@ export function purchasingErrorMessage(err) {
   if (/supplier return instead/i.test(text)) return "الفاتورة المستلمة ما تتلغيش. سجّل مرتجع للمورد بدلها";
   if (/more than what is still owed/i.test(text)) return "المبلغ أكبر من المتبقي على الفاتورة";
   if (/open a shift|OPEN shift/i.test(text)) return "الدفع النقدي يتطلب وردية مفتوحة";
-  if (/still returnable/i.test(text)) return "الكمية المرتجعة أكبر من المتاح للإرجاع على الفاتورة دي";
+  if (/still returnable/i.test(text)) return "الكمية المرتجعة أكبر من المتاح للإرجاع على هذه الفاتورة";
   if (/already (accepted|rejected)/i.test(text)) return "خُصم هذا المرتجع سابقاً";
   if (/already exists/i.test(text)) return "فيه مورد بنفس الاسم";
   if (/inactive/i.test(text)) return "هذا المورد موقوف";

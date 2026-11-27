@@ -192,7 +192,7 @@ export default function PurchasesPage() {
         pageSize={8}
         loading={orders.isLoading}
         loadingLabel="جارٍ تحميل فواتير التوريد…"
-        emptyTitle={rows.length === 0 ? "لسه مفيش فواتير توريد" : "لا توجد فواتير توريد مطابقة"}
+        emptyTitle={rows.length === 0 ? "لا توجد فواتير توريد بعد" : "لا توجد فواتير توريد مطابقة"}
         emptyDescription={rows.length === 0 ? "سجّل أول توريد ليدخل المخزن ويتحسب في تكلفة الأصناف." : "جرّب تغيير المورد أو حالة الاستلام أو الدفع."}
         emptyAction={
           <Button className={BTN_PRIMARY} onClick={() => setFormOpen(true)}>

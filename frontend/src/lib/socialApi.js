@@ -84,7 +84,7 @@ export const BELOW_THRESHOLD = -1;
  */
 export function storyMetric(value, isAr) {
   if (value === null || value === undefined || value === "") {
-    return { value: null, text: isAr ? "لسه موصلناش" : "Not delivered yet", belowThreshold: false };
+    return { value: null, text: isAr ? "لم تصلنا بعد" : "Not delivered yet", belowThreshold: false };
   }
   if (value === BELOW_THRESHOLD) {
     return { value: null, text: isAr ? "أقل من ٥" : "Fewer than 5", belowThreshold: true };
@@ -170,7 +170,7 @@ export const REEL_LIMITS = { maxBytes: 100 * 1024 * 1024, maxCaption: 2200 };
 export function reelProblem(file, caption = "", lang = "ar") {
   const ar = lang === "ar";
   if (!file) return ar ? "اختر فيديو للريل" : "Choose a video for the Reel";
-  if (!/^video\/(mp4|quicktime)$/i.test(file.type || "")) return ar ? "الريل لازم يكون فيديو MP4 أو MOV. إنستغرام يقبل النوعين دول فقط" : "A Reel must be an MP4 or MOV video. Instagram accepts those only";
+  if (!/^video\/(mp4|quicktime)$/i.test(file.type || "")) return ar ? "يجب أن يكون الريل فيديو MP4 أو MOV. وإنستغرام يقبل هذين النوعين فقط" : "A Reel must be an MP4 or MOV video. Instagram accepts those only";
   if (file.size > REEL_LIMITS.maxBytes) return ar ? "الفيديو أكبر من 100 ميغابايت" : "The video is larger than 100 MB";
   if ((caption || "").length > REEL_LIMITS.maxCaption) return ar ? "النص أطول من 2200 حرف" : "The caption is longer than 2,200 characters";
   return "";

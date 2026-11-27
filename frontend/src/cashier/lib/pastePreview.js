@@ -62,7 +62,7 @@ export function previewPaste(text) {
     return {
       headers: headerRow.cells,
       rows: [],
-      problems: [{ line: headerRow.line, message: "مفيش عمود مفهوم في أول سطر. لازم «اسم المنتج» أو «SKU» على الأقل" }],
+      problems: [{ line: headerRow.line, message: "لا يوجد عمود مفهوم في أول سطر. لازم «اسم المنتج» أو «SKU» على الأقل" }],
       delimiter,
       ready: false,
     };
@@ -90,10 +90,10 @@ export function previewPaste(text) {
       continue;
     }
     if (item.price && !isNumber(item.price)) {
-      problems.push({ line: row.line, message: `السعر «${item.price}» مش رقم` });
+      problems.push({ line: row.line, message: `السعر «${item.price}» ليس رقماً` });
     }
     if (item.quantity && !/^\d+$/.test(item.quantity.trim())) {
-      problems.push({ line: row.line, message: `الكمية «${item.quantity}» مش عدد صحيح` });
+      problems.push({ line: row.line, message: `الكمية «${item.quantity}» ليست عدداً صحيحاً` });
     }
     if (item.sku) {
       const key = item.sku.toLowerCase();

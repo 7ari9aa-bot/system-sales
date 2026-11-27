@@ -98,7 +98,7 @@ export function costWarning(totals, rows = []) {
   if (pieces > 0) {
     return `ربح أعلى من الحقيقة: ${fmtInt(pieces)} قطعة اتباعت من غير تكلفة شراء مسجّلة، فتكلفتها محسوبة صفر. سجّل فواتير الشراء وهيتصحّح الرقم.`;
   }
-  return "ربح أعلى من الحقيقة: مش كل القطع المباعة ليها تكلفة شراء مسجّلة. سجّل فواتير الشراء وهيتصحّح الرقم.";
+  return "ربح أعلى من الحقيقة: ليست كل القطع المباعة لها تكلفة شراء مسجّلة. سجّل فواتير الشراء وسيُصحَّح الرقم.";
 }
 
 /**
@@ -115,7 +115,7 @@ export function returnCostNotice(totals) {
   const byState = CONDITION_WORDS(totals?.returnedByCondition);
   const base =
     `تكلفة المرتجعات مقدّرة: ${fmtInt(pieces)} قطعة رجعت، وتكلفتها محسوبة بمتوسط تكلفة البيع، ` +
-    "لأن المخزن مابيسجّلش تكلفة على المرتجع.";
+    "لأن المخزن لا يسجّل تكلفة على المرتجع.";
   // Which pieces gave cost back is not the same question as how many came back: a damaged or
   // written-off piece is gone, so its cost stays a cost.
   const split =
@@ -169,7 +169,7 @@ export function profitErrorNotice(error) {
       kind,
       tone: "forbidden",
       message:
-        "تقرير الربح فيه تكلفة الشراء وأرباح المحل، فهو لصاحب المتجر، والمدير يشوفه بس لو صاحب المتجر سمح بكده من إعدادات المستخدمين. اطلب من صاحب المتجر لو محتاجه.",
+        "تقرير الربح يتضمن تكلفة الشراء وأرباح المتجر، فهو لصاحب المتجر، ولا يراه المدير إلا إذا سمح صاحب المتجر بذلك من إعدادات المستخدمين. اطلبه من صاحب المتجر إن كنت تحتاجه.",
     };
   }
   if (kind === "offline") {
@@ -198,6 +198,6 @@ export function profitFootnote(totals, rows = []) {
   const notes = [];
   if (totals) notes.push("الإيراد بعد الخصومات والمرتجعات، والتكلفة من شرائح الشراء الفعلية (متوسط متحرك).");
   const estimated = (rows ?? []).filter((r) => r?.costIsEstimate).length;
-  if (estimated > 0) notes.push(`≈ ${fmtInt(estimated)} صنف رجّع تكلفة تقديرية: المرتجع اللي رجع للمخزن بياخد متوسط تكلفة البيع.`);
+  if (estimated > 0) notes.push(`≈ ${fmtInt(estimated)} صنف أُعيد بتكلفة تقديرية: المرتجع الذي عاد إلى المخزن يأخذ متوسط تكلفة البيع.`);
   return notes.join(" ");
 }

@@ -22,7 +22,7 @@ describe("whatsappConnectedNotice", () => {
       { onboarding_mode: "coexistence", coexistence_status: "verified" },
       true,
     );
-    expect(ar).toMatch(/التطبيق على الموبايل/);
+    expect(ar).toMatch(/على الهاتف/);
   });
 
   it("says the phone app is NOT mirrored when the number is Cloud API only", () => {
@@ -36,7 +36,7 @@ describe("whatsappConnectedNotice", () => {
       { onboarding_mode: "cloud_api", coexistence_status: "not_on_business_app" },
       true,
     );
-    expect(ar).toMatch(/مش مسجل على تطبيق WhatsApp Business/);
+    expect(ar).toMatch(/غير مسجل على تطبيق WhatsApp Business/);
   });
 
   it("falls back to the plain success line for an older server answer", () => {

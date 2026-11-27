@@ -201,12 +201,12 @@ export function whatsappConnectedNotice(result, isAr) {
   const status = String(result?.coexistence_status || "");
   if (mode === "coexistence" || status === "verified") {
     return isAr
-      ? "تم ربط رقم واتساب. التطبيق على الموبايل شغال زي ما هو، وردودك من الموبايل هتظهر هنا كرسائل بشرية."
+      ? "تم ربط رقم واتساب. التطبيق على الهاتف يعمل كما هو، وردودك من الهاتف ستظهر هنا كرسائل بشرية."
       : "The WhatsApp number is connected. The phone app keeps working, and replies you type there appear here as human messages.";
   }
   if (status === "not_on_business_app") {
     return isAr
-      ? "تم ربط الرقم عبر Cloud API. Meta بتقول إن الرقم مش مسجل على تطبيق WhatsApp Business، فمفيش ردود من الموبايل هتظهر هنا — اربط الرقم من تطبيق WhatsApp Business لو عايز الاتنين مع بعض."
+      ? "تم ربط الرقم عبر Cloud API. وتفيد Meta أن الرقم غير مسجل على تطبيق WhatsApp Business، فلن تظهر هنا ردود من الهاتف — اربط الرقم من تطبيق WhatsApp Business إن أردت الجمع بينهما."
       : "The number is connected over the Cloud API. Meta reports it is not on the WhatsApp Business app, so replies from the phone will not appear here. Link it from the WhatsApp Business app if you want both together.";
   }
   return isAr ? "تم ربط رقم واتساب بنجاح." : "The WhatsApp number is connected.";

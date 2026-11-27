@@ -18,7 +18,7 @@ export function ModuleLinkPage({ to, title, isAr }) {
       <h2 className="font-display text-[16px] font-semibold">{title}</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
         {isAr
-          ? "الشاشة دي بتعرض سجلات، مش إعدادات، فمكانها الطبيعي في الموديول اللي بيملك السجلات دي. الإعدادات نفسها لسه هنا في مركز الإعدادات."
+          ? "هذه الشاشة تعرض سجلات، لا إعدادات، فمكانها الطبيعي في الموديول الذي يملك هذه السجلات. أما الإعدادات نفسها فلا تزال هنا في مركز الإعدادات."
           : "This screen shows records, not settings, so it lives in the module that owns those records. The settings that shape it are still here in the Settings Center."}
       </p>
       <Link
@@ -45,7 +45,7 @@ export function ModuleRecordsNote({ to, isAr }) {
   return (
     <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] text-muted-foreground">
       {isAr
-        ? "السجلات نفسها (الحركات والعمليات) مكانها الموديول، والإعدادات اللي فوق هي اللي بتتحكم فيها."
+        ? "السجلات نفسها (الحركات والعمليات) مكانها الموديول، والإعدادات أعلاه هي التي تتحكم فيها."
         : "The records themselves live in the module; the settings above are what shape them."}{" "}
       <Link to={to} className="font-medium text-primary underline-offset-2 hover:underline" data-testid="module-records-link">
         {isAr ? "افتح السجلات" : "Open the records"}

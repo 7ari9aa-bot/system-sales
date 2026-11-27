@@ -11,7 +11,7 @@ describe("the tracking screen", () => {
   it("shows the counters, what needs the owner first", () => {
     const html = draw([]);
     expect(html.indexOf('data-card="needs_attention"')).toBeLessThan(html.indexOf('data-card="accepted"'));
-    expect(html).toContain("محتاجة تصرف منك");
+    expect(html).toContain("تحتاج إجراءً منك");
   });
 
   it("a refused receipt shows why and how long is left", () => {

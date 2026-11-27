@@ -54,7 +54,7 @@ export function scanToCount(rows, code, { known = [] } = {}) {
 export function scanRefusal(kind, code) {
   const text = String(code ?? "").trim();
   if (kind === "ambiguous") return `أكثر من صنف يطابق «${text}» — امسح الباركود بالكامل`;
-  if (kind === "outside") return `«${text}» صنف موجود بالمخزن لكنه مش داخل في هذا الجرد`;
+  if (kind === "outside") return `«${text}» صنف موجود بالمخزن لكنه غير داخل في هذا الجرد`;
   if (kind === "none") return `لا يوجد صنف في هذا الجرد بـ «${text}»`;
   return null;
 }

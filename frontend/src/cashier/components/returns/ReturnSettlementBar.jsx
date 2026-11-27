@@ -32,7 +32,7 @@ export default function ReturnSettlementBar({ value, restock, onRestockChange, r
 
       <p className="max-w-[250px] text-center text-[11px] text-muted-foreground">
         {takePayments === false
-          ? "الكاشير مش بيسجّل مدفوعات: المبلغ يتسجّل على الفاتورة فقط"
+          ? "أمين الصندوق لا يسجّل مدفوعات: يُسجَّل المبلغ على الفاتورة فقط"
           : "الخادم يرد المبلغ على وسائل الدفع الأصلية: النقدي يخرج من درج الوردية، والبطاقة أو المحفظة تتعكس على الماكينة ويُسجَّل رقم المرجع"}
       </p>
 

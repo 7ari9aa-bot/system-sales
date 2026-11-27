@@ -129,7 +129,7 @@ export default function SupplierReturnsPage() {
           image={HERO_IMAGE}
           imageAlt={HERO_ALT}
           title="مرتجعات الموردين"
-          description="البضاعة اللي رجعت للمورد بتخرج من المخزن فورًا. التسوية النقدية بتدخل درج الوردية المفتوحة عند القبول، والآجلة بتتسجّل على حساب المورد."
+          description="البضاعة التي عادت إلى المورد تخرج من المخزن فوراً. والتسوية النقدية تدخل درج الوردية المفتوحة عند القبول، والآجلة تُسجَّل على حساب المورد."
         >
           <Button
             className={BTN}
@@ -195,7 +195,7 @@ export default function SupplierReturnsPage() {
         pageSize={8}
         loading={returns.isLoading}
         loadingLabel="جارٍ تحميل مرتجعات الموردين…"
-        emptyTitle={records.length === 0 ? "لسه مفيش مرتجعات للموردين" : "لا توجد مرتجعات مطابقة"}
+        emptyTitle={records.length === 0 ? "لا توجد مرتجعات للموردين بعد" : "لا توجد مرتجعات مطابقة"}
         emptyDescription="سجّل مرتجعًا جديدًا، أو غيّر الفلاتر."
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">
@@ -212,7 +212,7 @@ export default function SupplierReturnsPage() {
           { label: "عدد المرتجعات", value: fmtInt(summary.count), hint: `${fmtInt(summary.qty)} قطعة خرجت من المخزن` },
           { label: "خصم من الحساب", value: fmtMoney(summary.credit), hint: "مرتجعات المورد قبلها" },
           { label: "تسوية نقدية مسجّلة", value: fmtMoney(summary.cash), hint: "سجل فقط، لا يدخل أي درج" },
-          { label: "بانتظار المورد", value: fmtInt(summary.review), hint: `قيمتها ${fmtMoney(summary.pendingAmount)} (لسه مش فلوس)`, accent: true },
+          { label: "بانتظار المورد", value: fmtInt(summary.review), hint: `قيمتها ${fmtMoney(summary.pendingAmount)} (ليست مالاً بعد)`, accent: true },
         ]}
       />
 

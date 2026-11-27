@@ -46,7 +46,7 @@ export async function saveProductWithDistribution(input, warehouseId) {
   for (const move of plan.movements) {
     const variantId = bySku.get(String(move.sku ?? "").trim());
     if (!variantId) {
-      failed.push({ ...move, message: "التركيبة مش موجودة بعد الحفظ" });
+      failed.push({ ...move, message: "التركيبة غير موجودة بعد الحفظ" });
       continue;
     }
     try {

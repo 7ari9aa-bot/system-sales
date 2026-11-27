@@ -90,7 +90,7 @@ export function summaryCards(s) {
   const needs = n(s?.needs_attention);
   const urgent = n(s?.urgent);
   return [
-    { key: "needs_attention", label: "محتاجة تصرف منك", value: needs, tone: needs > 0 ? "danger" : "ok" },
+    { key: "needs_attention", label: "تحتاج إجراءً منك", value: needs, tone: needs > 0 ? "danger" : "ok" },
     { key: "urgent", label: "المهلة قربت تخلص", value: urgent, tone: urgent > 0 ? "danger" : "muted" },
     { key: "accepted", label: "مقبولة", value: n(s?.accepted), tone: "ok" },
     { key: "waiting", label: "في الانتظار", value: n(s?.waiting), tone: "muted" },
@@ -114,5 +114,5 @@ export function groupQuery({ group = "", from = "", to = "", limit, offset } = {
 
 export function trackingErrorMessage(err) {
   if (err?.status === 403) return "ما عندكش صلاحية تشوف متابعة الإيصالات. اطلب من صاحب المتجر.";
-  return "ما قدرناش نجيب الإيصالات دلوقتي. جرّب تاني بعد شوية.";
+  return "لم نتمكن من جلب الإيصالات الآن. أعد المحاولة بعد قليل.";
 }

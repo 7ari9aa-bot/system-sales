@@ -53,7 +53,7 @@ export default function PendingRefundsPanel({ pending = [], sessionId, onConfirm
     setBusyId(row.refund_id);
     try {
       if (replacementMethod === "cash" && !sessionId) {
-        return toast.error("افتح الوردية الأول عشان الرد النقدي يتسجل على الدرج");
+        return toast.error("افتح الوردية أولاً ليُسجَّل الرد النقدي على الدرج");
       }
       const res = await posApi.rejectRefund(row.refund_id, {
         reason,
@@ -64,7 +64,7 @@ export default function PendingRefundsPanel({ pending = [], sessionId, onConfirm
       toast.success(
         res?.replacement
           ? `اتسجل رفض العملية، واترد ${fmtMoney(res.replacement.amount)} على ${METHOD_LABEL[res.replacement.method] ?? res.replacement.method}`
-          : "اتسجل رفض العملية، والمبلغ اتحرر ومش محجوز تاني",
+          : "سُجّل رفض العملية، وتحرر المبلغ ولم يبق محجوزاً",
         { duration: 10000 },
       );
       setRejectingId(null);

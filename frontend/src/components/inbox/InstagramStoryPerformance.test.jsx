@@ -13,8 +13,8 @@ describe("a story's numbers are shown honestly", () => {
   });
 
   it("a metric Meta has not sent yet says so instead of showing 0", () => {
-    expect(storyMetric(undefined, true).text).toBe("لسه موصلناش");
-    expect(storyMetric(null, true).text).toBe("لسه موصلناش");
+    expect(storyMetric(undefined, true).text).toBe("لم تصلنا بعد");
+    expect(storyMetric(null, true).text).toBe("لم تصلنا بعد");
     expect(storyMetric(0, true).text).toBe("0");
   });
 
@@ -33,7 +33,7 @@ describe("a story's numbers are shown honestly", () => {
   });
 
   it("says plainly when nothing has arrived yet, instead of an empty box", () => {
-    expect(html([])).toContain("مفيش ستوري عندها أرقام");
-    expect(html([{ id: "s-2", isStory: true, insights: {} }])).toContain("لسه موصلناش أرقامها");
+    expect(html([])).toContain("لا توجد ستوري لها أرقام");
+    expect(html([{ id: "s-2", isStory: true, insights: {} }])).toContain("لم تصلنا أرقامها بعد");
   });
 });

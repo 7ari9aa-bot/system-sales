@@ -8,7 +8,7 @@ const INSTAGRAM_POSTS_STORAGE_KEY = "fihrist:instagram-posts-demo:dmin@revenueos
 const CONTACTS = [
   { name: "ملك أحمد", initials: "مل", telegramAvatar: "malak-ahmed", messages: ["هل المقاس متاح؟", "ممكن أعرف تفاصيل التوصيل؟", "حسناً، سأؤكد الطلب اليوم"] },
   { name: "نور محمد", initials: "نو", telegramAvatar: "noor-mohamed", messages: ["وصلتني الصور، شكرًا جدًا", "هل اللون البيج متوفر؟", "ممتاز، احجزيلي واحدة"] },
-  { name: "سارة محمود", initials: "سا", telegramAvatar: "sara-mahmoud", messages: ["ممكن استبدال المنتج؟", "الطلب وصل امبارح", "شكرًا على سرعة الرد"] },
+  { name: "سارة محمود", initials: "سا", telegramAvatar: "sara-mahmoud", messages: ["ممكن استبدال المنتج؟", "وصل الطلب أمس", "شكرًا على سرعة الرد"] },
 ];
 
 const TELEGRAM_CONTACTS = [
@@ -24,7 +24,7 @@ const TELEGRAM_CONTACTS = [
 
 const TELEGRAM_SAMPLE_MESSAGES = [
   { text: "مرحباً، أحتاج أن أعرف: هل المقاس متاح؟", side: "in", senderType: "customer" },
-  { text: "أهلًا بيكِ! المقاس متاح، أساعدك في أي حاجة تانية؟", side: "out", senderType: "agent" },
+  { text: "مرحباً بكِ! المقاس متاح، هل أساعدك في أي شيء آخر؟", side: "out", senderType: "agent" },
   { text: "ممكن أعرف تفاصيل التوصيل؟", side: "in", senderType: "customer" },
   { text: "التوصيل خلال يومين إلى ثلاثة أيام.", side: "out", senderType: "agent" },
   { text: "حسناً، سأؤكد الطلب اليوم 😊", side: "in", senderType: "customer" },
@@ -145,7 +145,7 @@ function createDemoInstagramPosts() {
           handle: "karim.youssef",
           avatarUrl: "/telegram-avatars/karim-youssef.png",
           timeLabel: "١٥ أكتوبر",
-          text: "الأزرق الهادي هيليق على كل حاجة.",
+          text: "الأزرق الهادئ يناسب كل شيء.",
           likes: 4,
           replies: [],
         },

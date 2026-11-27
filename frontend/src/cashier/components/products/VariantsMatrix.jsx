@@ -152,7 +152,7 @@ export function VariantsMatrixBody({ rows, onChange, onGenerate, onGenerateBarco
                     value={row.reorderLevel ?? 0}
                     onChange={(e) => onChange(row.id, { reorderLevel: e.target.value })}
                     className="num mx-auto h-8 w-20 text-center"
-                    title="لما الرصيد يوصل للرقم ده تظهر تنبيه نقص؛ صفر يعني بلا تنبيه"
+                    title="عند وصول الرصيد إلى هذا الرقم يظهر تنبيه نقص؛ والقيمة صفر تعني عدم إظهار تنبيه"
                   />
                 </td>
               </tr>

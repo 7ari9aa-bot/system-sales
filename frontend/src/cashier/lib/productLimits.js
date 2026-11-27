@@ -20,7 +20,7 @@ export function variantLimitProblem(colors = [], sizes = []) {
   const count = variantCount(colors, sizes);
   if (count === 0) return "اختر لون واحد ومقاس واحد على الأقل";
   if (count > MAX_VARIANTS_PER_PRODUCT) {
-    return `المصفوفة دي بتطلّع ${count} تركيبة، والحد ${MAX_VARIANTS_PER_PRODUCT} تركيبة للمنتج الواحد — قلّل الألوان أو المقاسات`;
+    return `هذه المصفوفة تُنتج ${count} تركيبة، والحد ${MAX_VARIANTS_PER_PRODUCT} تركيبة للمنتج الواحد — قلّل الألوان أو المقاسات`;
   }
   return null;
 }

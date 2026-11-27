@@ -68,9 +68,9 @@ export function costGapWarning(totals) {
   const n = Number(totals.withoutCost) || 0;
   if (totals.costIsComplete === true && n === 0) return null;
   if (n > 0) {
-    return `القيمة الإجمالية ناقصة: ${fmtInt(n)} مقاس ما له تكلفة شراء مسجّلة، فمش محسوب في الرقم. سجّل فواتير الشراء وهتكمل.`;
+    return `القيمة الإجمالية ناقصة: ${fmtInt(n)} مقاس ما له تكلفة شراء مسجّلة، فلم يُحتسب في الرقم. سجّل فواتير الشراء وستكتمل.`;
   }
-  return "القيمة الإجمالية ممكن تكون ناقصة: مش كل المقاسات ليها تكلفة شراء مسجّلة.";
+  return "القيمة الإجمالية قد تكون ناقصة: ليست كل المقاسات لها تكلفة شراء مسجّلة.";
 }
 
 /** The header sentence: how long counts as dead. null when the server did not say. */
@@ -85,7 +85,7 @@ export function deadStockErrorNotice(error, kind) {
     return {
       kind,
       tone: "forbidden",
-      message: "تقرير المخزون الراكد فيه تكلفة الشراء، فهو لصاحب المتجر، والمدير يشوفه بس لو صاحب المتجر سمح بكده من إعدادات المستخدمين. اطلب من صاحب المتجر لو محتاجه.",
+      message: "تقرير المخزون الراكد يتضمن تكلفة الشراء، فهو لصاحب المتجر، ولا يراه المدير إلا إذا سمح صاحب المتجر بذلك من إعدادات المستخدمين. اطلبه من صاحب المتجر إن كنت تحتاجه.",
     };
   }
   if (kind === "offline") {

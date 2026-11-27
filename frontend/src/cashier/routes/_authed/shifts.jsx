@@ -101,7 +101,7 @@ export default function ShiftsPage() {
   return (
     <LedgerPage
       hero={
-        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: الرصيد اللي سجّله الكاشير. نهاية اليوم: محسوبة من رصيد البداية والفواتير والمرتجعات، وليست عدًّا فعليًا للنقدية.">
+        <PageHero image={HERO_IMAGE} imageAlt={HERO_ALT} title="سجل يوم العمل" description="بداية اليوم: الرصيد الذي سجّله أمين الصندوق. نهاية اليوم: محسوبة من رصيد البداية والفواتير والمرتجعات، وليست عدّاً فعلياً للنقدية.">
           <Button className={BTN} disabled={!summary.open} title={summary.open ? "" : "لم يبدأ اليوم بعد"} onClick={() => setDetails(summary.open)}>
             <Clock className="h-4 w-4 shrink-0 !text-[#33322E]" />
             <span className="!text-[#33322E] font-medium">اليوم الجاري</span>

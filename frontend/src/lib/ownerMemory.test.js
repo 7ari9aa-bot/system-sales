@@ -82,15 +82,15 @@ describe("memoryErrorMessage", () => {
       new Error("InvalidRequestError: closed transaction"),
       { status: 500 },
     );
-    expect(memoryErrorMessage(err)).toBe("حصلت مشكلة. جرّب تاني بعد شوية.");
+    expect(memoryErrorMessage(err)).toBe("حدثت مشكلة. أعد المحاولة بعد قليل.");
   });
   it("falls back when there is no message or no status (a dropped connection)", () => {
     expect(memoryErrorMessage(new Error(""))).toBe(
-      "حصلت مشكلة. جرّب تاني بعد شوية.",
+      "حدثت مشكلة. أعد المحاولة بعد قليل.",
     );
-    expect(memoryErrorMessage(null)).toBe("حصلت مشكلة. جرّب تاني بعد شوية.");
+    expect(memoryErrorMessage(null)).toBe("حدثت مشكلة. أعد المحاولة بعد قليل.");
     expect(memoryErrorMessage(new Error("Failed to fetch"))).toBe(
-      "حصلت مشكلة. جرّب تاني بعد شوية.",
+      "حدثت مشكلة. أعد المحاولة بعد قليل.",
     );
   });
   it("answers in English when asked to", () => {

@@ -35,7 +35,7 @@ describe("previewPaste reads what the merchant copied", () => {
       ["اسم المنتج,السعر,SKU", "قميص,ألف,SKU-1", ",250,", "قميص,250,SKU-1", "قميص,250,SKU-1"].join("\n"),
     );
     const messages = out.problems.map((p) => p.message).join(" | ");
-    expect(messages).toContain("مش رقم");
+    expect(messages).toContain("ليس رقماً");
     expect(messages).toContain("بلا اسم منتج ولا SKU");
     expect(messages).toContain("مكرر");
     expect(out.rows).toHaveLength(3); // الصفوف اللي ليها هوية بس هي اللي بتتعرض

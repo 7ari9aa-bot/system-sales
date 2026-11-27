@@ -62,7 +62,7 @@ export function sellThroughColumns() {
     },
     {
       key: "share",
-      header: "نسبة اللي اتباع",
+      header: "نسبة ما بيع",
       align: "center",
       tone: (r) => (stockState(r) === "out" ? "strong" : "muted"),
       text: (r) => shareLabel(r.share),
@@ -118,7 +118,7 @@ export function sellThroughErrorNotice(error, kind) {
     return {
       kind,
       tone: "forbidden",
-      message: "تقرير التصريف فيه تكلفة الشراء، فهو لصاحب المتجر، والمدير يشوفه بس لو صاحب المتجر سمح بكده من إعدادات المستخدمين. اطلب من صاحب المتجر لو محتاجه.",
+      message: "تقرير التصريف يتضمن تكلفة الشراء، فهو لصاحب المتجر، ولا يراه المدير إلا إذا سمح صاحب المتجر بذلك من إعدادات المستخدمين. اطلبه من صاحب المتجر إن كنت تحتاجه.",
     };
   }
   if (kind === "offline") {

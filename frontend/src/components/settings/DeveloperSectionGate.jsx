@@ -28,7 +28,7 @@ export default function DeveloperSectionGate({ children }) {
       title={isAr ? "المطورون وواجهات API" : "Developers & API"}
       subtitle={
         isAr
-          ? "القسم ده متاح لأدوار المالك والمدير فقط."
+          ? "هذا القسم متاح لأدوار المالك والمدير فقط."
           : "This section is available to owner, admin and manager roles only."
       }
     >
@@ -37,7 +37,7 @@ export default function DeveloperSectionGate({ children }) {
         className="py-8 text-center text-[13px] text-muted-foreground"
       >
         {isAr
-          ? "مش عندك صلاحية الوصول للقسم ده في مساحة العمل الحالية."
+          ? "لا تملك صلاحية الوصول إلى هذا القسم في مساحة العمل الحالية."
           : "You do not have access to this section in the current workspace."}
       </div>
     </SettingsShell>

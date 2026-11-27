@@ -246,7 +246,7 @@ export function RootRedirect() {
       <p className="mt-3 text-sm text-muted-foreground" aria-busy="true">
         {locale === 'en'
           ? 'FIHRIST opens the pricing and features for the country you are in.'
-          : 'FIHRIST بيفتح الأسعار والميزات الخاصة بالبلد اللي إنت فيه.'}
+          : 'FIHRIST يعرض الأسعار والميزات الخاصة بالبلد الذي أنت فيه.'}
       </p>
     </div>
   );

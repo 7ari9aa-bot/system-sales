@@ -36,7 +36,7 @@ export function reportLines(report) {
   if (report.failed?.length) {
     lines.push(...report.failed.slice(0, 5).map((f) => `${f.file}: ${f.reason}`));
   }
-  if (!lines.length) lines.push("مفيش صور اترفعت: راجع أسماء الملفات (اسم الملف = SKU)");
+  if (!lines.length) lines.push("لم تُرفع صور: راجع أسماء الملفات (اسم الملف = SKU)");
   return lines;
 }
 

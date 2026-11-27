@@ -111,7 +111,7 @@ describe("the warning about a missing cost", () => {
   });
   it("still warns without a number when the server says the cost is incomplete", () => {
     const warning = costWarning({ costIsComplete: false, unitsWithoutCost: 0 }, []);
-    expect(warning).toContain("مش كل القطع");
+    expect(warning).toContain("ليست كل القطع");
   });
   it("does not warn for a totals object that omits the flag but counts nothing missing", () => {
     expect(costWarning({}, [])).toBeNull();
@@ -260,7 +260,7 @@ describe("the notice shown instead of the table", () => {
       expect(n.tone).toBe("forbidden");
       expect(n.kind).toBe(status === 403 ? "forbidden" : "unauthorized");
       expect(n.message).toContain("لصاحب المتجر");
-      expect(n.message).toContain("لو صاحب المتجر سمح");
+      expect(n.message).toContain("إلا إذا سمح صاحب المتجر");
       expect(n.message).not.toContain("حاول مرة");
     }
   });

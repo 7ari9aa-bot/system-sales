@@ -97,7 +97,7 @@ export default function ReceiptTracking() {
   const error = summary.error || list.error;
 
   return (
-    <SectionCard title="متابعة الإيصالات" description="اللي قبلته مصلحة الضرائب واللي رفضته واللي مهلته بتخلص. للقراءة فقط.">
+    <SectionCard title="متابعة الإيصالات" description="ما قبلته مصلحة الضرائب وما رفضته وما أوشكت مهلته على الانتهاء. للقراءة فقط.">
       {error ? (
         <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-700" role="alert">{trackingErrorMessage(error)}</p>
       ) : summary.isLoading || list.isLoading ? (

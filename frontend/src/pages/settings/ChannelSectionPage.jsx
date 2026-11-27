@@ -33,11 +33,11 @@ export default function ChannelSectionPage({ page }) {
   const titles = {
     "settings.channels.dataSync.title": isAr ? "مزامنة البيانات" : "Data sync",
     "settings.channels.dataSync.desc": isAr
-      ? "إيه اللي بيوصل من كل قناة وامتى آخر حدث"
+      ? "ما الذي يصل من كل قناة ومتى آخر حدث"
       : "What arrives from each channel and when the last event came",
     "settings.channels.external.title": isAr ? "التكاملات الخارجية" : "External integrations",
     "settings.channels.external.desc": isAr
-      ? "الاتصالات اللي مش قنوات رسائل"
+      ? "الاتصالات التي ليست قنوات رسائل"
       : "The connections that are not messaging channels",
     "settings.channels.health.title": isAr ? "صحة الاتصال" : "Connection health",
     "settings.channels.health.desc": isAr

@@ -75,7 +75,7 @@ export default function SalesLogPage() {
     if (voidPending) return;
     const sessionId = working.data?.session?.id ?? working.data?.id ?? shiftId;
     if (!sessionId) {
-      setVoidError("مفيش وردية مفتوحة ترد منها الفلوس. افتح اليوم الأول.");
+      setVoidError("لا توجد وردية مفتوحة تُرد منها الأموال. افتح اليوم أولاً.");
       return;
     }
     setVoidPending(true);

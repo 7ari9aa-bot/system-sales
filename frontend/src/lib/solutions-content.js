@@ -73,7 +73,7 @@ export const SOLUTIONS = {
       { q: c('هل يربط FIHRIST المخزون بالطلبات؟', 'Does FIHRIST link inventory to orders?'), a: c('نعم. تُسجَّل الكمية المباعة مع الطلب، ويظهر ما بقي في المخزون.', 'Yes. The quantity sold is recorded with the order and the remaining stock is shown.') },
       { q: c('هل يدعم الباركود أو QR؟', 'Does it support barcodes or QR codes?'), a: c('يدعم رمز QR لتعريف الصنف وتسجيل البيع. تواصل معنا لمعرفة أنواع الرموز المدعومة في حالتك.', 'It supports QR codes to identify items and record sales. Contact us for the code types supported in your case.') },
       { q: c('هل يمكن تحديد صلاحيات للفريق؟', 'Can I set team permissions?'), a: c('نعم. يمكن ضبط ما يستطيع كل عضو رؤيته أو تنفيذه.', 'Yes. You can set what each member can see or do.') },
-      { q: c('هل أحتاج إلى برنامج منفصل للمخزون؟', 'Do I need separate inventory software?'), a: c('لا. المنتجات والطلبات والمخزون في نفس المنصة، فلا حاجة لنقل البيانات بينها.', 'No. Products, orders, and stock live on the same platform, so there is no data to move between tools.') },
+      { q: c('هل أحتاج إلى برنامج منفصل للمخزون؟', 'Do I need separate inventory software?'), a: c('لا. المنتجات والطلبات والمخزون في نفس المنصة، فلا داعي لنقل البيانات بينها.', 'No. Products, orders, and stock live on the same platform, so there is no data to move between tools.') },
     ],
   },
 

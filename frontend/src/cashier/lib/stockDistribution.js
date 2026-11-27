@@ -32,7 +32,7 @@ export function allocatedQuantity(row, warehouseId) {
  * (أو يساويه بالظبط)، وممنوع يزيد عنه.
  */
 export function allocationProblem(rows = [], warehouses = [], primaryId) {
-  if (!primaryId) return "اختر المخزن اللي هيستلم الرصيد الافتتاحي الأول";
+  if (!primaryId) return "اختر المخزن الذي سيستلم الرصيد الافتتاحي أولاً";
   const secondary = secondaryWarehouses(warehouses, primaryId);
   for (const row of rows) {
     const total = whole(row.stock);

@@ -14,7 +14,7 @@ import { useCoexistenceStatus } from "@/hooks/useCoexistenceStatus";
  */
 const WORDS = {
   ar: {
-    disconnected: "الرقم مش متوصل بفهرست دلوقتي",
+    disconnected: "الرقم غير موصول بفهرست الآن",
     reconnect: "اربط الرقم تاني",
     reason: "السبب من Meta",
     historyProgress: "بنجيب سجل المحادثات من تطبيق واتساب",
@@ -22,7 +22,7 @@ const WORDS = {
     saved: "رسالة اتجابت",
     deadline: "لازم تخلص قبل",
     notShared: "اخترت إنك ما تشاركش سجل المحادثات — التطبيق وفهرست شغالين عادي",
-    failed: "Meta وقفت مزامنة البيانات. اربط الرقم تاني للمحاولة",
+    failed: "أوقفت Meta مزامنة البيانات. اربط الرقم مرة أخرى للمحاولة",
   },
   en: {
     disconnected: "This number is not connected to FIHRIST right now",

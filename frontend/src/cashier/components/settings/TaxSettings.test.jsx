@@ -47,7 +47,7 @@ describe("the status panel", () => {
 describe("unsaved changes", () => {
   it("say plainly that the status above is the SAVED one, so a green panel never promises what is not saved", () => {
     expect(unsavedNote(3)).toContain("3");
-    expect(unsavedNote(3)).toContain("لسه ما اتحفظتش");
+    expect(unsavedNote(3)).toContain("لم يُحفظ بعد");
   });
 
   it("show nothing when there is nothing unsaved", () => {
@@ -56,7 +56,7 @@ describe("unsaved changes", () => {
 
   it("the panel shows that note when it is given one", () => {
     const h = renderToStaticMarkup(<StatusPanel status={readiness(GOOD)} enabled confirmed note={unsavedNote(2)} />);
-    expect(h).toContain("لسه ما اتحفظتش");
+    expect(h).toContain("لم يُحفظ بعد");
     expect(h).toContain('data-testid="tax-unsaved"');
   });
 

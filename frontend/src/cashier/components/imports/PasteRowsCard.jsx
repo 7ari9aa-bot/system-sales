@@ -44,7 +44,7 @@ export default function PasteRowsCard({ busy, error, onPaste }) {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee9e2] bg-[#faf9f7] px-3 py-2 text-[12px] text-[#6b6358]">
             <span>
               {preview.rows.length} سطر · {preview.productCount} منتج ·{" "}
-              {preview.problems.length ? `${preview.problems.length} مشكلة` : "مفيش مشاكل ظاهرة"}
+              {preview.problems.length ? `${preview.problems.length} مشكلة` : "لا توجد مشاكل ظاهرة"}
             </span>
             <span className="text-[#a9a29a]">الأعمدة المفهومة: {preview.columns.length}</span>
           </div>

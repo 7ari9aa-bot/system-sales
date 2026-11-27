@@ -14,8 +14,8 @@ const EMPTY = { supplierId: "", orderId: "", variantId: "", search: "", qty: "1"
 
 const SETTLEMENT_HINT = {
   credit: "بتتخصم من حساب المورد لما يوافق على المرتجع.",
-  cash: "المورد بيرد الفلوس نقدًا. بنسجّل المبلغ في السجل فقط، ومفيش حركة بتتعمل على أي درج.",
-  replace: "المورد بيبعت بضاعة بدالها. مفيش فلوس بتتحرك، والبضاعة الجديدة بتتسجل كفاتورة توريد.",
+  cash: "المورد يرد المال نقداً. نسجّل المبلغ في السجل فقط، ولا تحدث أي حركة على أي درج.",
+  replace: "المورد يرسل بضاعة بدلاً منها. لا يتحرك مال، وتُسجَّل البضاعة الجديدة كفاتورة توريد.",
 };
 
 // تسجيل مرتجع لمورد. البضاعة بتخرج من المخزن فورًا، والفلوس ما بتتحركش غير لما المورد يقبل.
@@ -56,7 +56,7 @@ export default function SupplierReturnDialog({ open, onOpenChange, suppliers, or
       return;
     }
     if (order && chosen?.max && qty > chosen.max) {
-      setLocalError(`اللي اتشترى على الفاتورة دي ${chosen.max} بس`);
+      setLocalError(`المشترى على هذه الفاتورة ${chosen.max} بس`);
       return;
     }
     setLocalError("");

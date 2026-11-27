@@ -162,7 +162,7 @@ export default function SuppliersPage() {
         pageSize={8}
         loading={isLoading}
         loadingLabel="جارٍ تحميل الموردين…"
-        emptyTitle={rows.length === 0 ? "لسه مفيش موردين" : "لا يوجد موردون مطابقون"}
+        emptyTitle={rows.length === 0 ? "لا يوجد موردون بعد" : "لا يوجد موردون مطابقون"}
         emptyDescription={rows.length === 0 ? "اضغط «إضافة مورد» لتسجيل أول مورد." : "جرّب تغيير المدينة أو الحالة أو كلمة البحث."}
         toolbar={
           <div className="num flex items-center gap-3 text-[12px] text-[#7A766C]">

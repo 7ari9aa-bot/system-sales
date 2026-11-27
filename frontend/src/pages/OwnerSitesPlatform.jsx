@@ -362,7 +362,7 @@ export default function OwnerSitesPlatform() {
         <SectionCard title={L("نظام المواقع غير مربوط", "Sites platform not connected")}>
           <p className="text-[13px] leading-6 text-muted-foreground">
             {L(
-              "القسم جاهز لكن مش متوصل بقاعدة بيانات منصة المواقع. أضف SITES_PLATFORM_SUPABASE_URL وSITES_PLATFORM_SERVICE_KEY في إعدادات الخادم (Northflank) وأعد التشغيل.",
+              "القسم جاهز لكنه غير موصول بقاعدة بيانات منصة المواقع. أضف SITES_PLATFORM_SUPABASE_URL وSITES_PLATFORM_SERVICE_KEY في إعدادات الخادم (Northflank) وأعد التشغيل.",
               "The section is installed but not connected to the sites platform database. Set SITES_PLATFORM_SUPABASE_URL and SITES_PLATFORM_SERVICE_KEY on the server (Northflank) and restart."
             )}
           </p>

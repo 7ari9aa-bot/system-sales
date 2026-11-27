@@ -24,7 +24,7 @@ export function receiptEmailProblem(err) {
  * the dialog shows `message` and decides the colour from `ok`.
  */
 export async function submitReceiptEmail(send, receiptId, email) {
-  if (!receiptId) return { ok: false, message: "الإيصال لسه ما اتسجلش. جرّب بعد ما يتحفظ." };
+  if (!receiptId) return { ok: false, message: "لم يُسجَّل الإيصال بعد. أعد المحاولة بعد حفظه." };
   if (!validReceiptEmail(email)) return { ok: false, message: "اكتب عنوان إيميل واحد صحيح." };
   try {
     await send(receiptId, String(email).trim());

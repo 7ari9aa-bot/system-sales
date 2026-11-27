@@ -119,7 +119,7 @@ export const POSTS_3 = {
         c('لا تبدأ بالخصم. الخصم في أول متابعة يعلّم العميل أن يتجاهلك ليحصل على سعر أقل.', 'Do not open with a discount. A discount on the first follow-up teaches the customer to ignore you in order to get a lower price.'),
       ] },
       { p: c(
-        'قارن: "عايز تكمل الطلب؟" تطلب قرارًا من عميل بلا تفاصيل كافية. أما "سألت عن الحقيبة السوداء، عندي منها مقاسان وأقدر أحجز لك واحدًا يومين، تحب أشوف المتوفر؟" فتعطيه خطوة صغيرة ومعلومة جديدة.',
+        'قارن: "هل تريد إكمال الطلب؟" تطلب قرارًا من عميل بلا تفاصيل كافية. أما "سألت عن الحقيبة السوداء، عندي منها مقاسان وأقدر أحجز لك واحدًا يومين، تحب أشوف المتوفر؟" فتعطيه خطوة صغيرة ومعلومة جديدة.',
         'Compare: "Are you completing the order?" asks for a decision from someone without enough details. "You asked about the black bag, it comes in two sizes and I can hold one for two days, want me to check what is available?" gives a small step and new information.',
       ) },
 
@@ -297,7 +297,7 @@ export const POSTS_3 = {
         'Do not record "blue shirt: 20". Record "blue shirt M", "blue shirt L", and "blue shirt XL" as separate units. The same rule applies to color, to any option with a different price, and to packaging sold in different sizes. The unit is not the product, it is the version the customer asks for by name.',
       ) },
       { p: c(
-        'الاختبار العملي: إن كان العميل قد يقول "عايز مقاس تاني" بعد أن تبيع له، فهذا سطر مختلف. وإن كان المقاس أو اللون يؤثر في السعر فالسبب يتضاعف، لأنك لا تخطئ في الكمية فقط بل في المبلغ أيضًا.',
+        'الاختبار العملي: إن كان العميل قد يقول "أريد مقاساً آخر" بعد أن تبيع له، فهذا سطر مختلف. وإن كان المقاس أو اللون يؤثر في السعر فالسبب يتضاعف، لأنك لا تخطئ في الكمية فقط بل في المبلغ أيضًا.',
         'The practical test: if the customer might say "I want another size" after you sell to them, that needs its own line. If the size or color changes the price the reason doubles, because you are wrong about the quantity and the money at once.',
       ) },
       { p: c(
@@ -416,10 +416,10 @@ export const POSTS_3 = {
         'A good apology carries three elements: quick acknowledgement of the situation, at least two options, and a date if there is one. An apology with no option leaves the customer to find a solution alone, and they usually find it at another store.',
       ) },
       { ul: [
-        c('اعتذار مع بديل: "المقاس اللي طلبته خلص فعليًا. عندي نفس اللون بمقاس قريب، وعندي لون تاني بنفس المقاس. تحب أرسل صور؟"', 'Apology with an alternative: "The size you asked for is actually gone. I have the same color in a close size, and another color in the same size. Want photos?"'),
+        c('اعتذار مع بديل: "المقاس الذي طلبته نفد فعلاً. لدي اللون نفسه بمقاس قريب، ولدي لون آخر بالمقاس نفسه. هل ترغب في أن أرسل الصور؟"', 'Apology with an alternative: "The size you asked for is actually gone. I have the same color in a close size, and another color in the same size. Want photos?"'),
         c('اعتذار مع موعد: "القطعة خلصت قبل طلبك بساعات. الشحنة الجديدة بتوصل يوم كذا، وأقدر أحجز لك واحدة منها بدون دفع. تحب؟"', 'Apology with a date: "The piece sold out hours before your order. The new shipment arrives on such a day, and I can hold one for you with no payment. Would you like that?"'),
-        c('اعتذار مع استرداد: "للأسف الطلب مش هيكمل، وده خطأ مني. أرجّع لك المبلغ كامل النهاردة، ولو حبيت بديل متوفر أقدر أجهزه فورًا."', 'Apology with a refund: "Unfortunately the order cannot be completed, and that is my mistake. I am returning the full amount today, and if you want an available alternative I can prepare it right away."'),
-        c('اعتذار بعد فوات وقت: "عرفت متأخر إن الصنف خلص، وآسف إني ما قلتلكش بدري. ده خياري لك دلوقتي، ولو مش مناسب أرجّع المبلغ فورًا."', 'Apology after a delay: "I learned late that the item was gone, and I am sorry I did not tell you earlier. Here are your options now, and if none fit I will refund immediately."'),
+        c('اعتذار مع استرداد: "للأسف لن يكتمل الطلب، وهذا خطأ مني. سأعيد إليك المبلغ كاملاً اليوم، وإن أردت بديلاً متوفراً أستطيع تجهيزه فوراً."', 'Apology with a refund: "Unfortunately the order cannot be completed, and that is my mistake. I am returning the full amount today, and if you want an available alternative I can prepare it right away."'),
+        c('اعتذار بعد فوات وقت: "علمت متأخراً أن الصنف نفد، وأعتذر أنني لم أخبرك مبكراً. هذا خياري لك الآن، وإن لم يناسبك أعيد المبلغ فوراً."', 'Apology after a delay: "I learned late that the item was gone, and I am sorry I did not tell you earlier. Here are your options now, and if none fit I will refund immediately."'),
       ] },
       { p: c(
         'لاحظ أن كل رسالة تعطي خطوة تالية واضحة، وأن أيًا منها لا يعد بشيء لا تملكه. الوعد بتاريخ غير مؤكد هو الطريقة الأسرع لتحويل اعتذار واحد إلى شكوى.',

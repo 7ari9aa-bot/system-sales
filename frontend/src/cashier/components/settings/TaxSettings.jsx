@@ -16,12 +16,12 @@ import { Field, useShopPolicy } from "./ShopPolicySettings";
 const PANEL = {
   running: { Icon: CheckCircle2, cls: "border-emerald-200 bg-emerald-50 text-emerald-800", title: "الإيصال الإلكتروني شغال", body: "كل بيع ومرتجع من الكاشير بيتحوّل لإيصال إلكتروني." },
   blocked: { Icon: AlertTriangle, cls: "border-amber-300 bg-amber-50 text-amber-900", title: "الإيصال الإلكتروني متفعّل لكنه واقف" },
-  off: { Icon: PauseCircle, cls: "border-border bg-muted/40 text-muted-foreground", title: "الإيصال الإلكتروني مقفول", body: "فعّله لما تكون جاهز. مفيش حاجة هتتبعت للمصلحة وهو مقفول." },
+  off: { Icon: PauseCircle, cls: "border-border bg-muted/40 text-muted-foreground", title: "الإيصال الإلكتروني مقفول", body: "فعّله عندما تكون جاهزاً. لن يُرسل شيء إلى المصلحة وهو مقفل." },
 };
 
 /** The line shown when the screen holds changes the server has not got yet. Null when there are none. */
 export function unsavedNote(count) {
-  return count > 0 ? `عندك ${count} تعديل لسه ما اتحفظتش. الحالة اللي فوق هي المحفوظة على السيرفر، احفظ عشان تتغيّر.` : null;
+  return count > 0 ? `عندك ${count} تعديل لم يُحفظ بعد. والحالة أعلاه هي المحفوظة على الخادم، فاحفظ ليتبدل.` : null;
 }
 
 /**

@@ -86,7 +86,7 @@ export function SettingField({ defn, value, onChange, isAr, source }) {
             value="••••••"
             className="w-[160px] text-muted-foreground"
             aria-label={isAr ? "قيمة محمية" : "Protected value"}
-            title={isAr ? "محتاج صلاحية قراءة القيم الحساسة" : "Needs the sensitive-read permission"}
+            title={isAr ? "يتطلب صلاحية قراءة القيم الحساسة" : "Needs the sensitive-read permission"}
           />
           <Badge tone="muted" className="shrink-0">
             <Lock className="mr-1 h-3 w-3" />

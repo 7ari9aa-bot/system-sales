@@ -145,7 +145,7 @@ describe("the error notice", () => {
       const n = sellThroughErrorNotice({ status: 403 }, kind);
       expect(n.tone).toBe("forbidden");
       expect(n.message).toMatch(/لصاحب المتجر/);
-      expect(n.message).toMatch(/لو صاحب المتجر سمح/);
+      expect(n.message).toMatch(/إلا إذا سمح صاحب المتجر/);
     }
   });
   it("offline and failed are different messages", () => {

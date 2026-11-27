@@ -18,7 +18,7 @@ export default function InstagramStoryPerformance({ stories = [], lang = "ar", c
         <h3 className="text-[15px] font-semibold">{isAr ? "أداء الستوري" : "Story performance"}</h3>
         <p className="mt-1 text-[13px] text-[#737373]">
           {isAr
-            ? "مفيش ستوري عندها أرقام لحد الآن. ميتا بتبعت أرقام الستوري بعد ما تخلص الـ24 ساعة."
+            ? "لا توجد ستوري لها أرقام حتى الآن. ميتا ترسل أرقام الستوري بعد انتهاء الـ24 ساعة."
             : "No story has numbers yet. Meta sends a story's metrics after its 24 hours end."}
         </p>
       </div>
@@ -41,7 +41,7 @@ export default function InstagramStoryPerformance({ stories = [], lang = "ar", c
               <div className="min-w-0">
                 <div className="text-[12.5px] text-[#737373]">{story.timeLabel || ""}</div>
                 {rows.length === 0 ? (
-                  <p className="text-[13px] text-[#737373]">{isAr ? "لسه موصلناش أرقامها" : "No numbers delivered yet"}</p>
+                  <p className="text-[13px] text-[#737373]">{isAr ? "لم تصلنا أرقامها بعد" : "No numbers delivered yet"}</p>
                 ) : (
                   <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                     {rows.map((row) => (

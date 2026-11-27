@@ -45,7 +45,7 @@ export function memoryErrorMessage(error, isAr = true) {
   const own = typeof error?.message === "string" ? error.message.trim() : "";
   if (own && error?.status >= 400 && error?.status < 500) return own;
   return isAr
-    ? "حصلت مشكلة. جرّب تاني بعد شوية."
+    ? "حدثت مشكلة. أعد المحاولة بعد قليل."
     : "Something went wrong. Try again in a moment.";
 }
 

@@ -88,7 +88,7 @@ describe("costGapWarning", () => {
     expect(w).toMatch(/ناقصة/);
   });
   it("a missing flag is not a promise: it still warns", () => {
-    expect(costGapWarning({ withoutCost: 0, costIsComplete: false })).toMatch(/ممكن تكون ناقصة/);
+    expect(costGapWarning({ withoutCost: 0, costIsComplete: false })).toMatch(/قد تكون ناقصة/);
     expect(costGapWarning({ withoutCost: 0 })).not.toBeNull();
   });
   it("a count of missing costs warns even if the flag says complete", () => {
@@ -110,7 +110,7 @@ describe("the header and the notice", () => {
     const n = deadStockErrorNotice({ status: 403 }, "forbidden");
     expect(n.tone).toBe("forbidden");
     expect(n.message).toMatch(/لصاحب المتجر/);
-    expect(n.message).toMatch(/لو صاحب المتجر سمح/);
+    expect(n.message).toMatch(/إلا إذا سمح صاحب المتجر/);
     expect(deadStockErrorNotice({ status: 401 }, "unauthorized").tone).toBe("forbidden");
   });
   it("offline and failed are different messages", () => {

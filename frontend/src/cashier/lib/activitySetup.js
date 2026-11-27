@@ -24,7 +24,7 @@ export const COMING_SOON = Object.freeze([
 
 const LABELS = Object.freeze({
   apparel: { label: "ملابس", hint: "مقاسات وألوان، وإعدادات جاهزة لمحل ملابس" },
-  general: { label: "نشاط عام", hint: "من غير إعدادات جاهزة، وتضبط كل حاجة بنفسك" },
+  general: { label: "نشاط عام", hint: "دون إعدادات جاهزة، وتضبط كل شيء بنفسك" },
 });
 
 /** The state the screen acts on. Anything but a clear "yes, ask" is "do not ask". */

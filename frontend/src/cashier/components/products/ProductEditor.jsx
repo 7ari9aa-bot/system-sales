@@ -58,7 +58,7 @@ export default function ProductEditor({ product }) {
       if (!isEdit) {
         const created = await create.mutateAsync({ name: values.name, description: values.description, categoryId: values.categoryId, brandId: values.brandId, season: values.season, material: values.material, threshold: values.threshold, variants: values.variants, warehouses: values.warehouses, warehouseId: values.warehouseId });
         const photosOk = await uploadPhotos(created?.product?.id, values.imageFiles);
-        if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — الموسم والفئة والماركة والخامة اتحفظوا للمنتج اللي بعده");
+        if (photosOk) toast.success("تم حفظ المنتج في النظام وهو متاح الآن في شاشة البيع — وحُفظ الموسم والفئة والماركة والخامة للمنتج التالي");
         // التوزيع على مخازن تانية بيتم بعد الحفظ؛ اللي فشل بيتقال بالاسم بدل ما يضيع في صمت.
         const split = created?.distribution;
         if (split?.planned?.length) {

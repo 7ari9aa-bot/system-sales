@@ -55,7 +55,7 @@ export default function SellThroughSection({ rows = [], totals = null }) {
       columns={columns}
       rows={list}
       totals={sellThroughTotalsRow(totals)}
-      footnote="النسبة = اللي اتباع ÷ (اللي اتباع + اللي فاضل)، والمبيعات بعد المرتجعات زي تقرير الربح."
+      footnote="النسبة = ما بيع ÷ (ما بيع + المتبقي)، والمبيعات بعد المرتجعات كما في تقرير الربح."
     />
   );
 }

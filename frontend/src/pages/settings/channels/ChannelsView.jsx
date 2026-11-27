@@ -82,7 +82,7 @@ export default function ChannelsView({ s }) {
         )}
         {unknownChannel && (
           <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-            {isAr ? "مفيش قناة بالاسم ده. ارجع لكل القنوات." : "No channel with that name. Go back to all channels."}
+            {isAr ? "لا توجد قناة بهذا الاسم. ارجع إلى كل القنوات." : "No channel with that name. Go back to all channels."}
           </div>
         )}
         {error && <div role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
@@ -202,7 +202,7 @@ export default function ChannelsView({ s }) {
                             data-testid="whatsapp-coexistence-note"
                           >
                             {isAr
-                              ? "اربط نفس الرقم اللي شغال على تطبيق WhatsApp Business — التطبيق هيفضل شغال على الموبايل والمحادثات هتظهر هنا كمان. الأجهزة المرتبطة (WhatsApp Web / Desktop) هتتفصل أثناء الربط وتقدر توصلها تاني، لكن WhatsApp for Windows و WearOS مش مدعومين في المسار ده. المجموعات والمكالمات والكتالوج مش بيوصلوا لفهرست — دي حدود واجهة Meta نفسها مش نقص في الربط."
+                              ? "اربط الرقم نفسه العامل على تطبيق WhatsApp Business — سيبقى التطبيق عاملاً على الهاتف وستظهر المحادثات هنا أيضاً. الأجهزة المرتبطة (WhatsApp Web / Desktop) ستُفصل أثناء الربط ويمكنك إعادة توصيلها، لكن WhatsApp for Windows و WearOS غير مدعومين في هذا المسار. المجموعات والمكالمات والكتالوج لا تصل إلى فهرست — وهذه حدود واجهة Meta نفسها لا نقص في الربط."
                               : "Connect the same number that runs the WhatsApp Business app. The app keeps working on the phone and the conversations appear here too. Companion devices (WhatsApp Web / Desktop) are unlinked during the link and can be re-linked afterwards, but WhatsApp for Windows and WearOS are not supported on this path. Groups, calls and the catalog do not reach FIHRIST: that is Meta's API, not a gap in the link."}
                           </p>
                         )}
