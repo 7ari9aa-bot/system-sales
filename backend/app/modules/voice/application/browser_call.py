@@ -11,14 +11,14 @@ What the caller said is captured by the loop itself: the gateway sends
 guide), and ``TranscriptBuffer`` keeps the pending question apart from a bounded
 history, so a delegation is answered with the words that were actually spoken.
 
-Honest gap, stated here rather than discovered later: a stream session has a
-tenant from its ticket but no resolved capability scopes yet. Permissions parity
-is a launch requirement, so the runner refuses out loud instead of faking a
-permission it was never given.
+Permissions are not a gap: the caller is resolved through ``build_tenant_context``
+— the same membership, lifecycle, role-permission and RLS code every HTTP request
+uses — so a spoken turn is governed exactly like a typed one.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 
 from app.modules.voice.application.client_delegation import ClientDelegationService
@@ -28,9 +28,13 @@ from app.modules.voice.runtime.gpt_live_transport import transport_factory
 
 AudioSender = Callable[[bytes], Awaitable[None]]
 
+#: The path a streamed turn is evaluated under. It is not a recovery path, so a
+#: suspended shop cannot keep talking through an already-open socket.
+STREAM_PATH = "/api/v1/voice/sessions/stream"
+
 
 async def build_browser_call(
-    *, session_id, tenant_id, send_audio: AudioSender, config: dict | None = None
+    *, session_id, tenant_id, user_id, send_audio: AudioSender, config: dict | None = None
 ) -> LiveCallLoop:
     """Open the gateway session and return a loop already started on it."""
     live_config = GptLiveConfig.from_settings()
@@ -38,7 +42,7 @@ async def build_browser_call(
         raise GptLiveUnavailable("no gateway key is configured for voice")
 
     provider = GptLiveProvider(live_config, transport_factory=transport_factory)
-    delegations = ClientDelegationService(provider, _turn_runner(session_id, tenant_id))
+    delegations = ClientDelegationService(provider, _turn_runner(session_id, tenant_id, user_id))
     loop = LiveCallLoop(
         provider,
         delegations,
@@ -48,20 +52,41 @@ async def build_browser_call(
     return loop
 
 
-def _turn_runner(session_id, tenant_id):
+def _turn_runner(session_id, tenant_id, user_id):
     """Answer a delegation with the same assistant turn the text route runs.
 
-    The turn itself is ``run_voice_turn`` — the same function the text path
-    reaches through ``AssistantTurnService``. What is missing is not the brain but
-    the AUTHORITY: a stream session has a tenant from its ticket, and a tenant is
-    not a permission. Resolving the caller's capability scopes for a websocket is
-    the remaining piece (permissions parity is a launch requirement, so it is not
-    being faked here), and until it exists this runner refuses out loud: the
-    delegation is answered with the failure note instead of a made-up reply.
+    The caller was resolved once, over HTTP, when the ticket was minted; here that
+    identity is resolved AGAIN through ``build_tenant_context`` — the same
+    membership, lifecycle, role-permission and RLS code the rest of the API uses —
+    so a spoken turn is governed by the same rules as a typed one and not by a
+    second, weaker copy of them. A user who lost access between the ticket and the
+    answer is refused by that same gate.
     """
 
     async def run(transcript: str, idempotency_key: str) -> str:
-        raise GptLiveUnavailable("a stream session has no resolved capability scopes yet")
+        if not (transcript or "").strip():
+            return ""
+        from app.core.db import get_sessionmaker
+        from app.modules.identity.deps import build_tenant_context_for_user
+        from app.modules.voice.application.assistant_turn import run_voice_turn
+
+        tenant_uuid = uuid.UUID(str(tenant_id))
+        async with get_sessionmaker()() as session:
+            ctx = await build_tenant_context_for_user(
+                session,
+                user_id=uuid.UUID(str(user_id)),
+                tenant_id=tenant_uuid,
+                path=STREAM_PATH,
+            )
+            result = await run_voice_turn(
+                session,
+                ctx,
+                session_id=session_id,
+                text=transcript,
+                idempotency_key=idempotency_key,
+            )
+            await session.commit()
+            return str(result.content or "")
 
     return run
 

@@ -29,6 +29,10 @@ from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.application.transport import VoiceTransportService
 from app.modules.voice.domain.personas import PrincipalType
 from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.modules.voice.infrastructure.stream_grants import (
+    StreamGrantMissing,
+    StreamGrantStore,
+)
 from app.modules.voice.runtime.gpt_live import GptLiveProtocolError, GptLiveUnavailable
 from app.modules.voice.runtime.livekit import MediaPlaneUnavailable
 from app.modules.voice.runtime.stream_ticket import (
@@ -201,6 +205,10 @@ def _call_factory():
     return build_browser_call
 
 
+def _grant_store() -> StreamGrantStore:
+    return StreamGrantStore.from_settings()
+
+
 @router.post("/sessions/{session_id}/stream-ticket", response_model=StreamTicketResponse)
 async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTicketResponse:
     """Mint the one-minute ticket a browser presents on the audio websocket.
@@ -215,8 +223,13 @@ async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTick
         issuer = _stream_issuer()
     except StreamTicketUnavailable as exc:
         raise StorageUnavailableError("voice streaming is not configured") from exc
+    # Who the caller is is resolved HERE, once, by the same gate every other
+    # endpoint uses; the socket redeems that resolution instead of repeating it.
+    jti = await _grant_store().grant(
+        session_id=record.id, tenant_id=record.tenant_id, user_id=ctx.user.id
+    )
     return StreamTicketResponse(
-        ticket=issuer.issue(session_id=record.id, tenant_id=record.tenant_id),
+        ticket=issuer.issue(session_id=record.id, tenant_id=record.tenant_id, jti=jti),
         expires_in=issuer.ttl_seconds,
         path=f"/api/v1/voice/sessions/{record.id}/stream",
     )
@@ -243,14 +256,20 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
     await websocket.accept()
     try:
         claims = _stream_issuer().verify(ticket, session_id=session_id)
-    except (StreamTicketInvalid, StreamTicketUnavailable):
+        grant = await _grant_store().take(claims.jti)
+    except (StreamTicketInvalid, StreamTicketUnavailable, StreamGrantMissing):
+        await websocket.close(code=1008)
+        return
+    if grant.session_id != str(session_id) or grant.tenant_id != claims.tenant_id:
+        # The ticket and the grant must name the same call and the same shop.
         await websocket.close(code=1008)
         return
 
     try:
         call = await _call_factory()(
             session_id=session_id,
-            tenant_id=claims.tenant_id,
+            tenant_id=grant.tenant_id,
+            user_id=grant.user_id,
             send_audio=websocket.send_bytes,
         )
     except (GptLiveUnavailable, MediaPlaneUnavailable):

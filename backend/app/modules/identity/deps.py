@@ -347,6 +347,35 @@ async def get_tenant_ctx(
         except ValueError as exc:
             raise PermissionDeniedError("invalid location header") from exc
 
+    return await build_tenant_context(
+        session,
+        user,
+        tenant_id=tenant_id,
+        path=request.url.path,
+        workspace_id=workspace_hdr,
+        location_id=location_hdr,
+    )
+
+
+async def build_tenant_context(
+    session: AsyncSession,
+    user: AuthedUser,
+    *,
+    tenant_id: uuid.UUID,
+    path: str = "",
+    workspace_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = None,
+) -> TenantContext:
+    """Resolve one tenant context for one user, from any carrier.
+
+    This is the whole of "who is calling and what may they do" — membership, the
+    lifecycle gate, the role's permissions, the currency, the RLS binding and the
+    hierarchy scope. ``get_tenant_ctx`` adds HTTP header parsing on top of it; a
+    websocket adds a verified ticket. Both end up HERE, so a spoken turn cannot be
+    governed by a second, weaker copy of these rules.
+    """
+    workspace_hdr = workspace_id
+    location_hdr = location_id
     # Bind the user GUC first: the tenant_users self-access policy requires
     # it before any membership row is visible (pre-tenant-context stage).
     await session.execute(
@@ -381,7 +410,7 @@ async def get_tenant_ctx(
     if tenant_row is None:
         raise PermissionDeniedError("tenant not found")
     lifecycle_state, tenant_currency = tenant_row
-    if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(request.url.path):
+    if not tenant_may_use_api(lifecycle_state) and not _tenant_recovery_path(path):
         raise PermissionDeniedError(
             f"workspace is {lifecycle_state} — only sign-in, billing, export "
             "and notifications are available"
@@ -434,6 +463,26 @@ async def get_tenant_ctx(
         workspace_id=scope_workspace_id,
         location_id=scope_location_id,
     )
+
+
+async def build_tenant_context_for_user(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    path: str = "",
+) -> TenantContext:
+    """The same context, for a carrier that has no HTTP request (a websocket).
+
+    Identity owns its own tables: a caller that has a user id and a tenant id asks
+    HERE rather than importing ``User`` and rebuilding the rules, so a spoken turn
+    and a typed one cannot drift apart.
+    """
+    user_row = await session.get(User, user_id)
+    if user_row is None or not user_row.is_active:
+        raise PermissionDeniedError("this caller is no longer active")
+    caller = AuthedUser(id=user_row.id, tenant_id=tenant_id, is_active=True)
+    return await build_tenant_context(session, caller, tenant_id=tenant_id, path=path)
 
 
 TenantCtxDep = Annotated[TenantContext, Depends(get_tenant_ctx)]

@@ -46,6 +46,7 @@ class StreamTicketClaims:
     session_id: str
     tenant_id: str
     expires_at: int
+    jti: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +67,7 @@ class StreamTicketIssuer:
         settings = get_settings()
         return cls(secret=(getattr(settings, "jwt_secret", "") or "").strip())
 
-    def issue(self, *, session_id, tenant_id, now: dt.datetime | None = None) -> str:
+    def issue(self, *, session_id, tenant_id, jti: str = "", now: dt.datetime | None = None) -> str:
         issued = now or dt.datetime.now(dt.UTC)
         expires = int(issued.timestamp()) + self.ttl_seconds
         header = {"alg": "HS256", "typ": "JWT"}
@@ -76,6 +77,7 @@ class StreamTicketIssuer:
             "tenant": str(tenant_id),
             "nbf": int(issued.timestamp()),
             "exp": expires,
+            "jti": jti,
         }
         signing_input = f"{_b64(json.dumps(header, separators=(',', ':')).encode())}." + _b64(
             json.dumps(payload, separators=(",", ":")).encode()
@@ -116,4 +118,5 @@ class StreamTicketIssuer:
             session_id=str(payload["sub"]),
             tenant_id=str(payload.get("tenant") or ""),
             expires_at=expires,
+            jti=str(payload.get("jti") or ""),
         )

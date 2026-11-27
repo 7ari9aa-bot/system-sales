@@ -356,11 +356,16 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # the thread a voice session belongs to. Both edges point voice -> ai, which is the direction the
 # architecture asks for, and neither reaches ai internals: they use chat.service and the message
 # model, the same surfaces the text route uses. Recorded as a deliberate ratchet step.
+# 344 -> 345 (2026-11-27): voice/application/browser_call imports identity.deps for
+# build_tenant_context_for_user — a streamed turn is resolved by the SAME membership,
+# lifecycle, role-permission and RLS code an HTTP request uses, instead of a second
+# weaker copy. It deliberately does NOT import identity.models: the caller lookup was
+# pushed into identity so voice never touches another module's tables.
 # 341 -> 344: voice/application/assistant_turn is the spoken turn: it imports ai.assistant.contracts
 # and ai.assistant.service to hand the turn to the ONE runtime, and ai.chat.service to write the
 # transcript into the conversation. Three edges, all voice -> ai, and all pointing at the same
 # public surfaces the text route already uses — the direction the architecture requires.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 344
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 345
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
