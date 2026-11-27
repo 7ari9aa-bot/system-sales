@@ -41,9 +41,10 @@ def test_metadata_exposes_the_voice_tables_so_provision_guards_them() -> None:
 
 def test_the_migration_forces_rls_with_exactly_the_canonical_policy() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
+    # The migration loops over _TABLES, so the guard is proven by the template plus the table
+    # list rather than by four literal statements per table.
     for table in ("voice_sessions", "voice_turns"):
-        # The migration loops over _TABLES, so the guard is proven by the template plus the
-        # table list rather than by four literal statements per table.
+        assert table in source
         assert "ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in source
         assert "ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in source
         assert "CREATE POLICY tenant_isolation ON {table} " in source

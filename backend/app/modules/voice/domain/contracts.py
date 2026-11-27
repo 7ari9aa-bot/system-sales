@@ -80,17 +80,20 @@ class Fact:
     timezone: str
     as_of: dt.datetime
     scope: str
+    unit: str = "money"
     completeness: Completeness = Completeness.COMPLETE
     limitations: tuple[str, ...] = ()
     evidence: tuple[Evidence, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.value is not None and not self.currency:
+        if self.value is not None and self.unit == "money" and not self.currency:
             raise ContractViolation(
                 f"{self.metric} has a value but no currency; an amount without a currency is a "
                 "number, not money"
             )
+        if self.value is not None and self.unit != "money" and self.currency:
+            raise ContractViolation(f"{self.metric} is a {self.unit} and must not carry a currency")
         if self.value is None and self.completeness is Completeness.COMPLETE:
             raise ContractViolation(
                 f"{self.metric} has no value and claims complete data; say why it is missing "
@@ -109,6 +112,7 @@ class Fact:
             "metric": self.metric,
             "value": None if self.value is None else str(self.value),
             "currency": self.currency,
+            "unit": self.unit,
             "period": None if self.period is None else self.period.as_dict(),
             **self.extra,
         }

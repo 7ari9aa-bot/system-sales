@@ -18,7 +18,6 @@ from app.modules.voice.application.session_manager import (
     VoiceSessionManager,
 )
 from app.modules.voice.routers import sessions as api
-from app.modules.voice.security.capabilities import ChannelType
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
