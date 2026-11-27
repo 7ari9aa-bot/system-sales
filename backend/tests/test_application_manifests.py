@@ -76,3 +76,28 @@ def test_industry_filter_keeps_every_app_sold_to_every_industry() -> None:
     """Apparel is the only sector in production, and every app ships for it."""
     apparel = applications_for_industry("apparel")
     assert {m.key for m in apparel} == {m.key for m in all_manifests()}
+
+
+def test_every_route_group_belongs_to_an_application() -> None:
+    """A new commercial group must not appear without deciding what sells it."""
+    from app.core.route_map.registry import GROUPS
+    from app.modules.applications.routing import GROUP_APPLICATIONS
+
+    missing = sorted(set(GROUPS) - set(GROUP_APPLICATIONS))
+    assert not missing, f"route groups with no application: {missing}"
+    stale = sorted(set(GROUP_APPLICATIONS) - set(GROUPS))
+    assert not stale, f"application map names groups that no longer exist: {stale}"
+
+
+def test_every_mapped_application_exists_in_the_registry() -> None:
+    from app.modules.applications.routing import GROUP_APPLICATIONS
+
+    unknown = sorted({app for app in GROUP_APPLICATIONS.values() if app not in REGISTRY})
+    assert not unknown, f"groups mapped to applications that do not exist: {unknown}"
+
+
+def test_an_undecided_group_raises_instead_of_defaulting_to_open() -> None:
+    from app.modules.applications.routing import application_for_group
+
+    with pytest.raises(KeyError, match="belongs to no application"):
+        application_for_group("not-a-real-group")
