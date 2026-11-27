@@ -94,6 +94,7 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     "app.modules.voice.application.merchant_intelligence": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.omnichannel": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.turn_orchestrator": _VOICE_UNWIRED_WHY,
+    "app.modules.voice.application.transcript_sync": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.voice_profile": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.calls": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.channels": _VOICE_UNWIRED_WHY,
