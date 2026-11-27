@@ -208,6 +208,7 @@ class ToolGateway:
         tool_name: str,
         *,
         tenant_id: uuid.UUID | None = None,
+        subject_id: uuid.UUID | None = None,
         now: dt.datetime | None = None,
     ) -> VoiceTool:
         """Return the tool when this session may run it; raise otherwise.
@@ -236,6 +237,12 @@ class ToolGateway:
             raise PermissionDeniedError(f"{persona.type.value} may not cause {tool.effect.value}")
         if not capability.covers(tool):
             raise PermissionDeniedError(f"{persona.type.value} session does not hold {tool.scope}")
+        # A customer-scoped tool names whose data it reads. Holding customer.own_orders is a
+        # permission to read MY orders, not a permission to name someone else's id (invariant 6).
+        if tool.scope.startswith("customer.own_") and subject_id != capability.principal_id:
+            raise PermissionDeniedError(
+                f"{tool_name} may only read the verified customer's own data"
+            )
         return tool
 
     def authorized_tools(self, capability: SessionCapability) -> tuple[str, ...]:
