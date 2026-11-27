@@ -8,7 +8,7 @@
  */
 import * as THREE from "three";
 
-import { cameraRig } from "./looks";
+import { approach, cameraRig } from "./looks";
 
 const VERT = /* glsl */ `
   uniform float uTime;
@@ -227,7 +227,10 @@ export function createOrbScene({ canvas, width, height, reducedMotion = false })
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, width / Math.max(1, height), 0.1, 100);
-  camera.position.set(0, 0, 3.4);
+  // الكاميرا فوق مركز المشهد وبتطّلع لتحت شوية: كده الأرضية الشبكية والنجوم
+  // والحلقات كلهم داخل الكادر، والصفحة كلها بتبقى عالم مش خلفية حوالين كرة.
+  camera.position.set(0, 0.62, 5.6);
+  camera.lookAt(0, -0.22, 0);
 
   const uniforms = {
     uTime: { value: 0 },
@@ -322,6 +325,9 @@ export function createOrbScene({ canvas, width, height, reducedMotion = false })
     scale: 1,
     glow: 0.35,
     pointer: { x: 0, y: 0 },
+    // السحب: الهدف بيتحرك مع الماوس، والكاميرا بتلحقه بتدرّج، وبيترجع لصفر لما تسيب.
+    drag: { x: 0, y: 0 },
+    dragTarget: { x: 0, y: 0 },
     disposed: false,
   };
 
@@ -334,6 +340,17 @@ export function createOrbScene({ canvas, width, height, reducedMotion = false })
       if (Number.isFinite(spin)) state.spin = spin;
       if (Number.isFinite(scale)) state.scale = scale;
       if (Number.isFinite(glowValue)) state.glow = glowValue;
+    },
+
+    /** السحب بيلف الكاميرا حوالين المشهد. مقيّد ±1 وبيترجع لصفر لما تسيب الماوس. */
+    setDrag(x, y) {
+      state.dragTarget.x = Math.max(-1, Math.min(1, Number.isFinite(x) ? x : 0));
+      state.dragTarget.y = Math.max(-1, Math.min(1, Number.isFinite(y) ? y : 0));
+    },
+
+    releaseDrag() {
+      state.dragTarget.x = 0;
+      state.dragTarget.y = 0;
     },
 
     setPointer(x, y) {
@@ -359,6 +376,12 @@ export function createOrbScene({ canvas, width, height, reducedMotion = false })
       uniforms.uColor.value.lerp(hsl(state.hue), 0.06);
       uniforms.uCore.value.lerp(coreColor(state.hue), 0.06);
 
+      const tiltX = state.pointer.y * 0.22 + state.drag.y * 0.5;
+      const tiltY = state.pointer.x * 0.35 + state.drag.x * 1.1;
+      orb.rotation.x = approach(orb.rotation.x, tiltX, 0.08);
+      orb.rotation.y = approach(orb.rotation.y, tiltY + state.time * 0.05, 0.08);
+      shell.rotation.x = approach(shell.rotation.x, -tiltX * 0.6, 0.06);
+      shell.rotation.y = approach(shell.rotation.y, -tiltY * 0.4, 0.06);
       const targetScale = state.scale + uniforms.uEnergy.value * 0.06;
       orb.scale.setScalar(orb.scale.x + (targetScale - orb.scale.x) * 0.1);
 
@@ -380,7 +403,16 @@ export function createOrbScene({ canvas, width, height, reducedMotion = false })
       glowUniforms.uOpacity.value += (state.glow * 0.55 - glowUniforms.uOpacity.value) * 0.08;
 
       // الصفحة كلها 3D: الكاميرا نفسها بتتحرك مع المؤشر، وبالطاقة لما الصوت يعلى.
-      const rig = cameraRig({ pointerX: state.pointer.x, pointerY: state.pointer.y, energy: uniforms.uEnergy.value, time: state.time });
+      state.drag.x = approach(state.drag.x, state.dragTarget.x, 0.12);
+      state.drag.y = approach(state.drag.y, state.dragTarget.y, 0.12);
+      const rig = cameraRig({
+        pointerX: state.pointer.x,
+        pointerY: state.pointer.y,
+        energy: uniforms.uEnergy.value,
+        time: state.time,
+        dragX: state.drag.x,
+        dragY: state.drag.y,
+      });
       camera.position.x += (rig.x - camera.position.x) * 0.06;
       camera.position.y += (rig.y - camera.position.y) * 0.06;
       camera.position.z += (rig.z - camera.position.z) * 0.06;

@@ -5,13 +5,14 @@
  */
 import React from "react";
 
-import VoiceOrb from "./orb/VoiceOrb";
+import VoiceOrb, { prefersReducedMotion } from "./orb/VoiceOrb";
 
 const RING = "voice-ring";
 const BLOB = "voice-blob";
 
 function useElapsed(active) {
   const [seconds, setSeconds] = React.useState(0);
+  const layerRef = React.useRef(null);
   React.useEffect(() => {
     if (!active) {
       setSeconds(0);
@@ -75,8 +76,23 @@ export default function VoiceScreen({
   labels = {},
   meter = null,
 }) {
+  const layerRef = React.useRef(null);
   const elapsed = useElapsed(open && state === "live");
   const view = screenView({ state, message, labels });
+
+  // طبقة النص نفسها بتتحرك بعمق مع الماوس (parallax)، فاللي بيتحرك هو الشاشة كلها.
+  React.useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return undefined;
+    if (prefersReducedMotion()) return undefined;
+    const onMove = (event) => {
+      const x = (event.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+      const y = (event.clientY / Math.max(1, window.innerHeight)) * 2 - 1;
+      layer.style.transform = `perspective(900px) rotateY(${x * 3}deg) rotateX(${-y * 2}deg) translate3d(${x * -10}px, ${y * -6}px, 0)`;
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -122,7 +138,10 @@ export default function VoiceScreen({
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/70"
       />
 
-      <div className="relative flex h-full w-full flex-col items-center justify-end gap-7 px-6 pb-8 pt-16">
+      <div
+        ref={layerRef}
+        className="voice-layer relative flex h-full w-full flex-col items-center justify-end gap-7 px-6 pb-8 pt-16"
+      >
         <div className="mt-auto text-center">
           <p
             data-testid="voice-screen-state"

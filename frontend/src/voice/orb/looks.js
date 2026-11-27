@@ -69,22 +69,42 @@ export function clamp01(value) {
   return Math.min(1, Math.max(0, n));
 }
 
+/** تقييد رقم بين -1 و1، وأي قيمة غلط بتبقى صفر بدل ما تكسر المشهد. */
+export function clampSigned(value) {
+  const n = Number.isFinite(value) ? value : 0;
+  return Math.max(-1, Math.min(1, n));
+}
+
+/** سحب الماوس بيلف المشهد: بنحوّل حركة البكسل لزاوية مقيّدة، والسحب بيتراكم
+ *  عشان لفة كاملة بالماوس تعني لفة كاملة بالكاميرا. */
+export function dragDelta({ dx = 0, dy = 0, width = 1, height = 1, current = { x: 0, y: 0 } } = {}) {
+  const stepX = Number.isFinite(dx) ? (dx / Math.max(1, width)) * 2.6 : 0;
+  const stepY = Number.isFinite(dy) ? (dy / Math.max(1, height)) * 2.6 : 0;
+  return {
+    x: clampSigned((current?.x ?? 0) + stepX),
+    y: clampSigned((current?.y ?? 0) + stepY),
+  };
+}
+
 /** موضع الكاميرا: الصفحة كلها بتتحرك، مش الكرة بس.
  *
- *  المؤشر بيدوّر الكاميرا حوالين المشهد شوية (parallax)، والصوت بيقرّبها. الأرقام مقيّدة
- *  عشان مايحصلش دوران كامل ولا زووم يوصل جوه الكرة.
+ *  المؤشر بيلف الكاميرا حوالين المشهد، والسحب بيلفها أكتر، والصوت بيقرّبها. الكاميرا
+ *  قاعدة فوق مركز المشهد شوية وبتطّلع لتحت، فالنجوم والحلقات والأرضية كلهم داخل الكادر —
+ *  الشاشة كلها بقيت عالم 3D مش خلفية سوداء حوالين كرة.
  */
-export function cameraRig({ pointerX = 0, pointerY = 0, energy = 0, time = 0 } = {}) {
-  const px = Math.max(-1, Math.min(1, Number.isFinite(pointerX) ? pointerX : 0));
-  const py = Math.max(-1, Math.min(1, Number.isFinite(pointerY) ? pointerY : 0));
+export function cameraRig({ pointerX = 0, pointerY = 0, energy = 0, time = 0, dragX = 0, dragY = 0 } = {}) {
+  const px = clampSigned(pointerX);
+  const py = clampSigned(pointerY);
+  const dx = clampSigned(dragX);
+  const dy = clampSigned(dragY);
   const e = clamp01(energy);
   const t = Number.isFinite(time) ? time : 0;
   // تنفّس بطيء في السكون: الكاميرا بتتحرك حتى من غير صوت، بس بمسافة صغيرة جداً.
   const drift = Math.sin(t * 0.25) * 0.06;
   return {
-    x: px * 0.42 + drift,
-    y: py * 0.28 + Math.cos(t * 0.19) * 0.04,
-    z: 3.4 - e * 0.32,
-    lookY: py * -0.06,
+    x: px * 0.9 + dx * 1.5 + drift,
+    y: 0.62 + py * 0.4 + dy * 0.8 + Math.cos(t * 0.19) * 0.05,
+    z: 5.6 - e * 0.7 - Math.abs(dx) * 0.35,
+    lookY: -0.22 + py * 0.2 - dy * 0.35,
   };
 }

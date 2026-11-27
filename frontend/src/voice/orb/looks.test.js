@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { approach, cameraRig, clamp01, orbLook, orbMode } from "./looks";
+import { approach, cameraRig, clamp01, clampSigned, dragDelta, orbLook, orbMode } from "./looks";
 import { createLevelMeter, float32Level, pcm16Level } from "./levels";
 
 function pcm16(samples) {
@@ -144,9 +144,43 @@ describe("cameraRig", () => {
 
   it("clamps wild pointers instead of flying out of the scene", () => {
     const wild = cameraRig({ pointerX: 40, pointerY: -40, energy: 5 });
-    expect(wild.x).toBeLessThanOrEqual(0.5);
-    expect(wild.y).toBeGreaterThanOrEqual(-0.4);
+    expect(wild.x).toBeLessThanOrEqual(1.6);
+    expect(wild.y).toBeGreaterThan(-2);
     const broken = cameraRig({ pointerX: Number.NaN, pointerY: undefined, energy: Number.NaN });
     for (const key of ["x", "y", "z", "lookY"]) expect(Number.isFinite(broken[key])).toBe(true);
+  });
+});
+
+describe("the page itself turns with the mouse", () => {
+  it("dragging moves the camera far enough to feel like a 3D space", () => {
+    const still = cameraRig({ dragX: 0, dragY: 0 });
+    const dragged = cameraRig({ dragX: 1, dragY: 1 });
+    expect(dragged.x - still.x).toBeGreaterThan(1);
+    expect(dragged.y - still.y).toBeGreaterThan(0.6);
+    // وبيقرّب شوية مع اللفة عشان الإحساس بالعمق
+    expect(dragged.z).toBeLessThan(still.z);
+  });
+
+  it("the camera sits above the scene and looks down, so the floor and stars are in frame", () => {
+    const rig = cameraRig({});
+    expect(rig.y).toBeGreaterThan(0.3);
+    expect(rig.lookY).toBeLessThan(0);
+  });
+
+  it("a full drag across the screen is one full turn, and it never spins past the limit", () => {
+    let drag = { x: 0, y: 0 };
+    drag = dragDelta({ dx: 300, dy: 0, width: 1000, height: 800, current: drag });
+    expect(drag.x).toBeGreaterThan(0.5);
+    expect(drag.x).toBeLessThan(1);
+    drag = dragDelta({ dx: 9000, dy: 0, width: 1000, height: 800, current: drag });
+    expect(drag.x).toBe(1);
+  });
+
+  it("dragDelta survives broken input instead of producing NaN angles", () => {
+    const out = dragDelta({ dx: Number.NaN, dy: undefined, width: 0, height: 0, current: null });
+    expect(Number.isFinite(out.x)).toBe(true);
+    expect(Number.isFinite(out.y)).toBe(true);
+    expect(clampSigned(-9)).toBe(-1);
+    expect(clampSigned(9)).toBe(1);
   });
 });

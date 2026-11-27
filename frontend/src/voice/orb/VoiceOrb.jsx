@@ -7,7 +7,7 @@
  *  كاعتماد في useEffect — وإلا كان كل تغيير حالة هيدمّر المشهد ويبنيه من أول وجديد.
  */
 import React from "react";
-import { orbLook } from "./looks";
+import { dragDelta, orbLook } from "./looks";
 
 /** هل المتصفح يقدر يرسم WebGL فعلاً؟ في jsdom (الاختبارات) الجواب لا، فبنقع على بديل CSS. */
 export function supportsWebgl(doc = typeof document !== "undefined" ? document : undefined) {
@@ -114,18 +114,50 @@ export default function VoiceOrb({ state = "idle", meter = null, className = "",
           const box = host.getBoundingClientRect();
           scene?.resize(box.width || 320, box.height || 320);
         };
+        // الماوس بيأثر على المشهد من أي مكان في الصفحة، مش على الكانفس بس:
+        // التحريك بيلف الكاميرا (parallax)، والسحب بيلفها أكتر ويفضل ماسك لفة لحد ما تسيب.
+        let dragging = false;
+        let anchor = { x: 0, y: 0 };
+        let drag = { x: 0, y: 0 };
+
         const onPointer = (event) => {
           const box = host.getBoundingClientRect();
           scene?.setPointer(
             ((event.clientX - box.left) / Math.max(1, box.width)) * 2 - 1,
             ((event.clientY - box.top) / Math.max(1, box.height)) * 2 - 1
           );
+          if (!dragging) return;
+          drag = dragDelta({
+            dx: event.clientX - anchor.x,
+            dy: event.clientY - anchor.y,
+            width: box.width,
+            height: box.height,
+            current: drag,
+          });
+          anchor = { x: event.clientX, y: event.clientY };
+          scene?.setDrag(drag.x, drag.y);
         };
+        const onDown = (event) => {
+          dragging = true;
+          anchor = { x: event.clientX, y: event.clientY };
+        };
+        const onUp = () => {
+          dragging = false;
+          drag = { x: 0, y: 0 };
+          scene?.releaseDrag();
+        };
+
         window.addEventListener("resize", onResize);
-        host.addEventListener("pointermove", onPointer);
+        window.addEventListener("pointermove", onPointer);
+        window.addEventListener("pointerdown", onDown);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
         detach = () => {
           window.removeEventListener("resize", onResize);
-          host.removeEventListener("pointermove", onPointer);
+          window.removeEventListener("pointermove", onPointer);
+          window.removeEventListener("pointerdown", onDown);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
         };
       })
       .catch(() => {
