@@ -86,9 +86,7 @@ async def inspect_app_role_bypass_rls(session: AsyncSession) -> str | None:
 #: ``invitations_accept_read`` was absent from production while alembic still
 #: reported its migration applied, and every invitation accept answered 404 —
 #: a user-facing break that no log line mentioned.
-REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = (
-    ("invitations", "invitations_accept_read"),
-)
+REQUIRED_NAMED_POLICIES: tuple[tuple[str, str], ...] = (("invitations", "invitations_accept_read"),)
 
 
 async def inspect_tenant_rls_invariants(

@@ -24,8 +24,7 @@ def test_the_invitation_accept_policy_is_a_required_invariant() -> None:
 
 def test_a_migration_recreates_every_required_named_policy() -> None:
     sources = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (_BACKEND / "migrations/versions").glob("*.py")
+        path.read_text(encoding="utf-8") for path in (_BACKEND / "migrations/versions").glob("*.py")
     )
     for table, policy in REQUIRED_NAMED_POLICIES:
         assert f"CREATE POLICY {policy} ON {table}" in sources, (
@@ -35,7 +34,7 @@ def test_a_migration_recreates_every_required_named_policy() -> None:
 
 
 def test_the_recovery_migration_is_idempotent() -> None:
-    recovery = (_BACKEND / "migrations/versions/fe2026112609_reassert_invitation_accept_policy.py")
+    recovery = _BACKEND / "migrations/versions/fe2026112609_reassert_invitation_accept_policy.py"
     source = recovery.read_text(encoding="utf-8")
     assert "DROP POLICY IF EXISTS invitations_accept_read" in source
     assert "CREATE POLICY invitations_accept_read" in source
