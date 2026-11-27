@@ -20,7 +20,7 @@ import {
   voiceErrorKey,
 } from "./voiceInput";
 
-export default function Composer({ value, onChange, onSend, disabled, error, onCallEnd }) {
+export default function Composer({ value, onChange, onSend, disabled, error, onCallEnd, threadId }) {
   const { t, lang } = useI18n();
   const ref = React.useRef(null);
   const recRef = React.useRef(null);
@@ -44,9 +44,14 @@ export default function Composer({ value, onChange, onSend, disabled, error, onC
   const onCallEndRef = React.useRef(onCallEnd);
   onCallEndRef.current = onCallEnd;
 
+  // المحادثة المفتوحة دلوقتي: المكالمة تكمّلها بدل ما تفتح واحدة جديدة.
+  const threadIdRef = React.useRef(threadId);
+  threadIdRef.current = threadId;
+
   if (!controllerRef.current) {
     controllerRef.current = createCallController({
-      openSession: () => openVoiceSession({ clientKey: clientKeyRef.current }),
+      openSession: () =>
+        openVoiceSession({ clientKey: clientKeyRef.current, threadId: threadIdRef.current }),
       startCall: (options) => startBrowserCall(options),
       onChange: ({ calling: next, error }) => {
         setCalling(next);

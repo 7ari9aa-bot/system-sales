@@ -62,6 +62,9 @@ class StartSessionRequest(BaseModel):
     # The caller's own retry key (a phone leg id, a browser tab id). Two requests with the same key
     # return the same session instead of billing a second call.
     client_key: str | None = Field(default=None, max_length=128)
+    # The conversation the merchant is already in. Given, the spoken turns join it instead of
+    # opening a second conversation; omitted, the session opens its own thread as before.
+    thread_id: uuid.UUID | None = None
 
 
 class SessionResponse(BaseModel):
@@ -120,7 +123,9 @@ async def start_session(ctx: VoiceCtx, body: StartSessionRequest) -> SessionResp
     # The session owns a conversation from its first second: a spoken turn needs a thread to land
     # in, and a session that connects and stays silent must still be resumable. Idempotent, so a
     # client_key replay returns the thread the first request opened.
-    await ensure_session_thread(ctx.session, ctx, session_id=record.session_id)
+    await ensure_session_thread(
+        ctx.session, ctx, session_id=record.session_id, thread_id=body.thread_id
+    )
     return _respond(record)
 
 

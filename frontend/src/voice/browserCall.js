@@ -82,14 +82,18 @@ export function resampleTo(samples, fromRate, toRate = 24000) {
   return out;
 }
 
-/** جلسة صوت جديدة بنفس الـclient_key ترجع نفس الجلسة بدل ما تفتح مكالمة تانية مدفوعة. */
-export async function openVoiceSession({ apiFn = api, clientKey } = {}) {
+/** جلسة صوت جديدة بنفس الـclient_key ترجع نفس الجلسة بدل ما تفتح مكالمة تانية مدفوعة.
+ *  ولو فيه محادثة مفتوحة بنبعت الـthread_id: الكلام بيتكتب في نفس المحادثة اللي بتكتب فيها،
+ *  مش في محادثة تانية يفتحها زر المكالمة. */
+export async function openVoiceSession({ apiFn = api, clientKey, threadId } = {}) {
   const key = clientKey ?? (typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
     : `tab-${Date.now()}`);
   const session = await apiFn("/voice/sessions", {
     method: "POST",
-    body: { channel: "web_voice", client_key: key },
+    body: threadId
+      ? { channel: "web_voice", client_key: key, thread_id: threadId }
+      : { channel: "web_voice", client_key: key },
   });
   return session?.id ?? null;
 }

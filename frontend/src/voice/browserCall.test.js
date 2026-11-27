@@ -92,6 +92,27 @@ describe("openVoiceSession", () => {
     expect(apiFn.mock.calls[0][1].body).toEqual({ channel: "web_voice", client_key: "screen-key" });
   });
 
+  it("names the open conversation so the call joins it instead of opening a second one", async () => {
+    const apiFn = vi.fn(async () => ({ id: "sess-11" }));
+
+    await openVoiceSession({ apiFn, clientKey: "screen-key", threadId: "thread-7" });
+
+    // نفس المحادثة اللي بيتكتب فيها: الكلام مايبدأش محادثة جديدة
+    expect(apiFn.mock.calls[0][1].body).toEqual({
+      channel: "web_voice",
+      client_key: "screen-key",
+      thread_id: "thread-7",
+    });
+  });
+
+  it("sends no thread field when the screen has no conversation yet", async () => {
+    const apiFn = vi.fn(async () => ({ id: "sess-12" }));
+
+    await openVoiceSession({ apiFn, clientKey: "screen-key", threadId: null });
+
+    expect(apiFn.mock.calls[0][1].body).toEqual({ channel: "web_voice", client_key: "screen-key" });
+  });
+
   it("still opens a session when no key is supplied", async () => {
     const apiFn = vi.fn(async () => ({ id: "sess-10" }));
 

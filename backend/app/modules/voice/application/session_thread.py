@@ -29,11 +29,18 @@ async def ensure_session_thread(
     *,
     session_id: uuid.UUID,
     title: str | None = None,
+    thread_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """Return the conversation this voice session belongs to, opening it if needed.
 
     Idempotent: a second call for the same session returns the same thread instead of opening a
     second one. A session id from another shop answers 404, exactly like an id that never existed.
+
+    ``thread_id`` is the conversation the merchant is already in. A spoken turn must land in the
+    conversation that was typed into, not in a second one opened by pressing the call button, so
+    when the client names its thread we continue that one instead of creating another. The id is
+    resolved through the chat module's own ``get_thread``, which answers 404 for a thread that
+    belongs to someone else, so a caller cannot point a session at another shop's conversation.
     """
     row = (
         await session.execute(
@@ -47,6 +54,12 @@ async def ensure_session_thread(
         raise NotFoundError("voice session not found")
     if row.ai_chat_thread_id is not None:
         return row.ai_chat_thread_id
+
+    if thread_id is not None:
+        existing = await chat_service.get_thread(session, ctx, thread_id)
+        row.ai_chat_thread_id = existing.id
+        await session.flush()
+        return existing.id
 
     thread = await chat_service.create_thread(session, ctx, title=title or DEFAULT_TITLE)
     row.ai_chat_thread_id = thread.id
