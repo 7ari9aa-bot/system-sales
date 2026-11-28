@@ -32,6 +32,7 @@ from app.modules.identity.models import (
     Tenant,
     UserLocationAccess,
     Workspace,
+    WorkspaceMembership,
 )
 
 
@@ -81,10 +82,22 @@ async def test_bind_scope_sets_and_clears(db: AsyncSession) -> None:
     assert await _guc(db, "app.location_id") is None
 
 
-async def _seed_workspace(db: AsyncSession, tenant_id: uuid.UUID) -> Workspace:
+async def _seed_workspace(
+    db: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID | None = None
+) -> Workspace:
+    """A business, plus the grant that lets ``user_id`` work in it.
+
+    ``resolve_scope`` accepts a workspace only when a ``workspace_memberships`` row exists for the
+    caller: belonging to the tenant must not open every business inside it. Seeding the workspace
+    alone therefore produces a 403 by design, so a test that expects acceptance has to seed the
+    grant too — that is the real rule, not a relaxation of the assert.
+    """
     ws = Workspace(tenant_id=tenant_id, name="HQ", slug=uuid.uuid4().hex[:12])
     db.add(ws)
     await db.flush()
+    if user_id is not None:
+        db.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id))
+        await db.flush()
     return ws
 
 
@@ -96,7 +109,7 @@ async def _seed_location(db: AsyncSession, ws: Workspace) -> Location:
 
 
 async def test_resolve_scope_accepts_tenant_workspace(db: AsyncSession, tenant_ctx) -> None:
-    ws = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     resolved = await resolve_scope(
         db,
         tenant_id=tenant_ctx.tenant_id,
@@ -124,7 +137,7 @@ async def test_resolve_scope_refuses_foreign_workspace(db: AsyncSession, tenant_
 
 
 async def test_resolve_scope_refuses_location_without_grant(db: AsyncSession, tenant_ctx) -> None:
-    ws = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     loc = await _seed_location(db, ws)
     with pytest.raises(PermissionDeniedError):
         await resolve_scope(
@@ -136,7 +149,7 @@ async def test_resolve_scope_refuses_location_without_grant(db: AsyncSession, te
 
 
 async def test_resolve_scope_accepts_granted_location(db: AsyncSession, tenant_ctx) -> None:
-    ws = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     loc = await _seed_location(db, ws)
     # app.user_id is already the owner (tenant_ctx binds it), so the
     # self-keyed location_access policy admits their own grant row.
@@ -155,8 +168,8 @@ async def test_resolve_scope_accepts_granted_location(db: AsyncSession, tenant_c
 async def test_resolve_scope_refuses_location_outside_bound_workspace(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    ws_a = await _seed_workspace(db, tenant_ctx.tenant_id)
-    ws_b = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws_a = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
+    ws_b = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     loc_b = await _seed_location(db, ws_b)
     db.add(UserLocationAccess(user_id=tenant_ctx.user.id, location_id=loc_b.id))
     await db.flush()
@@ -195,7 +208,7 @@ def _fake_request(path: str = "/api/v1/orders") -> SimpleNamespace:
 async def test_get_tenant_ctx_resolves_headers_into_ctx_and_gucs(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    ws = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     loc = await _seed_location(db, ws)
     db.add(UserLocationAccess(user_id=tenant_ctx.user.id, location_id=loc.id))
     await db.flush()
@@ -224,7 +237,7 @@ async def test_get_tenant_ctx_resolves_headers_into_ctx_and_gucs(
 async def test_get_tenant_ctx_refuses_unganted_location_header(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    ws = await _seed_workspace(db, tenant_ctx.tenant_id)
+    ws = await _seed_workspace(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     loc = await _seed_location(db, ws)
 
     user = AuthedUser(id=tenant_ctx.user.id, tenant_id=tenant_ctx.tenant_id, role_code="owner")
