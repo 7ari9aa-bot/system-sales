@@ -52,6 +52,12 @@ VOICE_MODALITY = "live_voice"
 TranscriptStatus = Literal["partial", "final"]
 _VALID_STATUS: frozenset[str] = frozenset({"partial", "final"})
 
+#: What the record says about an answer the caller never got to hear. ``cancelled`` is already one
+#: of the statuses ``ai_chat_messages`` allows, and ``superseded`` is the reason, so the timeline
+#: and the call log use the same two words the UI shows instead of inventing a third vocabulary.
+CANCELLED = "cancelled"
+SUPERSEDED = "superseded"
+
 
 class TranscriptError(ValueError):
     """A spoken turn that cannot honestly become a message in the conversation."""
@@ -92,6 +98,46 @@ class CompletedTurn:
     turn_id: uuid.UUID
     sequence_number: int
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TurnOutcome:
+    """What a finished turn may still do, and what its record says about it.
+
+    ``delivered`` is the only thing the caller acts on; the rest is the difference between a turn
+    that answered the question and one that was written for a question the caller had already moved
+    past. A superseded turn is not deleted: the work was really done, so the answer keeps its words
+    and loses its status, and the turn row says why it was never spoken.
+    """
+
+    delivered: bool
+    #: ``None`` leaves the status the shared runtime wrote. A superseded answer is ``cancelled``.
+    answer_status: str | None = None
+    answer_error: str | None = None
+    turn_state: str = TurnState.COMPLETED.value
+    interruption_state: str | None = None
+    completion_reason: str | None = None
+
+
+#: The answer reached a caller who was still asking this question.
+DELIVERED = TurnOutcome(delivered=True)
+
+#: A newer question took the call over while this one was being answered. The turn ended without
+#: being heard, which the state machine already names INTERRUPTED (a tool result that arrives after
+#: a barge-in is kept for the record and never spoken).
+SUPERSEDED_TURN = TurnOutcome(
+    delivered=False,
+    answer_status=CANCELLED,
+    answer_error=SUPERSEDED,
+    turn_state=TurnState.INTERRUPTED.value,
+    interruption_state=SUPERSEDED,
+    completion_reason=SUPERSEDED,
+)
+
+
+def outcome_for(superseded: bool) -> TurnOutcome:
+    """The record of a turn that finished while the caller was already on to something else."""
+    return SUPERSEDED_TURN if superseded else DELIVERED
 
 
 def plan_turn(
@@ -254,6 +300,7 @@ async def complete_turn(
     user_message_id: uuid.UUID,
     assistant_message_id: uuid.UUID | None,
     transcript_status: str = "final",
+    outcome: TurnOutcome = DELIVERED,
 ) -> CompletedTurn:
     """Join a finished turn to both its messages and insert its ``voice_turns`` row, once.
 
@@ -261,6 +308,12 @@ async def complete_turn(
     spoken turns alike, so it is not written again here — it is marked as spoken, which is the one
     fact the runtime does not know. The turn row is the join: one row per ``(session, question)``,
     which is what makes a replayed delegation add nothing.
+
+    ``outcome`` is how a turn that was superseded while it ran is written: the answer becomes
+    ``cancelled`` (the words stay, the status does not) and the turn row says INTERRUPTED with the
+    reason. That is the durable half of barge-in — the timeline still shows, after the call, that
+    this answer was never wanted — and it is written here, by the same writer, so a superseded turn
+    cannot become a second kind of row.
     """
     if transcript_status not in _VALID_STATUS:
         raise TranscriptError(
@@ -268,6 +321,14 @@ async def complete_turn(
         )
 
     if assistant_message_id is not None:
+        values: dict[str, Any] = {
+            "output_modality": VOICE_MODALITY,
+            "voice_session_id": voice_session_id,
+            "transcript_status": transcript_status,
+        }
+        if outcome.answer_status is not None:
+            values["status"] = outcome.answer_status
+            values["error_code"] = outcome.answer_error
         await session.execute(
             update(AIChatMessage)
             .where(
@@ -276,11 +337,7 @@ async def complete_turn(
                 AIChatMessage.id == assistant_message_id,
                 AIChatMessage.role == "assistant",
             )
-            .values(
-                output_modality=VOICE_MODALITY,
-                voice_session_id=voice_session_id,
-                transcript_status=transcript_status,
-            )
+            .values(**values)
         )
 
     existing = (
@@ -313,11 +370,13 @@ async def complete_turn(
         sequence_number=next_seq,
         # The turn is the caller's utterance and the answer it got, so the speaker is the caller.
         speaker="user",
-        state=TurnState.COMPLETED.value,
+        state=outcome.turn_state,
         input_modality=VOICE_MODALITY,
         output_modality=VOICE_MODALITY,
         user_message_id=user_message_id,
         assistant_message_id=assistant_message_id,
+        interruption_state=outcome.interruption_state,
+        completion_reason=outcome.completion_reason,
         completed_at=datetime.now(UTC),
     )
     session.add(row)

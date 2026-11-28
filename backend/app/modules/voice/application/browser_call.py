@@ -21,8 +21,12 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 
-from app.modules.voice.application.client_delegation import ClientDelegationService
+from app.modules.voice.application.client_delegation import (
+    ClientDelegationService,
+    TurnRequest,
+)
 from app.modules.voice.application.live_loop import LiveCallLoop
+from app.modules.voice.application.spoken_turns import TurnLedger
 from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider, GptLiveUnavailable
 from app.modules.voice.runtime.gpt_live_transport import transport_factory
 
@@ -42,7 +46,15 @@ async def build_browser_call(
         raise GptLiveUnavailable("no gateway key is configured for voice")
 
     provider = GptLiveProvider(live_config, transport_factory=transport_factory)
-    delegations = ClientDelegationService(provider, _turn_runner(session_id, tenant_id, user_id))
+    # ONE ledger for the call: the delegation begins each turn on it, the assistant turn reads it
+    # to see whether that turn is still wanted, and the loop drops the turn on a barge-in.
+    ledger = TurnLedger()
+    delegations = ClientDelegationService(
+        provider,
+        _turn_runner(session_id, tenant_id, user_id, ledger),
+        call_id=str(session_id),
+        ledger=ledger,
+    )
     loop = LiveCallLoop(
         provider,
         delegations,
@@ -52,7 +64,7 @@ async def build_browser_call(
     return loop
 
 
-def _turn_runner(session_id, tenant_id, user_id):
+def _turn_runner(session_id, tenant_id, user_id, ledger):
     """Answer a delegation with the same assistant turn the text route runs.
 
     The caller was resolved once, over HTTP, when the ticket was minted; here that
@@ -61,10 +73,13 @@ def _turn_runner(session_id, tenant_id, user_id):
     so a spoken turn is governed by the same rules as a typed one and not by a
     second, weaker copy of them. A user who lost access between the ticket and the
     answer is refused by that same gate.
+
+    The turn arrives with the id the delegation minted for it and goes down the
+    same ledger, so the answer can be recognised as stale before it is spoken.
     """
 
-    async def run(transcript: str, idempotency_key: str) -> str:
-        if not (transcript or "").strip():
+    async def run(request: TurnRequest) -> str:
+        if not (request.transcript or "").strip():
             return ""
         from app.core.db import get_sessionmaker
         from app.modules.identity.deps import build_tenant_context_for_user
@@ -82,11 +97,15 @@ def _turn_runner(session_id, tenant_id, user_id):
                 session,
                 ctx,
                 session_id=session_id,
-                text=transcript,
-                idempotency_key=idempotency_key,
+                text=request.transcript,
+                idempotency_key=request.idempotency_key,
+                turn=request.turn,
+                ledger=ledger,
             )
             await session.commit()
-            return str(result.content or "")
+            # A superseded answer is empty already; saying so twice costs nothing and keeps the
+            # rule in one place for a caller that only reads the text.
+            return "" if result.superseded else str(result.content or "")
 
     return run
 
