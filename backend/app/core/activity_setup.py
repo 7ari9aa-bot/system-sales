@@ -21,6 +21,7 @@ server computes it (not_started AND the caller may write settings) so no client 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -32,7 +33,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.shop_type import CHOOSABLE_VERTICALS, choose_vertical
 from app.core.tenancy import register_signup_choices_hook
-from app.modules.applications.install import install_entitled
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.presets import PRESETS
@@ -48,6 +48,16 @@ SKIPPED = "skipped"
 # plain "general" shop can only choose the vertical and nothing else.
 VERTICAL_PRESET: dict[str, str] = {"apparel": "apparel_ground_shop"}
 
+
+#: Core cannot import a module, so modules hand their setup work in here instead.
+#: Each hook receives the finished setup's context and may add to its result.
+_setup_hooks: list[Callable[..., Any]] = []
+
+
+def register_setup_completed_hook(hook: Callable[..., Any]) -> None:
+    """Let a module act when an activity finishes its setup. Idempotent by identity."""
+    if hook not in _setup_hooks:
+        _setup_hooks.append(hook)
 
 def _settings(session: AsyncSession, tenant_id: UUID) -> SettingsService:
     return SettingsService(session, tenant_id)
@@ -198,12 +208,9 @@ async def complete_activity_setup(body: CompleteSetupBody, ctx: SetupWriteCtx) -
         user_id=ctx.user.id,
         permissions=ctx.permission_codes,
     )
-    if result.get("changed") and getattr(ctx, "workspace_id", None):
-        # Finishing setup is the moment a licensed product becomes an installed
-        # one; before this the gates had nothing to enforce.
-        result["applications_installed"] = await install_entitled(
-            ctx.session, tenant_id=ctx.tenant_id, workspace_id=ctx.workspace_id
-        )
+    if result.get("changed"):
+        for hook in _setup_hooks:
+            await hook(ctx, result)
     return result
 
 

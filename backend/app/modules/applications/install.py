@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.activity_setup import register_setup_completed_hook
 from app.modules.applications.manifests import get_manifest
 from app.modules.applications.models import WorkspaceAppInstallation
 from app.modules.applications.repository import entitled
@@ -66,3 +67,16 @@ async def install_entitled(
         )
     await session.flush()
     return fresh
+
+
+async def _install_after_setup(ctx, result: dict) -> None:
+    """Hook for core's setup completion: licensed products become installed ones."""
+    workspace_id = getattr(ctx, "workspace_id", None)
+    if workspace_id is None:
+        return
+    result["applications_installed"] = await install_entitled(
+        ctx.session, tenant_id=ctx.tenant_id, workspace_id=workspace_id
+    )
+
+
+register_setup_completed_hook(_install_after_setup)

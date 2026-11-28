@@ -365,7 +365,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # and ai.assistant.service to hand the turn to the ONE runtime, and ai.chat.service to write the
 # transcript into the conversation. Three edges, all voice -> ai, and all pointing at the same
 # public surfaces the text route already uses — the direction the architecture requires.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 345
+# 345 -> 357: the application gate is one shared dependency that seven trade
+# routers now import (purchasing, inventory, catalog, pos, customers, inbox,
+# segments). Those edges are the feature, not coupling: every one of them asks the
+# same registry whether this workspace bought that product.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 357
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
