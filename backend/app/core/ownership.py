@@ -27,6 +27,7 @@ PLATFORM_MODULES: frozenset[str] = frozenset(
         "billing",
         "decisions",
         "effects",
+        "events",
         "evidence",
         "identity",
         "imports",
