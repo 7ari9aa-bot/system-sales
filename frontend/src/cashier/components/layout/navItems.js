@@ -153,13 +153,3 @@ export function pageTitle(pathname) {
 export const cashierNavGroups = navGroups;
 /** الـ14 بند الرئيسية للكاشير بترتيبها، مباشرة في السايدبار. */
 export const cashierNavItems = flatNav;
-
-// قطاع الملابس المفرد مش محتاج «سلاسل الإمداد» (توزيع، مستودعات متعددة، تخصيص قنوات).
-// البند بيختفي من التنقل، لكن مساراته وصفحاته تفضل في الكود كما هي لحد ما يبقى فيه عميل توزيع.
-export const SHOW_SUPPLY_CHAIN = false;
-
-if (!SHOW_SUPPLY_CHAIN) {
-  for (const group of navGroups) {
-    group.items = group.items.filter((item) => item.to !== "/supply-chain");
-  }
-}
