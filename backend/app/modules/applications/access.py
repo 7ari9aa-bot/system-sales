@@ -99,3 +99,26 @@ def decide_access(facts: AccessFacts) -> AccessDecision:
             return AccessDecision(False, f"capability_missing:{capability}")
 
     return AccessDecision(True, "allowed")
+
+
+def describe(facts_without_key: dict) -> tuple[dict[str, object], ...]:
+    """Every application, and whether this workspace may use it, in registry order.
+
+    A screen that lists products has to say "you did not buy this" and "you have
+    not finished setting this up" differently, so each row carries the gate that
+    closed rather than a bare boolean.
+    """
+    rows: list[dict[str, object]] = []
+    for key in REGISTRY:
+        manifest = get_manifest(key)
+        decision = decide_access(AccessFacts(application_key=key, **facts_without_key))
+        rows.append(
+            {
+                "key": key,
+                "title_ar": manifest.title_ar,
+                "title_en": manifest.title_en,
+                "allowed": decision.allowed,
+                "reason": decision.reason,
+            }
+        )
+    return tuple(rows)
