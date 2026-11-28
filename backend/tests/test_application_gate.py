@@ -108,9 +108,9 @@ def test_the_bypass_is_logged_because_it_is_temporary(facts_from_ctx, caplog) ->
     facts_from_ctx(ctx)
     with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
         _gate(ctx)
-    assert any(
-        "bypassed" in record.message for record in caplog.records
-    ), "the transition bypass went unlogged"
+    assert any("bypassed" in record.message for record in caplog.records), (
+        "the transition bypass went unlogged"
+    )
 
 
 def test_a_real_decision_is_not_logged_as_a_bypass(facts_from_ctx, caplog) -> None:
