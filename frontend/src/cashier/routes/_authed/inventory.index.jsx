@@ -15,6 +15,7 @@ import { useBrands } from "@/cashier/api/useCatalogWrite";
 import { INVENTORY_STATUS, fmtInt, fmtMoneyShort } from "@/cashier/lib/format";
 import { resolveOpenProduct } from "@/cashier/lib/inventoryGroups";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { appPath } from "../../basePath";
 
 
 const EXPORT_COLUMNS = [
@@ -78,13 +79,13 @@ export default function InventoryPage() {
             تصدير Excel
           </Button>
           <Button asChild variant="outline" className={BTN}>
-            <Link to="/cashier/inventory/import">
+            <Link to={appPath("/inventory/import")}>
               <Upload />
               استيراد من ملف
             </Link>
           </Button>
           <Button asChild variant="outline" className={BTN}>
-            <Link to="/cashier/inventory/movements">
+            <Link to={appPath("/inventory/movements")}>
               <History />
               حركة الأصناف
             </Link>
@@ -94,13 +95,13 @@ export default function InventoryPage() {
             تخفيض موسم
           </Button>
           <Button asChild variant="outline" className={BTN}>
-            <Link to="/cashier/labels">
+            <Link to={appPath("/labels")}>
               <Printer />
               طباعة الباركود
             </Link>
           </Button>
           <Button asChild variant="ghost" className={BTN_PRIMARY}>
-            <Link to="/cashier/inventory/stocktake">
+            <Link to={appPath("/inventory/stocktake")}>
               <ClipboardList className="h-4 w-4 shrink-0 !text-white" />
               <span className="!text-white font-semibold">بدء جرد</span>
             </Link>

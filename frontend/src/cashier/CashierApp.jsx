@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "@/cashier/components/ui/sonner";
 import PageSkeleton from "@/cashier/components/ui-kit/PageSkeleton";
 import "./cashier.css";
+import { appPath } from "basePath";
 
 // كل صفحات الكاشير تُحمَّل عند الطلب حتى لا تثقل باقي النظام.
 const Page0 = lazy(() => import("./routes/_authed/activity-log.jsx"));
@@ -80,7 +81,7 @@ export default function CashierApp() {
         <Route path="supply-chain/:section" element={<PageSupplyChain />} />
         <Route path="supplier-returns" element={<Page20 />} />
         <Route path="suppliers" element={<Page21 />} />
-        <Route path="*" element={<Navigate to="/cashier/pos" replace />} />
+        <Route path="*" element={<Navigate to={appPath("/pos")} replace />} />
       </Route>
     </Routes>
   );

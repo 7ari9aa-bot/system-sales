@@ -6,6 +6,7 @@ import { Input } from "@/cashier/components/ui/input";
 import { Textarea } from "@/cashier/components/ui/textarea";
 import { fmtMoney, fmtMoneyDeduction } from "@/cashier/lib/format";
 import { closeProblems, countsDrawer, gapMinor, methodGapMinor, methodProblems, methodsToCount } from "@/cashier/api/closePlan";
+import { appPath } from "../../basePath";
 
 // إغلاق اليوم: تسجيل لما حدث فقط (رصيد البداية + الفواتير − المرتجعات)، وليس جردًا للدرج.
 // `preview` = the backend's close-preview (every figure computed from the ledger, not on the client).
@@ -164,7 +165,7 @@ export default function ShiftCloseDialog({ open, onOpenChange, shift, heldCount 
                 عند تأكيد إغلاق الوردية {heldCount === 1 ? "تُصفَّر هذه الفاتورة" : heldCount === 2 ? "تُصفَّر الفاتورتان" : "تُصفَّر هذه الفواتير"} ولا يمكن استرجاعها. إن رغبت في إتمامها فراجعها قبل الإغلاق.
               </p>
               <Link
-                to="/cashier/pos?held=1"
+                to={appPath("/pos?held=1")}
                 className="mt-2 inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-100"
               >
                 مراجعة الفواتير المعلقة

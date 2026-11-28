@@ -15,6 +15,7 @@ import { useExchangesLog } from "@/cashier/api/usePosSale";
 import { filterExchanges, settlementOf, summarizeExchanges } from "@/cashier/api/exchangesLog";
 import { fmtDateTime, fmtInt, fmtMoney, SETTLEMENT_TYPES } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { appPath } from "../../basePath";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/bb4a26da7_generated_image.png";
@@ -58,7 +59,7 @@ export default function ExchangesLogPage() {
             <span className="!text-[#33322E] font-medium">تصدير السجل</span>
           </Button>
           <Button asChild className={BTN_PRIMARY}>
-            <Link to="/cashier/exchanges">
+            <Link to={appPath("/exchanges")}>
               <Plus className="h-4 w-4 shrink-0 !text-white" />
               <span className="!text-white font-semibold">تسجيل استبدال</span>
             </Link>

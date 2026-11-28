@@ -15,6 +15,7 @@ import { useAllMovements } from "@/cashier/api/useMovements";
 import { movementTotals } from "@/cashier/api/movementsAdapter";
 import { MOVEMENT_TYPES, fmtDateTime, fmtInt, localDay } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { appPath } from "../../basePath";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/3dfcc7412_generated_image.png";
@@ -73,7 +74,7 @@ export default function MovementsPage() {
             <span className="!text-[#33322E] font-medium">تصدير Excel</span>
           </Button>
           <Button asChild className={BTN}>
-            <Link to="/cashier/inventory">
+            <Link to={appPath("/inventory")}>
               <ArrowLeftRight className="h-4 w-4 shrink-0 !text-[#33322E]" />
               <span className="!text-[#33322E] font-medium">أرصدة المخزون</span>
             </Link>

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useActivitySetup } from "@/cashier/api/useActivitySetup";
 import ActivitySetupDialog from "./ActivitySetupDialog";
+import { appPath } from "../../basePath";
 
 /**
  * Mounted once in the dashboard layout, so it covers the dashboard and the till. It shows the
@@ -19,7 +20,7 @@ export default function ActivitySetupGate() {
       open
       setup={setup}
       onClose={() => setClosed(true)}
-      onDone={() => { setClosed(true); navigate("/cashier/pos"); }}
+      onDone={() => { setClosed(true); navigate(appPath("/pos")); }}
     />
   );
 }

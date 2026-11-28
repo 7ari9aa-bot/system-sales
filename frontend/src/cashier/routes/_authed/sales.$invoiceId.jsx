@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useInvoice } from "@/cashier/api/usePosSale";
 import { useShifts } from "@/cashier/api/useShifts";
 import { fmtDateTime, fmtInt, fmtMoney, PAYMENT_METHODS } from "@/cashier/lib/format";
+import { appPath } from "../../basePath";
 
 
 export default function InvoiceDetailPage() {
@@ -40,7 +41,7 @@ export default function InvoiceDetailPage() {
             description={isError ? "تعذّر تحميل الفاتورة. تأكد من الاتصال ثم أعد المحاولة من سجل المبيعات." : "الفاتورة غير موجودة. عد إلى سجل المبيعات واختر فاتورة من القائمة."}
             action={
               <Button asChild variant="outline">
-                <Link to="/cashier/sales">العودة إلى سجل المبيعات</Link>
+                <Link to={appPath("/sales")}>العودة إلى سجل المبيعات</Link>
               </Button>
             }
           />
@@ -55,7 +56,7 @@ export default function InvoiceDetailPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader title={`تفاصيل الفاتورة ${invoice.number}`} description={fmtDateTime(invoice.date)}>
-        <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={() => navigate("/cashier/sales")}>
+        <Button variant="ghost" className="gap-2 text-muted-foreground" onClick={() => navigate(appPath("/sales"))}>
           <ArrowRight className="h-4 w-4" />
           رجوع للسجل
         </Button>

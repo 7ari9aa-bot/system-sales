@@ -118,12 +118,15 @@ const DashboardRoutes = () => (
   <Routes>
     {CASHIER_PREVIEW && (
       <Route element={<DashboardLayout />}>
+        {/* /apparel هو المسار القانوني للتطبيق، و/cashier مسار توافق محفوظ. */}
+        <Route path="/apparel/*" element={<CashierApp />} />
         <Route path="/cashier/*" element={<CashierApp />} />
       </Route>
     )}
     <Route element={<ProtectedRoute />}>
       <Route element={<DashboardLayout />}>
         {/* الكاشير داخل نفس الداشبورد والسايدبار الرئيسي. */}
+        {!CASHIER_PREVIEW && <Route path="/apparel/*" element={<CashierApp />} />}
         {!CASHIER_PREVIEW && <Route path="/cashier/*" element={<CashierApp />} />}
         <Route path="/dashboard" element={<Home />} />
         <Route path="/inbox" element={<Inbox />} />

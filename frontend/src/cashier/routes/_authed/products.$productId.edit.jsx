@@ -6,6 +6,7 @@ import EmptyState from "@/cashier/components/ui-kit/EmptyState";
 import ProductEditor from "@/cashier/components/products/ProductEditor";
 import { useProductForEdit } from "@/cashier/api/useCatalogWrite";
 import { editLoadProblem } from "@/cashier/api/productEdit";
+import { appPath } from "../../basePath";
 
 export default function ProductEditPage() {
   const { productId } = useParams();
@@ -48,7 +49,7 @@ export default function ProductEditPage() {
           description="ربما تم حذف المنتج أو أن الرابط غير صحيح."
           action={
             <Button asChild variant="outline">
-              <Link to="/cashier/products">رجوع إلى المنتجات</Link>
+              <Link to={appPath("/products")}>رجوع إلى المنتجات</Link>
             </Button>
           }
         />

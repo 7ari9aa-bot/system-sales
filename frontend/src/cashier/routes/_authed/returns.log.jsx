@@ -15,6 +15,7 @@ import { useReturnsLog } from "@/cashier/api/usePosSale";
 import { filterReturns, summarizeReturns } from "@/cashier/api/returnsLog";
 import { fmtDateTime, fmtInt, fmtMoney } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { appPath } from "../../basePath";
 
 
 const HERO_IMAGE = "https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/7efdc1ae1_generated_image.png";
@@ -52,7 +53,7 @@ export default function ReturnsLogPage() {
             <span className="!text-[#33322E] font-medium">تصدير السجل</span>
           </Button>
           <Button asChild className={BTN_PRIMARY}>
-            <Link to="/cashier/returns">
+            <Link to={appPath("/returns")}>
               <Plus className="h-4 w-4 shrink-0 !text-white" />
               <span className="!text-white font-semibold">تسجيل مرتجع</span>
             </Link>

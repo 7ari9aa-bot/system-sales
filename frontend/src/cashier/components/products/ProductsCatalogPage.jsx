@@ -7,6 +7,7 @@ import { PAGE_SIZE, useCatalogPage, useSetProductStatus } from "@/cashier/api/us
 import { useStockSeasons } from "@/cashier/api/useStock";
 import { PRODUCT_STATUS, priceRangeLabel } from "@/cashier/lib/productRows";
 import { fmtInt, fmtNumber } from "@/cashier/lib/format";
+import { appPath } from "../../basePath";
 
 // صفحة المنتجات: سجل الكتالوج. المخزون له شاشته (أرصدة وحركات)، وهنا الموديلات نفسها:
 // تبحث، تفلتر، تفتح للتعديل، تأرشف، أو ترجّع للبيع.
@@ -81,7 +82,7 @@ export default function ProductsCatalogPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link to="/cashier/products/new" className={PRIMARY}>
+            <Link to={appPath("/products/new")} className={PRIMARY}>
               <Plus className="h-4 w-4" /> إضافة منتج
             </Link>
             <Link to="/inventory/import" className={GHOST}>
@@ -150,7 +151,7 @@ export default function ProductsCatalogPage() {
                   : "وسّع البحث أو أزل فلتر الحالة لترى المؤرشف والمسودة."}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                <Link to="/cashier/products/new" className={PRIMARY}><Plus className="h-4 w-4" /> إضافة منتج</Link>
+                <Link to={appPath("/products/new")} className={PRIMARY}><Plus className="h-4 w-4" /> إضافة منتج</Link>
                 <Link to="/inventory/import" className={GHOST}><Upload className="h-4 w-4" /> استيراد من Excel</Link>
               </div>
             </div>
