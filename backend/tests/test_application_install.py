@@ -60,9 +60,7 @@ def test_installs_only_what_is_entitled(entitled_keys) -> None:
     entitled_keys({"retail.core", "retail.purchasing"})
     session = _Session()
     installed = asyncio.run(
-        install_module.install_entitled(
-            session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4()
-        )
+        install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
     assert installed == ["retail.core", "retail.purchasing"]
     assert [row.application_key for row in session.added] == installed
@@ -74,9 +72,7 @@ def test_nothing_entitled_writes_nothing(entitled_keys) -> None:
     entitled_keys(set())
     session = _Session()
     installed = asyncio.run(
-        install_module.install_entitled(
-            session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4()
-        )
+        install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
     assert installed == []
     assert session.added == []
@@ -88,9 +84,7 @@ def test_an_existing_installation_is_never_reopened(entitled_keys) -> None:
     entitled_keys({"retail.core"})
     session = _Session(existing=["retail.core"])
     installed = asyncio.run(
-        install_module.install_entitled(
-            session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4()
-        )
+        install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
     assert installed == []
     assert session.added == []
@@ -100,9 +94,7 @@ def test_only_the_missing_ones_are_installed(entitled_keys) -> None:
     entitled_keys({"retail.core", "retail.purchasing"})
     session = _Session(existing=["retail.core"])
     installed = asyncio.run(
-        install_module.install_entitled(
-            session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4()
-        )
+        install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
     assert installed == ["retail.purchasing"]
 
