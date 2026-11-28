@@ -56,6 +56,7 @@ from app.core.shop_type import router as shop_type_router
 from app.modules.activity.router import router as activity_router
 from app.modules.ai.router import router as ai_router
 from app.modules.analytics.router import router as analytics_module_router
+from app.modules.applications.router import router as applications_router
 from app.modules.authority.router import router as authority_router
 from app.modules.automation.router import router as automation_router
 from app.modules.billing.markets import router as public_markets_router
@@ -556,6 +557,7 @@ def create_app() -> FastAPI:
         dead_stock_router,
         season_markdown_router,
         voice_sessions_router,
+        applications_router,
     ):
         api_v1.include_router(router)
     app.include_router(api_v1)

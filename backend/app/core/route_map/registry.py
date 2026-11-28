@@ -37,6 +37,7 @@ CORE = "core"
 SCOPE_MODULES: frozenset[str] = frozenset(
     {
         "pos",
+        "applications",
         "inventory",
         "purchasing",
         "catalog",
@@ -84,6 +85,10 @@ GROUPS: dict[str, Group] = {
         "core.activity_setup", note="first-run setup: pick the vertical once, or skip"
     ),
     # --- inventory ---
+    "applications": Group(
+        "applications",
+        note="what this workspace bought, and how far each product's setup got",
+    ),
     "inventory": Group("inventory", note="balances, movements, transfers, stocktakes, reports"),
     # --- catalog ---
     "catalog": Group("core.season_markdown", note="take a percent off a whole season"),

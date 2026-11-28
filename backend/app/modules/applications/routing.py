@@ -20,6 +20,9 @@ GROUP_APPLICATIONS: dict[str, str] = {
     "reports": "retail.core",
     "shop-type": "retail.core",
     "activity-setup": "retail.core",
+    # Reading the registry is how the interface learns what exists, so it cannot
+    # itself be gated by a product; it answers "which products" for all of them.
+    "applications": "retail.core",
     "inventory": "retail.core",
     "catalog": "retail.core",
     "products": "retail.core",
