@@ -2,7 +2,7 @@
 
 ``access.decide_access`` is pure and knows nothing about FastAPI. This module is
 the seam: it turns a facts provider into a dependency, so a route says
-``Depends(require_application("retail.purchasing"))`` and the decision happens in
+``Depends(require_application("apparel.purchasing"))`` and the decision happens in
 one place instead of in every handler.
 
 One rule is deliberate and temporary: a workspace with no installation rows at

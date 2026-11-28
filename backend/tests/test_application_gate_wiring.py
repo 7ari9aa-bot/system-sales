@@ -21,25 +21,25 @@ BACKEND = Path(__file__).resolve().parents[1]
 #: module that gates -> the application it must ask about, and why
 GATED: dict[str, tuple[str, str]] = {
     "app/modules/catalog/routers/__init__.py": (
-        "retail.core",
+        "apparel",
         "the catalog is part of the base every shop starts with",
     ),
-    "app/modules/inventory/router.py": ("retail.core", "stock is part of the base"),
-    "app/modules/pos/router.py": ("retail.core", "the register is part of the base"),
+    "app/modules/inventory/router.py": ("apparel", "stock is part of the base"),
+    "app/modules/pos/router.py": ("apparel", "the register is part of the base"),
     "app/modules/purchasing/router.py": (
-        "retail.purchasing",
+        "apparel.purchasing",
         "suppliers and purchase orders are the purchasing product",
     ),
     "app/modules/customers/routers/customers.py": (
-        "customer.engagement",
+        "apparel.customers",
         "customer records are the engagement product",
     ),
     "app/modules/conversations/routers/inbox.py": (
-        "customer.engagement",
+        "apparel.customers",
         "the inbox is how the engagement product talks to customers",
     ),
     "app/modules/segments/router.py": (
-        "customer.engagement",
+        "apparel.customers",
         "a segment has no meaning outside the engagement product",
     ),
 }

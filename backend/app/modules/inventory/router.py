@@ -39,7 +39,7 @@ from app.modules.inventory.services.screens import visible_screens
 
 async def _inventory_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     """Balances and movements are part of the core product, not an add-on."""
-    return await workspace_gate("retail.core", ctx)
+    return await workspace_gate("apparel", ctx)
 
 
 router = APIRouter(

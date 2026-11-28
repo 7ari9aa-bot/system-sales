@@ -16,7 +16,7 @@ from app.core.errors import PermissionDeniedError
 from app.modules.applications import dependencies
 from app.modules.applications.access import AccessFacts
 
-KEY = "retail.purchasing"
+KEY = "apparel.purchasing"
 
 
 class _Ctx:
@@ -50,7 +50,7 @@ def _gate(ctx: _Ctx):
 
 def test_an_unpaid_workspace_is_refused_with_403(facts_from_ctx) -> None:
     """The whole point: a workspace with installations but no entitlement is denied."""
-    ctx = _Ctx(states={"retail.core": "active"}, entitled=set())
+    ctx = _Ctx(states={"apparel": "active"}, entitled=set())
     facts_from_ctx(ctx)
     with pytest.raises(PermissionDeniedError):
         _gate(ctx)
@@ -58,14 +58,14 @@ def test_an_unpaid_workspace_is_refused_with_403(facts_from_ctx) -> None:
 
 def test_a_dependency_that_is_not_installed_refuses_the_application(facts_from_ctx) -> None:
     """A paid product whose base is missing is still refused, and says which base."""
-    ctx = _Ctx(states={KEY: "active"}, entitled={KEY, "retail.core"})
+    ctx = _Ctx(states={KEY: "active"}, entitled={KEY, "apparel"})
     facts_from_ctx(ctx)
     with pytest.raises(PermissionDeniedError, match="dependency_inactive"):
         _gate(ctx)
 
 
 def test_a_paid_but_uninstalled_workspace_is_refused(facts_from_ctx) -> None:
-    ctx = _Ctx(states={"retail.core": "active"}, entitled={KEY})
+    ctx = _Ctx(states={"apparel": "active"}, entitled={KEY})
     facts_from_ctx(ctx)
     with pytest.raises(PermissionDeniedError):
         _gate(ctx)
@@ -80,7 +80,7 @@ def test_an_installed_but_unfinished_setup_is_refused(facts_from_ctx) -> None:
 
 def test_an_entitled_and_active_application_passes(facts_from_ctx) -> None:
     # retail.purchasing sits on top of retail.core, so both have to be on.
-    ctx = _Ctx(states={KEY: "active", "retail.core": "active"}, entitled={KEY, "retail.core"})
+    ctx = _Ctx(states={KEY: "active", "apparel": "active"}, entitled={KEY, "apparel"})
     facts_from_ctx(ctx)
     result = _gate(ctx)
     assert result.allowed is True
@@ -114,7 +114,7 @@ def test_the_bypass_is_logged_because_it_is_temporary(facts_from_ctx, caplog) ->
 
 
 def test_a_real_decision_is_not_logged_as_a_bypass(facts_from_ctx, caplog) -> None:
-    ctx = _Ctx(states={KEY: "active", "retail.core": "active"}, entitled={KEY, "retail.core"})
+    ctx = _Ctx(states={KEY: "active", "apparel": "active"}, entitled={KEY, "apparel"})
     facts_from_ctx(ctx)
     with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
         _gate(ctx)
@@ -130,14 +130,14 @@ async def test_install_route_only_touches_the_workspace_in_the_context(monkeypat
     async def fake_install(session, *, tenant_id, workspace_id):  # noqa: ANN001
         seen["workspace_id"] = workspace_id
         seen["tenant_id"] = tenant_id
-        return ["retail.core"]
+        return ["apparel"]
 
     monkeypatch.setattr(router_module, "install_entitled", fake_install)
     ctx = _Ctx(states={}, entitled=set())
     result = await router_module.install_applications(ctx)
     assert seen["workspace_id"] == ctx.workspace_id
     assert seen["tenant_id"] == ctx.tenant_id
-    assert result["installed"] == ["retail.core"]
+    assert result["installed"] == ["apparel"]
 
 
 async def test_install_route_refuses_a_context_without_a_workspace() -> None:

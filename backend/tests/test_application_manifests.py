@@ -41,23 +41,23 @@ def test_an_unknown_application_fails_closed() -> None:
 
 
 def test_dependencies_install_before_the_application_that_needs_them() -> None:
-    order = resolve_installation_order(["ai.customer_support", "retail.purchasing"])
-    assert order.index("retail.core") == 0
-    assert order.index("customer.engagement") < order.index("ai.customer_support")
-    assert order.index("retail.core") < order.index("retail.purchasing")
+    order = resolve_installation_order(["apparel.ai_support", "apparel.purchasing"])
+    assert order.index("apparel") == 0
+    assert order.index("apparel.customers") < order.index("apparel.ai_support")
+    assert order.index("apparel") < order.index("apparel.purchasing")
 
 
 def test_the_base_application_stands_alone() -> None:
-    assert get_manifest("retail.core").dependencies == ()
+    assert get_manifest("apparel").dependencies == ()
 
 
 def test_each_key_appears_once_however_many_depend_on_it() -> None:
-    order = resolve_installation_order(["retail.purchasing", "retail.warehouse", "retail.core"])
-    assert order.count("retail.core") == 1
+    order = resolve_installation_order(["apparel.purchasing", "apparel.warehouse", "apparel"])
+    assert order.count("apparel") == 1
 
 
 def test_a_dependency_cycle_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    base = get_manifest("retail.core")
+    base = get_manifest("apparel")
     monkeypatch.setitem(REGISTRY, "test.a", replace(base, key="test.a", dependencies=("test.b",)))
     monkeypatch.setitem(REGISTRY, "test.b", replace(base, key="test.b", dependencies=("test.a",)))
     with pytest.raises(ValueError, match="cycle"):
@@ -68,7 +68,7 @@ def test_a_missing_dependency_is_reported_by_validation(monkeypatch: pytest.Monk
     monkeypatch.setitem(
         REGISTRY,
         "test.orphan",
-        replace(get_manifest("retail.core"), key="test.orphan", dependencies=("does.not.exist",)),
+        replace(get_manifest("apparel"), key="test.orphan", dependencies=("does.not.exist",)),
     )
     problems = validate_registry()
     assert any("does.not.exist" in problem for problem in problems)
@@ -112,9 +112,9 @@ def _facts(**overrides):
     from app.modules.applications.access import AccessFacts
 
     base = {
-        "application_key": "retail.purchasing",
-        "entitled_applications": frozenset({"retail.core", "retail.purchasing"}),
-        "installation_states": {"retail.core": "active", "retail.purchasing": "active"},
+        "application_key": "apparel.purchasing",
+        "entitled_applications": frozenset({"apparel", "apparel.purchasing"}),
+        "installation_states": {"apparel": "active", "apparel.purchasing": "active"},
         "industry": "apparel",
     }
     base.update(overrides)
@@ -139,7 +139,7 @@ def test_paying_is_not_installing() -> None:
     """Entitled but never installed in this workspace: the screen must not exist."""
     from app.modules.applications.access import decide_access
 
-    decision = decide_access(_facts(installation_states={"retail.core": "active"}))
+    decision = decide_access(_facts(installation_states={"apparel": "active"}))
     assert not decision.allowed
     assert decision.reason == "not_installed"
 
@@ -148,7 +148,7 @@ def test_setup_required_is_not_active() -> None:
     from app.modules.applications.access import decide_access
 
     decision = decide_access(
-        _facts(installation_states={"retail.core": "active", "retail.purchasing": "setup_required"})
+        _facts(installation_states={"apparel": "active", "apparel.purchasing": "setup_required"})
     )
     assert not decision.allowed
     assert decision.reason == "installation_setup_required"
@@ -158,24 +158,24 @@ def test_an_inactive_dependency_closes_the_door() -> None:
     from app.modules.applications.access import decide_access
 
     decision = decide_access(
-        _facts(installation_states={"retail.core": "suspended", "retail.purchasing": "active"})
+        _facts(installation_states={"apparel": "suspended", "apparel.purchasing": "active"})
     )
     assert not decision.allowed
-    assert decision.reason == "dependency_inactive:retail.core"
+    assert decision.reason == "dependency_inactive:apparel"
 
 
 def test_a_required_capability_that_is_off_blocks_the_application() -> None:
     from app.modules.applications.access import decide_access
 
     facts = _facts(
-        application_key="retail.inventory_advanced",
+        application_key="apparel.inventory_advanced",
         entitled_applications=frozenset(
-            {"retail.core", "retail.warehouse", "retail.inventory_advanced"}
+            {"apparel", "apparel.warehouse", "apparel.inventory_advanced"}
         ),
         installation_states={
-            "retail.core": "active",
-            "retail.warehouse": "active",
-            "retail.inventory_advanced": "active",
+            "apparel": "active",
+            "apparel.warehouse": "active",
+            "apparel.inventory_advanced": "active",
         },
     )
     decision = decide_access(facts)
@@ -196,27 +196,27 @@ def test_no_workspace_access_denies_even_a_paid_application() -> None:
 
 def test_a_licensed_and_active_application_is_allowed() -> None:
     facts = AccessFacts(
-        application_key="retail.core",
-        entitled_applications=frozenset({"retail.core"}),
-        installation_states={"retail.core": "active"},
+        application_key="apparel",
+        entitled_applications=frozenset({"apparel"}),
+        installation_states={"apparel": "active"},
     )
-    assert evaluate(facts, "retail.core") == GateResult(True, "allowed")
+    assert evaluate(facts, "apparel") == GateResult(True, "allowed")
 
 
 def test_paying_for_an_application_without_installing_it_is_not_enough() -> None:
     facts = AccessFacts(
-        application_key="retail.core",
-        entitled_applications=frozenset({"retail.core"}),
-        installation_states={"retail.core": "setup_required"},
+        application_key="apparel",
+        entitled_applications=frozenset({"apparel"}),
+        installation_states={"apparel": "setup_required"},
     )
-    verdict = evaluate(facts, "retail.core")
+    verdict = evaluate(facts, "apparel")
     assert not verdict.allowed
     assert verdict.reason == "installation_setup_required"
 
 
 def test_an_unlicensed_application_is_refused_by_name() -> None:
-    facts = AccessFacts(application_key="retail.purchasing")
-    verdict = evaluate(facts, "retail.purchasing")
+    facts = AccessFacts(application_key="apparel.purchasing")
+    verdict = evaluate(facts, "apparel.purchasing")
     assert not verdict.allowed
     assert verdict.reason == "not_entitled"
 
@@ -230,12 +230,12 @@ def test_an_unconfigured_workspace_is_the_documented_transition_case() -> None:
     """Every account today has zero installations; closing them all at once is
     a lockout, not enforcement. The reason says so out loud."""
     verdict = evaluate(
-        AccessFacts(application_key="retail.core"), "retail.core", workspace_configured=False
+        AccessFacts(application_key="apparel"), "apparel", workspace_configured=False
     )
     assert verdict == GateResult(True, "workspace_not_configured")
 
 
 def test_the_dependency_fails_loudly_until_a_facts_provider_is_wired() -> None:
-    dependency = require_application("retail.core")
+    dependency = require_application("apparel")
     with pytest.raises(RuntimeError, match="no facts provider"):
         dependency()

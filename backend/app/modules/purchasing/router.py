@@ -29,7 +29,7 @@ from app.modules.purchasing.service import (
 
 async def _purchasing_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     """The purchasing product is licensed, installed and active for this workspace."""
-    return await workspace_gate("retail.purchasing", ctx)
+    return await workspace_gate("apparel.purchasing", ctx)
 
 
 router = APIRouter(tags=["purchasing"], dependencies=[Depends(_purchasing_gate)])

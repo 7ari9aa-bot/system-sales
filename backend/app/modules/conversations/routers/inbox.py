@@ -60,7 +60,7 @@ _FILE_CHANNELS = ("whatsapp", "instagram", "messenger", "telegram")
 
 async def _inbox_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     """The inbox is the engagement product's front door."""
-    return await workspace_gate("customer.engagement", ctx)
+    return await workspace_gate("apparel.customers", ctx)
 
 
 router = APIRouter(tags=["inbox"], dependencies=[Depends(_inbox_gate)])

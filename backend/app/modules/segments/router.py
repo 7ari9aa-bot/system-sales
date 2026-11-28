@@ -40,7 +40,7 @@ async def _segments_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     REQUIRED query parameters (``args``, ``kwargs``) on all six segment routes, so every
     real request died with a 422 before the handler ran.
     """
-    return await workspace_gate("customer.engagement", ctx)
+    return await workspace_gate("apparel.customers", ctx)
 
 
 router = APIRouter(
