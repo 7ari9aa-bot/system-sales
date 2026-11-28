@@ -14,11 +14,17 @@ on:
   # is per branch. A manual dispatch asks for the whole matrix on one SHA and changes nothing.
   workflow_dispatch:
 
-# One run per BRANCH, not per ref: `github.ref` differs between the push and PR events
-# (refs/heads/<branch> vs refs/pull/<n>/merge), which is how the duplicate above slipped past
-# the previous group. `head_ref` is set on PR events, so both events land in the same group.
+# One run per COMMIT, not per branch. `head_ref` is set on PR events, so push and PR land in the
+# same group; adding the SHA on top means a newer commit never cancels an older commit's
+# verification, while a duplicate run of the SAME commit (a push and a manual dispatch, or a
+# re-dispatch) still collapses into one.
+#
+# The branch-wide group did real damage: run 46097300982 was dispatched on 44de0cb, and when
+# 27c9fb3 landed nine minutes later every job in it was cancelled mid-flight (backend (1)…(10),
+# frontend-e2e, coverage), so 44de0cb's result could never be read. Cancelling superseded work is
+# right; cancelling the verification of a commit someone may still merge is not.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
