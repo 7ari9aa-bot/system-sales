@@ -44,6 +44,19 @@ turn number on the session. The text route keeps `chat.service.append_user_messa
 question never goes through it, which is what stops the two paths disagreeing again. A replayed
 idempotency key adds no second message and no second turn.
 
+## While a spoken turn is being answered
+
+`application/live_loop.py` never waits for the answer. A delegation is started as a task and the
+pump goes straight back to the provider socket, because the caller keeps talking while the analytic
+turn runs: their barge-in, the model's audio and a second question would otherwise queue behind it
+and the answer to the question they already abandoned would be the only one that could be spoken.
+
+One answer is in flight per call. A newer delegation or an explicit interrupt drops the turn from
+the `spoken_turns` ledger first and then cancels the task; an answer that was already past its last
+cancellation point is still refused a speaker by the ledger check in `client_delegation` and
+`assistant_turn`, and a cancelled turn's rows are rolled back with the runner's own transaction.
+`LiveCallLoop.drain()` waits for the work — tests and shutdown only; the pump must not call it.
+
 ## Production readiness review
 
 Numbers below are what this repository actually measured, in the local test suite. There is **no

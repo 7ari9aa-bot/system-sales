@@ -92,14 +92,22 @@ async def test_the_caller_talking_again_brings_the_speaker_back():
 async def test_an_answer_is_not_swallowed_by_the_mute():
     loop, _provider, sink = _loop(
         [
-            {"type": "session.delegation.created", "id": "item_1", "target": "client"},
+            # The gateway nests the delegation; the flat shape this test used before
+            # was not a frame the real provider ever sends.
+            {
+                "type": "session.delegation.created",
+                "delegation": {"id": "item_1", "target": "client"},
+            },
             {"type": "session.output_audio.delta", "delta": AUDIO},
         ]
     )
     await loop.start(voice_session_id="vs-1", config={})
     await loop.interrupt()
 
-    assert await loop.pump() == "answered"
+    assert await loop.pump() == "delegating"
+    # The answer runs off the pump; the frame it produces clears the mute and its
+    # audio is played.
+    await loop.drain()
     assert await loop.pump() == "audio"
     assert sink
 

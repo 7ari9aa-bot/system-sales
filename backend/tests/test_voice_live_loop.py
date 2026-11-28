@@ -94,10 +94,13 @@ async def test_a_delegation_is_answered_with_what_the_caller_said():
 
     await loop.start(voice_session_id=VOICE_SESSION, config={"instructions": "x"})
     outcome = await loop.pump()
+    # The answer runs off the pump, so the frame is acknowledged as "delegating" and
+    # the outcome is counted when the turn finishes.
+    await loop.drain()
 
-    assert outcome == "answered"
+    assert outcome == "delegating"
     assert delegations.seen == [("prov_1", "كام مبيعات النهاردة؟")]
-    assert loop.counts == {"answered": 1}
+    assert loop.counts == {"delegating": 1, "answered": 1}
 
 
 async def test_a_closed_call_accepts_no_more_audio():
@@ -163,7 +166,8 @@ async def test_the_callers_words_come_from_the_transcript_fragments():
     assert await loop.pump() == "transcript"
     # What the MODEL said is never fed back to it as the question.
     assert await loop.pump() == "ignored"
-    assert await loop.pump() == "answered"
+    assert await loop.pump() == "delegating"
+    await loop.drain()
 
     assert delegations.seen == [("prov_1", "كام مبيعات النهاردة؟")]
 
@@ -181,8 +185,14 @@ async def test_the_second_delegation_is_not_answered_with_the_first_question():
     loop = LiveCallLoop(provider, delegations, audio_sink=lambda pcm: None)
 
     await loop.start(voice_session_id=VOICE_SESSION, config={"instructions": "x"})
-    for _ in range(4):
+    # The first answer finishes before the caller moves on, so this test is about the
+    # transcript each delegation is given and not about supersession.
+    for _ in range(2):
         await loop.pump()
+    await loop.drain()
+    for _ in range(2):
+        await loop.pump()
+    await loop.drain()
 
     assert [t for _, t in delegations.seen] == [
         "كام مبيعات النهاردة؟",
@@ -203,8 +213,11 @@ async def test_a_delegation_with_no_fresh_fragment_uses_the_recent_history():
     loop = LiveCallLoop(provider, delegations, audio_sink=lambda pcm: None)
 
     await loop.start(voice_session_id=VOICE_SESSION, config={"instructions": "x"})
-    for _ in range(3):
-        await loop.pump()
+    assert await loop.pump() == "transcript"
+    assert await loop.pump() == "delegating"
+    await loop.drain()
+    assert await loop.pump() == "delegating"
+    await loop.drain()
 
     # The second delegation has nothing new to say, so it falls back to the tail
     # rather than sending an empty question that would cost a paid turn.

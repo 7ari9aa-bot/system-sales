@@ -9,6 +9,15 @@ What it deliberately does NOT do: decide who the caller is, which shop they
 reached, what they may see, or whether the call may continue. Those are the
 control plane's, and by the time a frame reaches this loop they are already
 decided.
+
+The one thing this loop must never do is stop listening while it thinks. A spoken
+answer is a paid assistant turn that takes seconds, and the caller is still in the
+conversation while it runs: they talk over the model, ask something else, or hang
+up. So a delegation is not awaited here. It is started as a task and the pump goes
+straight back to the socket; a newer spoken turn or an interrupt cancels the task
+in flight, and the answer to a question the caller has moved past is never spoken
+— ``spoken_turns`` owns that decision and it is checked again before anything is
+sent.
 """
 
 from __future__ import annotations
@@ -18,7 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from app.modules.voice.application.client_delegation import DELEGATION_CREATED
+from app.modules.voice.application.client_delegation import DELEGATION_CREATED, parse_delegation
 from app.modules.voice.runtime.gpt_live import GptLiveProtocolError
 
 logger = logging.getLogger(__name__)
@@ -27,6 +36,15 @@ OUTPUT_AUDIO_DELTA = "session.output_audio.delta"
 INPUT_TRANSCRIPT_DELTA = "session.input_transcript.delta"
 OUTPUT_TRANSCRIPT_DELTA = "session.output_transcript.delta"
 SESSION_CLOSED = "session.closed"
+
+#: What ``pump`` returns when it has handed a delegation to a background task. The
+#: answer itself arrives later, as a commentary frame, and is counted then.
+DELEGATING = "delegating"
+
+#: How many delegation ids this loop remembers. The service keeps its own memory;
+#: this one exists so a redelivery cannot be mistaken for a newer question while
+#: the first copy is still starting up in the background.
+REMEMBERED_DELEGATIONS = 256
 
 #: How much of what the caller said is kept. Enough to understand "yes", a
 #: correction like "الخميس مش الجمعة", or a detail given three sentences ago;
@@ -101,6 +119,18 @@ class LiveCallLoop:
         #: owns the end of its own turn, so we cannot ask it to stop; what we can
         #: do is stop playing it. Dropping the deltas IS the barge-in.
         self._muted = False
+        #: The delegation whose answer is being written right now. One per call: a
+        #: newer question makes it stale, and stale work is cancelled rather than
+        #: stacked, so the speaker can only ever be waiting for the newest answer.
+        self._turn_task: asyncio.Task | None = None
+        #: Tasks that were cancelled and have not finished unwinding yet. Kept until
+        #: they are done so a cancellation cannot leave an unretrieved exception
+        #: behind, and so ``drain`` can honestly say the call has nothing running.
+        self._retiring: set[asyncio.Task] = set()
+        #: Delegation ids already handed to a task, claimed synchronously with the
+        #: frame. A redelivery is not a newer question and must not cancel the answer
+        #: its own first copy is still writing.
+        self._remembered: dict[str, None] = {}
         self.counts: dict[str, int] = {}
 
     @property
@@ -130,7 +160,7 @@ class LiveCallLoop:
         return self._provider_session
 
     async def interrupt(self) -> None:
-        """The caller talked over the model: silence our side now.
+        """The caller talked over the model: silence our side and stop the answer.
 
         The provider is told as well (it owns the turn), but the guarantee this
         loop makes is local and immediate: no further model audio reaches the
@@ -138,21 +168,16 @@ class LiveCallLoop:
 
         Silencing the speaker is only half of a barge-in. The answer being
         computed for the question the caller just talked over is still running,
-        and it would be handed to the model as soon as it finished — so the
-        delegation service is told too, and the turn in flight stops being the
-        call's current turn. That is what makes the rest of the interruption
-        hold after the audio has already stopped.
+        and it would be handed to the model as soon as it finished — so the turn
+        in flight is dropped from the ledger AND cancelled here. That is what
+        makes the rest of the interruption hold after the audio has stopped: the
+        work stops too, instead of burning a paid turn to say something the caller
+        has already talked over.
         """
         if self._closed:
             return
         self._muted = True
-        drop_turn = getattr(self._delegations, "interrupt", None)
-        if drop_turn is not None and self._provider_session is not None:
-            # Same reason as the provider's interrupt below: await it when it is a
-            # coroutine, so a refusal cannot be swallowed by a missing await.
-            result = drop_turn(self._provider_session)
-            if asyncio.iscoroutine(result):
-                await result
+        await self._drop_in_flight()
         interrupt = getattr(self._provider, "interrupt", None)
         if interrupt is not None and self._provider_session is not None:
             # The provider's interrupt is a coroutine: awaiting it is the whole
@@ -176,7 +201,10 @@ class LiveCallLoop:
         """Read one frame and do what it asks. Returns what happened.
 
         The caller owns the loop: it decides how many frames to read and when to
-        stop, so a slow delegation never blocks audio for longer than one frame.
+        stop. A delegation is the one frame whose work is not finished here — it
+        is started as a task and ``DELEGATING`` is returned immediately, so a slow
+        analytic answer never stops the next frame (the caller's barge-in, the
+        model's audio, a newer question) from being read.
         """
         if self._closed or self._provider_session is None:
             return "closed"
@@ -217,22 +245,130 @@ class LiveCallLoop:
         if kind == DELEGATION_CREATED:
             # An answer is about to be spoken, so the mute must not swallow it.
             self._muted = False
-            outcome = await self._delegations.on_event(
-                self._provider_session,
-                event,
-                transcript=self._current_transcript(),
-            )
-            return self._count(outcome)
+            return self._count(await self._delegate(self._provider_session, event))
 
         return "ignored"
 
     async def close(self) -> None:
-        """End the call once. Closing twice is not an error, it is a repeat."""
+        """End the call once. Closing twice is not an error, it is a repeat.
+
+        An answer still being written for a call nobody is on any more is cancelled
+        rather than finished: the runner's own transaction rolls back, so a hung-up
+        caller does not pay for a turn that no speaker will ever hear.
+        """
         if self._closed:
             return
         self._closed = True
+        self._cancel_turn()
         if self._provider_session is not None:
             await self._provider.close_session(self._provider_session)
+
+    async def drain(self) -> None:
+        """Wait until no delegated answer is in flight.
+
+        The pump never needs this — not waiting is the whole point of the task — but
+        a shutdown and a test do: it is the only way to say "nothing of this call is
+        still running".
+        """
+        while True:
+            pending = [
+                task
+                for task in (self._turn_task, *self._retiring)
+                if task is not None and not task.done()
+            ]
+            if not pending:
+                return
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def _delegate(self, session_id: str, event: dict[str, Any]) -> str:
+        """Start answering one delegation, or refuse to start it twice."""
+        request = parse_delegation(event)
+        if request is None:
+            # A delegation with no id has nothing to reply to; inventing one is what
+            # the gateway rejects. Left alone here exactly as the service leaves it.
+            return "ignored"
+        if request.delegation_id in self._remembered:
+            logger.info(
+                "voice.delegation_duplicate_in_flight session=%s delegation=%s",
+                session_id,
+                request.delegation_id,
+            )
+            return "duplicate"
+        self._remember(request.delegation_id)
+
+        # A newer question ends the previous one BEFORE this frame returns: from this
+        # moment the answer being written is stale, whether or not it is still running.
+        await self._drop_in_flight()
+
+        task = asyncio.create_task(
+            self._answer(session_id, event, self._current_transcript()),
+            name=f"voice-delegation:{request.delegation_id}",
+        )
+        self._turn_task = task
+        task.add_done_callback(self._turn_done)
+        return DELEGATING
+
+    async def _answer(self, session_id: str, event: dict[str, Any], transcript: str) -> str:
+        """Answer one delegation away from the pump, and count what happened."""
+        try:
+            outcome = await self._delegations.on_event(session_id, event, transcript=transcript)
+        except asyncio.CancelledError:
+            # The caller moved on, or the call ended, before this answer existed. The
+            # turn's rows belong to the runner, whose transaction rolls back; nothing
+            # is spoken here and nothing is written here.
+            self._count("cancelled")
+            raise
+        except Exception:  # noqa: BLE001 — a failed answer must not kill the call
+            logger.exception("voice.delegation_task_failed session=%s", session_id)
+            return self._count("failed")
+        return self._count(outcome)
+
+    async def _drop_in_flight(self) -> None:
+        """Make the answer being written stale, then stop it.
+
+        The ledger goes first on purpose. An answer that has already passed its last
+        cancellation point cannot be un-run, but it can still be recognised as stale
+        and refused a speaker — and that is the ledger's decision, not the
+        scheduler's. Cancelling second is what stops the work that has not finished.
+        """
+        drop_turn = getattr(self._delegations, "interrupt", None)
+        if drop_turn is not None and self._provider_session is not None:
+            # Await it when it is a coroutine, so a refusal cannot be swallowed by a
+            # missing await.
+            result = drop_turn(self._provider_session)
+            if asyncio.iscoroutine(result):
+                await result
+        self._cancel_turn()
+
+    def _cancel_turn(self) -> None:
+        task = self._turn_task
+        if task is None:
+            return
+        self._turn_task = None
+        if task.done():
+            return
+        # Held until it has unwound: a cancelled task that nobody awaits is a warning
+        # waiting to happen, and `drain` has to be able to wait for it.
+        self._retiring.add(task)
+        task.cancel()
+
+    def _turn_done(self, task: asyncio.Task) -> None:
+        if task is self._turn_task:
+            self._turn_task = None
+        self._retiring.discard(task)
+        if task.cancelled():
+            return
+        try:
+            error = task.exception()
+        except asyncio.CancelledError:  # pragma: no cover - a task that cancelled itself
+            return
+        if error is not None:  # pragma: no cover — _answer already logs and counts it
+            logger.warning("voice.delegation_task_crashed", exc_info=error)
+
+    def _remember(self, delegation_id: str) -> None:
+        self._remembered[delegation_id] = None
+        while len(self._remembered) > REMEMBERED_DELEGATIONS:
+            self._remembered.pop(next(iter(self._remembered)))
 
     def _current_transcript(self) -> str:
         """What the caller asked, taken from the buffer unless a caller overrides it."""
