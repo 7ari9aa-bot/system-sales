@@ -35,6 +35,7 @@ from app.modules.voice.application.session_sweeper import (
     DEFAULT_STALE_AFTER,
     EXPIRED,
     EXPIRED_BEFORE_CONNECT,
+    Ending,
     SweepOutcome,
     ending_for,
     sweep_tenant_sessions,
@@ -302,3 +303,88 @@ async def test_the_worker_sweeps_every_tenant_and_survives_one_that_fails(monkey
     # The broken shop is logged and skipped; the healthy one is still swept.
     assert bound == [first, second]
     assert ended == 2
+
+
+# --------------------------------------- the silence proxy -------------------------------
+#
+# There is no heartbeat on a call. The only evidence a session is alive is that something
+# touched its row, so the sweeper's silence budget IS the safety margin for a real call that
+# happens to be quiet. These pin both sides of that trade-off, and the SQL that decides which
+# rows it ever looks at.
+
+
+async def test_the_select_looks_at_rows_nothing_has_ever_touched(monkeypatch) -> None:
+    """``ending_for`` calls a row with no ``updated_at`` silent; the SELECT must not skip it.
+
+    The comparison ``updated_at <= now - grace`` is NULL for a NULL column, so the row was
+    invisible to the sweep while the decision function called it stale: the one row the sweep
+    exists for was the one row it never looked at.
+    """
+    session, _manager, _outcome = await _sweep(monkeypatch, [])
+
+    sql = str(session.statements[0].compile(dialect=postgresql.dialect()))
+    assert "voice_sessions.updated_at IS NULL" in sql, sql
+    # and the untouched rows sort FIRST, so a bounded window cannot be filled by live calls
+    assert "NULLS FIRST" in sql.upper(), sql
+
+
+async def test_a_long_call_that_keeps_completing_turns_is_never_swept() -> None:
+    """A call that is being used touches its row on every completed turn, so it never goes stale.
+
+    The silence budget is 30 minutes; a three-hour call that completes one turn every ten minutes
+    is alive at every sweep, however long it runs.
+    """
+    started = NOW - dt.timedelta(hours=3)
+    for minute in range(0, 180, 10):
+        moment = started + dt.timedelta(minutes=minute)
+        # touched a moment before this sweep, as a completed turn leaves it
+        ending = ending_for(
+            VoiceSessionState.ACTIVE,
+            expires_at=None,
+            updated_at=moment - dt.timedelta(seconds=5),
+            now=moment,
+        )
+        assert ending is None, f"a call in use was swept at minute {minute}"
+
+
+def test_a_long_silence_is_swept_at_the_budget_and_not_a_minute_sooner() -> None:
+    """The other side of the proxy: an idle call IS swept, and exactly at the threshold.
+
+    This is what the proxy gets wrong and what the budget pays for. A call where the person is
+    thinking, or where every turn fails to complete, touches nothing — so it looks dead. The
+    budget is the only thing standing between that call and a sweep, which is why it is long and
+    why it is a setting.
+    """
+    silent_since = NOW - dt.timedelta(minutes=30)
+    assert (
+        ending_for(
+            VoiceSessionState.ACTIVE,
+            expires_at=None,
+            updated_at=silent_since + dt.timedelta(seconds=1),
+            now=NOW,
+        )
+        is None
+    ), "one second under the budget must not end a call"
+    ending = ending_for(VoiceSessionState.ACTIVE, expires_at=None, updated_at=silent_since, now=NOW)
+    assert ending == Ending("fail", CONNECTION_LOST)
+
+
+def test_the_budget_is_a_setting_so_a_long_hold_does_not_need_a_code_change(monkeypatch) -> None:
+    """A support line with long holds raises the budget in configuration, not in a patch."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    assert settings.voice_sweep_stale_after_minutes == 30
+    assert settings.voice_sweep_configuring_grace_minutes == 5
+    monkeypatch.setattr(settings, "voice_sweep_stale_after_minutes", 120, raising=False)
+    # 90 minutes of silence is past the default budget and inside the configured one
+    assert (
+        ending_for(
+            VoiceSessionState.ACTIVE,
+            expires_at=None,
+            updated_at=NOW - dt.timedelta(minutes=90),
+            now=NOW,
+            stale_after=dt.timedelta(minutes=settings.voice_sweep_stale_after_minutes),
+        )
+        is None
+    )

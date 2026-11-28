@@ -12,13 +12,25 @@ Two questions decide what a stale row has earned, and they are answered by
 
 * **Did it expire?** ``capability.expires_at`` is minted with the session (one
   hour today). A call past its own lifetime is over whatever the row says.
-* **Did it go silent?** There is no heartbeat yet, so the only evidence a call is
+* **Did it go silent?** There is no heartbeat, so the only evidence a call is
   still alive is that something touched the row — a state move, a completed
-  turn. Silence is the proxy, with a different budget per state: a call that has
-  not finished CONFIGURING in ``DEFAULT_CONFIGURING_GRACE`` never reached the
-  provider, while an ``ACTIVE`` call is only presumed dead after the much more
-  generous ``DEFAULT_STALE_AFTER``. Both are deliberately forgiving: ending a
-  real call is worse than ending a dead row late.
+  turn. Silence is a PROXY, and it is worth being exact about what it gets
+  wrong: a call where the person is thinking, or where every turn fails to
+  complete, touches nothing and looks as dead as a closed tab. What saves it is
+  the budget, not the signal. A call that has not finished CONFIGURING in
+  ``DEFAULT_CONFIGURING_GRACE`` never reached the provider, while an ``ACTIVE``
+  call is only presumed dead after the much more generous
+  ``DEFAULT_STALE_AFTER`` — far longer than any turn this runtime can take, so a
+  working call is only ever swept while genuinely idle for half an hour. Both are
+  deliberately forgiving: ending a real call is worse than ending a dead row late.
+
+  The budgets are settings (``VOICE_SWEEP_STALE_AFTER_MINUTES`` /
+  ``VOICE_SWEEP_CONFIGURING_GRACE_MINUTES``), because the right silence budget is
+  a property of how a shop uses the phone line, not of this code. A heartbeat
+  written by the media pump is the real fix; until it exists, this is the
+  stopgap, and ``tests/voice/test_voice_session_sweeper.py`` pins both sides of
+  the trade-off: a long call that keeps completing turns is never swept, and a
+  long silence is swept at the threshold and not a minute sooner.
 
 The ending itself is not invented here. A ``CONFIGURING`` session never named a
 provider, and the state machine has no edge from ``CONFIGURING`` to ``CLOSING``,
@@ -202,9 +214,16 @@ async def sweep_tenant_sessions(
                     or_(
                         VoiceSessionRow.expires_at <= moment,
                         VoiceSessionRow.updated_at <= moment - quietest,
+                        # A row nothing has ever stamped has no evidence of life at all, and
+                        # ``ending_for`` calls that silent. Leaving it out of the SELECT while the
+                        # decision calls it stale is how a row stays CONFIGURING forever: the one
+                        # row the sweep exists for is the one row it never looked at.
+                        VoiceSessionRow.updated_at.is_(None),
                     ),
                 )
-                .order_by(VoiceSessionRow.updated_at)
+                # NULLs first: with the default (NULLs last) a window full of live calls could
+                # fill the bounded limit and never reach the untouched rows behind them.
+                .order_by(VoiceSessionRow.updated_at.asc().nullsfirst())
                 .limit(limit)
                 .with_for_update(skip_locked=True)
             )
