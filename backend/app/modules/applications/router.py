@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.modules.applications.access import describe
+from app.modules.applications.install import install_entitled
 from app.modules.applications.repository import entitled, installed
 from app.modules.identity.deps import TenantCtxDep
 
@@ -33,4 +34,30 @@ async def list_applications(ctx: TenantCtxDep) -> dict[str, Any]:
     return {
         "workspace_id": str(workspace_id) if workspace_id else None,
         "applications": [dict(row) for row in describe(facts)],
+    }
+
+
+@router.post("/install")
+async def install_applications(ctx: TenantCtxDep) -> dict[str, Any]:
+    """Record what this workspace is licensed for, so the gate has something to read.
+
+    A workspace that finished setup before the installations table existed has no
+    rows, and the gate has to let it through as "not configured yet". This closes
+    that window for the workspace making the request - and only for it: the id
+    comes from the resolved context, never from the request body, so nobody can
+    install a product into somebody else's business. It installs only what the
+    live subscription already covers, so it cannot grant anything unpaid.
+    """
+    workspace_id = getattr(ctx, "workspace_id", None)
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="choose a workspace before installing applications",
+        )
+    installed_keys = await install_entitled(
+        ctx.session, tenant_id=ctx.tenant_id, workspace_id=workspace_id
+    )
+    return {
+        "workspace_id": str(workspace_id),
+        "installed": installed_keys,
     }

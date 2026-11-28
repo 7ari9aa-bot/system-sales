@@ -119,3 +119,34 @@ def test_a_real_decision_is_not_logged_as_a_bypass(facts_from_ctx, caplog) -> No
     with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
         _gate(ctx)
     assert not any("bypassed" in record.message for record in caplog.records)
+
+
+async def test_install_route_only_touches_the_workspace_in_the_context(monkeypatch) -> None:
+    """The workspace id must come from the resolved context, never the request."""
+    from app.modules.applications import router as router_module
+
+    seen: dict[str, object] = {}
+
+    async def fake_install(session, *, tenant_id, workspace_id):  # noqa: ANN001
+        seen["workspace_id"] = workspace_id
+        seen["tenant_id"] = tenant_id
+        return ["retail.core"]
+
+    monkeypatch.setattr(router_module, "install_entitled", fake_install)
+    ctx = _Ctx(states={}, entitled=set())
+    result = await router_module.install_applications(ctx)
+    assert seen["workspace_id"] == ctx.workspace_id
+    assert seen["tenant_id"] == ctx.tenant_id
+    assert result["installed"] == ["retail.core"]
+
+
+async def test_install_route_refuses_a_context_without_a_workspace() -> None:
+    from fastapi import HTTPException
+
+    from app.modules.applications import router as router_module
+
+    ctx = _Ctx(states={}, entitled=set())
+    ctx.workspace_id = None
+    with pytest.raises(HTTPException) as raised:
+        await router_module.install_applications(ctx)
+    assert raised.value.status_code == 409
