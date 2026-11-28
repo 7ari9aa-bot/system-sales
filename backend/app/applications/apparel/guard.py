@@ -21,7 +21,9 @@ from typing import TYPE_CHECKING
 
 from app.applications.apparel.compat import satisfied_by_legacy
 from app.applications.apparel.lifecycle import allows_reads, allows_writes
+from app.applications.apparel.manifest import APP_MANIFEST
 from app.applications.apparel.permissions import get_permission, is_write_code
+from app.core.context import application_key_contextvar
 from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import decide_access
 from app.modules.applications.repository import gather_facts
@@ -97,6 +99,10 @@ def decide_apparel_access(
     read_only = installation_state != UNCONFIGURED and not allows_writes(installation_state)
     if read_only and is_write(permission_code):
         raise PermissionDeniedError("apparel is read only: this action changes data")
+
+    # Every log line, audit row and job enqueued from here on says which
+    # application it belongs to (18), without the platform knowing the name.
+    application_key_contextvar.set(APP_MANIFEST.key)
 
     return ApparelAccess(
         tenant_id=tenant_id,

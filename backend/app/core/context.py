@@ -31,8 +31,15 @@ credentials_audit_contextvar: ContextVar[set[str] | None] = ContextVar(
     "credentials_audit", default=None
 )
 
+#: The sector application serving this request, set by that application's own
+#: gate once the licence and permission checks pass. Logs, audit rows and
+#: background jobs read it so a line always says which application it belongs
+#: to, without the platform layer knowing any application by name.
+application_key_contextvar: ContextVar[str | None] = ContextVar("application_key", default=None)
+
 __all__ = [
     "actor_kind_contextvar",
+    "application_key_contextvar",
     "correlation_id_contextvar",
     "credentials_audit_contextvar",
     "request_id_contextvar",

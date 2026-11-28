@@ -17,6 +17,7 @@ from app.applications.apparel.guard import (
     decide_apparel_access,
     is_write,
 )
+from app.core.context import application_key_contextvar
 from app.core.errors import PermissionDeniedError
 
 TENANT = "11111111-1111-1111-1111-111111111111"
@@ -143,3 +144,17 @@ async def test_a_context_without_a_session_still_checks_the_permission() -> None
 
     with pytest.raises(PermissionDeniedError, match="missing permission"):
         await apparel_access(_ctx(codes=set()), "apparel.reports.view")
+
+
+def test_the_gate_stamps_the_request_with_the_application_key() -> None:
+    """Section 18: every log line and audit row can name its application."""
+    application_key_contextvar.set(None)
+    decide_apparel_access(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        user_id=USER,
+        permission_code="apparel.reports.view",
+        held_codes=ALL_CODES,
+        installation_state="active",
+    )
+    assert application_key_contextvar.get() == "apparel"
