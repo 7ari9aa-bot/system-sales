@@ -19,6 +19,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.ai_entitlement import require_ai_entitlement
 from app.core.db import bind_tenant
 from app.core.errors import (
     ConflictError,
@@ -26,7 +27,7 @@ from app.core.errors import (
     PermissionDeniedError,
     StorageUnavailableError,
 )
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.voice.application.browser_call import build_browser_call
 from app.modules.voice.application.session_manager import VoiceSessionManager
 from app.modules.voice.application.session_thread import ensure_session_thread
@@ -59,6 +60,42 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 # the assistant and not speak to it — one assistant, two different doors. What the session may
 # then READ is decided per tool by the capability scopes, never by this gate.
 VoiceCtx = Annotated[TenantContext, Depends(require_permission("analytics:read"))]
+
+
+class require_voice_ai:
+    """The spoken assistant's two doors in one dependency: ``analytics:read`` and the plan gate.
+
+    The routes that MINT something — a session, a media-plane credential, the one-minute stream
+    ticket that opens the model socket — must carry the SAME plan gate the text assistant carries
+    (``require_ai_entitlement``, ``CanUseAI``). The voice path used to check only
+    ``analytics:read``, so a tenant whose plan does not sell the AI agents could open a paid
+    realtime session the typed assistant would have refused at 403.
+
+    It is ONE callable rather than two stacked ``Depends`` in the ``Annotated[...]`` because
+    FastAPI applies only the LAST one (``fastapi/dependencies/utils.py::analyze_param`` keeps
+    ``fastapi_specific_annotations[-1]``, in the pinned 0.142 and in current releases alike).
+    Stacked that way the capability check is silently dropped — the shape ``AnalyticsAICtx`` has on
+    the text side today. Composed here, both run in order and neither can be lost in a refactor:
+    the permission first (403 ``missing permission: analytics:read``), then the plan gate
+    (403 ``plan does not allow AI agents``, ``{"capability": "CanUseAI"}``) — the text path's own
+    refusal, not a new one.
+
+    The control routes (read, interrupt, handoff, close) deliberately stay on ``VoiceCtx``: a shop
+    that downgrades mid-call must still be able to end the call it already started.
+    """
+
+    code = "CanUseAI"
+
+    async def __call__(
+        self,
+        ctx: TenantCtxDep,
+        capability: Annotated[TenantContext, Depends(require_permission("analytics:read"))],
+        entitlement: Annotated[TenantContext, Depends(require_ai_entitlement())],
+    ) -> TenantContext:
+        return ctx
+
+
+VoiceAICtx = Annotated[TenantContext, Depends(require_voice_ai())]
 
 
 class StartSessionRequest(BaseModel):
@@ -116,7 +153,7 @@ def _respond(record) -> SessionResponse:  # type: ignore[no-untyped-def]
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=201)
-async def start_session(ctx: VoiceCtx, body: StartSessionRequest) -> SessionResponse:
+async def start_session(ctx: VoiceAICtx, body: StartSessionRequest) -> SessionResponse:
     record = await _manager(ctx).start(
         principal_type=PrincipalType.MERCHANT_USER,
         principal_id=ctx.user.id,
@@ -179,7 +216,7 @@ def _transport() -> VoiceTransportService:
 
 
 @router.post("/sessions/{session_id}/transport", response_model=TransportResponse)
-async def open_transport(ctx: VoiceCtx, session_id: uuid.UUID) -> TransportResponse:
+async def open_transport(ctx: VoiceAICtx, session_id: uuid.UUID) -> TransportResponse:
     """Open the media path for a session the caller already owns.
 
     A session from another shop answers 404 exactly like an id that never existed, and a control
@@ -239,7 +276,7 @@ def _grant_store() -> StreamGrantStore:
 
 
 @router.post("/sessions/{session_id}/stream-ticket", response_model=StreamTicketResponse)
-async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTicketResponse:
+async def open_stream_ticket(ctx: VoiceAICtx, session_id: uuid.UUID) -> StreamTicketResponse:
     """Mint the one-minute ticket a browser presents on the audio websocket.
 
     The browser cannot hold the gateway key, so it streams PCM to us and the

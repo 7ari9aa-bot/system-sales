@@ -7,7 +7,10 @@ plane (WebRTC/SIP, streaming audio, VAD, barge-in). Both run today; nothing here
 ## The rule that shapes every file
 
 **The runtime never decides permissions.** A session carries a `SessionCapability` minted by the
-backend, and every tool call passes the `ToolGateway` first. `merchant_assistant` is read-only over
+backend, and every tool call passes the `ToolGateway` first. Opening a session, a media credential
+or a stream ticket also carries the text assistant's plan gate (`require_ai_entitlement`,
+`CanUseAI`) — a plan that does not sell the AI agents is refused at 403 before a provider session
+can open, with the same body the typed assistant returns. `merchant_assistant` is read-only over
 one shop. `customer_agent` sees only the verified customer's own data. A prompt that asks for more
 gets a refusal, because the refusal is in Python, not in the instructions.
 

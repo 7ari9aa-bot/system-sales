@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.core.ai_entitlement import require_ai_entitlement
 from app.core.errors import PermissionDeniedError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 
@@ -47,31 +48,11 @@ class require_ai_approve:
 ApproveCtx = Annotated[TenantContext, Depends(require_ai_approve())]
 
 
-class require_ai_entitlement:
-    """Gate every token-spending AI surface on the tenant's plan.
-
-    The customer auto-reply hook checked ``CanUseAI``; the sales-analysis and
-    SI-chat routes did not, so a tenant without the entitlement could still
-    spend model budget through them. Keeping this as a class with ``code``
-    mirrors the approval gate and stays introspectable from route tests.
-    """
-
-    code = "CanUseAI"
-
-    async def __call__(self, ctx: TenantCtxDep) -> TenantContext:
-        from app.modules.billing.services.entitlements import EntitlementService
-
-        if not await EntitlementService.can(ctx.session, ctx.tenant_id, self.code):
-            # 403, not 429: a plan-capability gap is PERMANENT until the
-            # merchant upgrades — 429's retry semantics made clients back off
-            # and retry a surface that can never succeed (deep review).
-            raise PermissionDeniedError(
-                "plan does not allow AI agents",
-                details={"capability": self.code},
-            )
-        return ctx
-
-
+# The plan gate lives in ``app/core`` because the voice module declares the SAME dependency
+# (``VoiceAICtx`` in app/modules/voice/routers/sessions.py): a tenant without ``CanUseAI`` must be
+# refused the spoken assistant exactly as the typed one, at the same status with the same body.
+# Importing it from here would have added a counted voice -> ai edge; core is the shared home.
+# Re-exported so every existing import of ``require_ai_entitlement`` keeps working.
 AIEntitledCtx = Annotated[TenantContext, Depends(require_ai_entitlement())]
 # Analytics permission AND the AI plan entitlement in one dependency.
 AnalyticsAICtx = Annotated[
