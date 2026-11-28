@@ -11,8 +11,8 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings import scope_graph
-from app.modules.settings.scope_graph import UnknownScopeError
+from app.platform.settings import scope_graph
+from app.platform.settings.scope_graph import UnknownScopeError
 
 SOURCE = pathlib.Path(scope_graph.__file__).read_text(encoding="utf-8")
 

@@ -12,21 +12,21 @@ import uuid
 import pytest
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.application.turn_orchestrator import ToolCall, TurnOrchestrator
-from app.modules.voice.domain.contracts import AudioPath, ProviderCapabilities
-from app.modules.voice.domain.personas import PrincipalType
-from app.modules.voice.domain.states import TurnState, VoiceSessionState
-from app.modules.voice.runtime.providers import (
+from app.platform.voice.application.turn_orchestrator import ToolCall, TurnOrchestrator
+from app.platform.voice.domain.contracts import AudioPath, ProviderCapabilities
+from app.platform.voice.domain.personas import PrincipalType
+from app.platform.voice.domain.states import TurnState, VoiceSessionState
+from app.platform.voice.runtime.providers import (
     FakeRealtimeProvider,
     NoProviderAvailable,
     ProviderRouter,
 )
-from app.modules.voice.runtime.recovery import SessionRecovery
-from app.modules.voice.security.capabilities import AuthenticationLevel, ToolGateway
+from app.platform.voice.runtime.recovery import SessionRecovery
+from app.platform.voice.security.capabilities import AuthenticationLevel, ToolGateway
 
 TENANT = uuid.uuid4()
 OTHER_TENANT = uuid.uuid4()

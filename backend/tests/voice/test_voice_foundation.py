@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import PermissionDeniedError
-from app.modules.voice.domain.contracts import (
+from app.platform.voice.domain.contracts import (
     AudioPath,
     Completeness,
     ContractViolation,
@@ -25,14 +25,14 @@ from app.modules.voice.domain.contracts import (
     ProviderCapabilities,
     add_amounts,
 )
-from app.modules.voice.domain.personas import (
+from app.platform.voice.domain.personas import (
     Effect,
     PersonaResolutionError,
     PersonaType,
     PrincipalType,
     persona_for,
 )
-from app.modules.voice.domain.states import (
+from app.platform.voice.domain.states import (
     IllegalTransition,
     TurnState,
     VoiceSessionState,
@@ -41,7 +41,7 @@ from app.modules.voice.domain.states import (
     next_turn_state,
     session_is_terminal,
 )
-from app.modules.voice.security.capabilities import (
+from app.platform.voice.security.capabilities import (
     AuthenticationLevel,
     ChannelType,
     SessionCapability,
@@ -49,7 +49,7 @@ from app.modules.voice.security.capabilities import (
     assert_same_tenant,
     resolve_capability,
 )
-from app.modules.voice.security.data_egress import (
+from app.platform.voice.security.data_egress import (
     DataClass,
     EgressDecision,
     EgressDenied,

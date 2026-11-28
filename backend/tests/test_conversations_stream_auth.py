@@ -4,7 +4,7 @@
 no `User.is_active`, no `TenantUser` membership and no `Tenant.lifecycle_state`
 check. A deactivated user or a removed member kept a live feed of message bodies
 for the whole token lifetime. `_stream_auth` now mirrors
-`app.modules.realtime.router._sse_auth`.
+`app.platform.realtime.router._sse_auth`.
 
 `POST /conversations/{id}/messages` was the only mutation in the module that did
 not require `conversations:write` — `assign`, `close` and every template route
@@ -42,8 +42,8 @@ from app.applications.apparel.modules.conversations.router import (
     stream_conversations,
 )
 from app.applications.apparel.modules.conversations.service import ConversationService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant, User
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant, User
 
 
 def _request(*, authorization: str | None = None) -> Request:

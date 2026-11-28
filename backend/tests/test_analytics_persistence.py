@@ -108,7 +108,7 @@ async def test_missing_analysis_returns_none(db, tenant_ctx):
 async def test_analysis_events_staged_through_the_outbox(db, tenant_ctx):
     """§12.3 — real runtime events, staged in the same transaction."""
     from app.applications.apparel.modules.analytics.events import emit_analysis_event
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     analysis_id = uuid.uuid4()
     await emit_analysis_event(

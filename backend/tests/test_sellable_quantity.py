@@ -17,7 +17,7 @@ from app.applications.apparel.modules.catalog.models import Product, ProductVari
 from app.applications.apparel.modules.inventory.models import InventoryLot, Warehouse
 from app.applications.apparel.modules.inventory.services.expiry import expired_quantity, sellable_quantity
 from app.applications.apparel.modules.inventory.services.valuation import ValuationService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

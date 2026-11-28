@@ -203,7 +203,7 @@ async def test_receipt_email_queues_an_event_and_refuses_when_unconfigured(
     from app.core.config import Settings
     from app.core.events.schemas import DOMAIN_EVENT_TYPES
     from app.modules.errors import ValidationError
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
     from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)

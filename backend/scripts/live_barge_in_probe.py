@@ -24,9 +24,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.modules.voice.application.live_loop import LiveCallLoop
-from app.modules.voice.runtime import gpt_live_transport
-from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
+from app.platform.voice.application.live_loop import LiveCallLoop
+from app.platform.voice.runtime import gpt_live_transport
+from app.platform.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
 
 INSTRUCTIONS = "أنت مساعد متجر بالعربي المصري. اتكلم بصوت عالي وواضح."
 

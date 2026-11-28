@@ -279,7 +279,7 @@ async def channel_epoch(
     A webhook does not carry the epoch — it carries the phone number id — so the run row has to be
     found through the connection it belongs to.
     """
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     row = (
         await session.execute(

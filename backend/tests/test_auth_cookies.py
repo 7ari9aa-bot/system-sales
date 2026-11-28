@@ -17,12 +17,12 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.identity import cookies as auth_cookies
+from app.platform.identity import cookies as auth_cookies
 
 
 async def _register(db, sessions_on_test_connection, slug_suffix: str) -> tuple[str, str]:
     """A real tenant + owner through the service; returns (email, password)."""
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"cookie-{slug_suffix}@example.dev"
     password = "strong-password-1"
@@ -168,7 +168,7 @@ async def test_switch_tenant_uses_the_refresh_cookie_fallback(db, app_sessions_o
     """
     from sqlalchemy import select
 
-    from app.modules.identity.models import RefreshToken
+    from app.platform.identity.models import RefreshToken
 
     email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
     client = _client()
@@ -261,7 +261,7 @@ async def test_cookie_post_with_a_mismatched_header_is_refused(db, app_sessions_
 async def test_revoked_auth_version_kills_the_cookie_session(db, app_sessions_on_test_connection):
     from sqlalchemy import update
 
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     email, password = await _register(db, app_sessions_on_test_connection, uuid.uuid4().hex[:8])
     client = _client()

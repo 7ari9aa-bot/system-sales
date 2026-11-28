@@ -119,7 +119,7 @@ async def main() -> int:
     factory = session_factory()
     # Tenant + owner through the REAL register flow: RLS policies verify
     # membership, so a bare Tenant row cannot seed its own store.
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     async def _fresh_tenant(session) -> uuid.UUID:
         _user, tenant = await AuthService.register(

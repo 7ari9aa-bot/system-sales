@@ -4,7 +4,7 @@ A tenant whose plan does not include the AI agents can still hold the RBAC codes
 assistant's routes, so permission alone is not the answer to "may this shop spend model budget?".
 This dependency is that answer, and it is ONE object: the text assistant
 (``app/modules/ai/routers/_deps.py``: ``AIEntitledCtx`` / ``AnalyticsAICtx``) and the spoken
-assistant (``app/modules/voice/routers/sessions.py``: ``VoiceAICtx``) both declare it, so the same
+assistant (``app/platform/voice/routers/sessions.py``: ``VoiceAICtx``) both declare it, so the same
 tenant is refused, at the same status, with the same error body, on both paths.
 
 It lives in ``app/core`` for the reason ``app/core/guardrails.py`` does: it is a cross-cutting
@@ -19,7 +19,7 @@ module-scope import here would close a cycle at load time.
 from __future__ import annotations
 
 from app.core.errors import PermissionDeniedError
-from app.modules.identity.deps import TenantContext, TenantCtxDep
+from app.platform.identity.deps import TenantContext, TenantCtxDep
 
 
 class require_ai_entitlement:
@@ -34,7 +34,7 @@ class require_ai_entitlement:
     code = "CanUseAI"
 
     async def __call__(self, ctx: TenantCtxDep) -> TenantContext:
-        from app.modules.billing.services.entitlements import EntitlementService
+        from app.platform.billing.services.entitlements import EntitlementService
 
         if not await EntitlementService.can(ctx.session, ctx.tenant_id, self.code):
             # 403, not 429: a plan-capability gap is PERMANENT until the

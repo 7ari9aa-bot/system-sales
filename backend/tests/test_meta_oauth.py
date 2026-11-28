@@ -22,8 +22,8 @@ from app.core.secrets import decrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
 from app.main import create_app
 from app.applications.apparel.modules.customers import meta_oauth
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.platform.models import Integration
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.platform.models import Integration
 
 APP_ID = "1457166436269149"
 APP_SECRET = "meta-app-secret-for-tests"

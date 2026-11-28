@@ -6,9 +6,9 @@ import uuid
 from urllib.parse import parse_qs, urlparse
 
 from app.core.errors import ValidationError
-from app.modules.platform.integration_verifier import VerifiedChannel
-from app.modules.platform.models import Integration
-from app.modules.platform.service import IntegrationCredentialsService
+from app.platform.platform.integration_verifier import VerifiedChannel
+from app.platform.platform.models import Integration
+from app.platform.platform.service import IntegrationCredentialsService
 from tests.test_customers_http_surface import TENANT, _call
 
 
@@ -459,7 +459,7 @@ async def test_disconnect_is_listed_in_the_gate_inventory() -> None:
 
 
 def _settings_ctx(db, tenant_ctx):  # -> TenantContext
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
 
     return TenantContext(
         session=db,
@@ -480,7 +480,7 @@ async def test_disconnect_moves_active_to_disconnected_and_audits(db, tenant_ctx
 
     from app.applications.apparel.modules.customers.router import disconnect_integration
     from app.applications.apparel.modules.customers.schemas import IntegrationDisconnectBody
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     row = _channel_row(tenant_id=tenant_ctx.tenant_id)
     db.add(row)
@@ -520,7 +520,7 @@ async def test_connect_writes_an_audit_entry_without_secrets(db, tenant_ctx, mon
 
     from app.applications.apparel.modules.customers.router import connect_integration
     from app.applications.apparel.modules.customers.schemas import IntegrationConnectBody
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     async def allow_channel(_session, _tenant_id, _provider) -> None:
         return None
@@ -573,7 +573,7 @@ async def test_verification_failure_demotes_the_channel_and_audits(
     from sqlalchemy import func, select
 
     from app.applications.apparel.modules.customers.router import verify_integration
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     row = _channel_row(tenant_id=tenant_ctx.tenant_id)
     db.add(row)

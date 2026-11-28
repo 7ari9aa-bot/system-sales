@@ -14,22 +14,22 @@ from app.applications.apparel.modules.conversations.inbox import encode_keyset
 # Re-exports: the sibling routers import their identity dependencies from
 # here (the aggregator contract) — the alias form marks them as deliberate
 # re-exports so a lint sweep cannot read them as dead and break the chain.
-from app.modules.identity.deps import (  # noqa: F401
+from app.platform.identity.deps import (  # noqa: F401
     AuthedUser as AuthedUser,
 )
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     DbSession as DbSession,
 )
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     TenantContext as TenantContext,
 )
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     TenantCtxDep as TenantCtxDep,
 )
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     require_permission as require_permission,
 )
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     tenant_may_use_api as tenant_may_use_api,
 )
 

@@ -16,15 +16,15 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import (
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import (
     ALLOWED_TRANSITIONS,
     PLATFORM_ONLY_LIFECYCLE_TARGETS,
     STATE_POLICIES,
     TENANT_OPERATIONAL_STATES,
     TENANT_REQUESTABLE_LIFECYCLE_TARGETS,
 )
-from app.modules.identity.services.lifecycle import TenantLifecycleService
+from app.platform.identity.services.lifecycle import TenantLifecycleService
 
 
 def test_the_policy_keeps_sign_in_and_data_but_closes_the_api_and_the_paid_features() -> None:

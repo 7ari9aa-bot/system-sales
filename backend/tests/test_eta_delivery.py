@@ -357,7 +357,7 @@ class TestTwoSendersAtOnce:
         from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
         from app.core.db import bind_tenant
-        from app.modules.identity.models import Tenant
+        from app.platform.identity.models import Tenant
 
         eng = create_async_engine(db_url, connect_args={"statement_cache_size": 0})
         admin = create_async_engine(admin_url)

@@ -20,7 +20,7 @@ from app.main import create_app
 from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult
 from app.applications.apparel.modules.ai.models import AIChatThread
 from app.applications.apparel.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
-from app.modules.identity.deps import AuthedUser, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, get_tenant_ctx
 
 _SESSIONS: list = []
 TENANT = uuid.uuid4()
@@ -116,7 +116,7 @@ def _app(session: _FakeSession, *, role_code: str = "member") -> FastAPI:
 
 
 def TenantContextLike(session, role_code):  # noqa: N802 — mirrors the analytics test's shape
-    from app.modules.identity.deps import TenantContext
+    from app.platform.identity.deps import TenantContext
 
     return TenantContext(
         session=session,
@@ -141,7 +141,7 @@ def _stub_ai_entitlement(monkeypatch):
         return True
 
     monkeypatch.setattr(
-        "app.modules.billing.services.entitlements.EntitlementService.can",
+        "app.platform.billing.services.entitlements.EntitlementService.can",
         _can,
     )
 

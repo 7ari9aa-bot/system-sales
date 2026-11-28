@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings import capabilities as caps
-from app.modules.settings.registry import get_definition
+from app.platform.settings import capabilities as caps
+from app.platform.settings.registry import get_definition
 
 
 def test_the_four_verticals_are_known() -> None:
@@ -103,7 +103,7 @@ def test_every_capability_is_an_owner_setting_with_labels(name: str) -> None:
 
 def test_the_capabilities_route_is_declared_before_the_catch_all_key_route() -> None:
     """``/{key:path}`` swallows any path declared after it; the rule is cheap to keep."""
-    from app.modules.settings.router import router
+    from app.platform.settings.router import router
 
     paths = [(r.path, tuple(sorted(r.methods))) for r in router.routes]
     cap = next(i for i, (p, m) in enumerate(paths) if p.endswith("/capabilities") and "GET" in m)
@@ -112,7 +112,7 @@ def test_the_capabilities_route_is_declared_before_the_catch_all_key_route() -> 
 
 
 def test_the_capabilities_route_is_read_only_and_needs_the_settings_read_permission() -> None:
-    from app.modules.settings import router as r
+    from app.platform.settings import router as r
 
     route = next(x for x in r.router.routes if x.path.endswith("/capabilities"))
     assert route.methods == {"GET"}

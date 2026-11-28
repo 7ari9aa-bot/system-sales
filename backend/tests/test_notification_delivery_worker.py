@@ -21,7 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.modules.platform.models  # noqa: F401  — ensure tables are registered
+import app.platform.platform.models  # noqa: F401  — ensure tables are registered
 
 
 def _make_event(event_type: str, payload: dict, *, tenant_id=None) -> SimpleNamespace:
@@ -69,10 +69,10 @@ class TestEmailDelivery:
 
     @pytest.mark.asyncio
     async def test_email_sent_when_enabled(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.providers import FakeEmailProvider
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.providers import FakeEmailProvider
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         email = f"notif-{uuid.uuid4().hex[:8]}@test.local"
@@ -108,8 +108,8 @@ class TestEmailDelivery:
 
     @pytest.mark.asyncio
     async def test_email_skipped_when_disabled(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.providers import FakeEmailProvider
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.providers import FakeEmailProvider
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         email = f"notif-{uuid.uuid4().hex[:8]}@test.local"
@@ -144,10 +144,10 @@ class TestPushDelivery:
 
     @pytest.mark.asyncio
     async def test_push_skipped_when_disabled(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.providers import FakePushProvider
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.providers import FakePushProvider
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         email = f"notif-{uuid.uuid4().hex[:8]}@test.local"
@@ -185,7 +185,7 @@ class TestEventHandling:
 
     @pytest.mark.asyncio
     async def test_malformed_event_ignored(self) -> None:
-        from app.modules.notifications.providers import FakeEmailProvider
+        from app.platform.notifications.providers import FakeEmailProvider
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         fake = FakeEmailProvider()
@@ -197,8 +197,8 @@ class TestEventHandling:
 
     @pytest.mark.asyncio
     async def test_unrelated_event_type_ignored(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.providers import FakeEmailProvider
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.providers import FakeEmailProvider
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         email = f"notif-{uuid.uuid4().hex[:8]}@test.local"
@@ -229,8 +229,8 @@ class TestEventHandling:
 
     @pytest.mark.asyncio
     async def test_email_missing_to_skipped(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.providers import FakeEmailProvider
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.providers import FakeEmailProvider
         from app.workers.notification_delivery_worker import NotificationDeliveryWorker
 
         email = f"notif-{uuid.uuid4().hex[:8]}@test.local"

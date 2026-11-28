@@ -403,7 +403,7 @@ class Settings(BaseSettings):
 
     # Fihrist Sites (the standalone sites platform) is managed from the owner
     # console's "Websites" section. The backend reads/changes ONLY allow-listed
-    # tables through app.modules.platform.services.sites_platform.
+    # tables through app.platform.platform.services.sites_platform.
     # Both empty = the section is switched off.
     sites_platform_supabase_url: str = ""  # https://<ref>.supabase.co
     # Service-role key: opens every merchant's data. The most sensitive secret.

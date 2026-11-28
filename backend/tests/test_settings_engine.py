@@ -16,9 +16,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.modules.settings.models import TenantSetting
-from app.modules.settings.presets import PRESETS
-from app.modules.settings.registry import (
+from app.platform.settings.models import TenantSetting
+from app.platform.settings.presets import PRESETS
+from app.platform.settings.registry import (
     Scope,
     SettingDef,
     SettingType,
@@ -26,7 +26,7 @@ from app.modules.settings.registry import (
     get_definition,
     list_definitions,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 # ===========================================================================
 # 1. Registry Validation Tests

@@ -19,10 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.core.errors import PayloadTooLargeError, ValidationError
-from app.modules.identity import avatar
-from app.modules.identity.models import User
-from app.modules.identity.routers._deps import bind_tenant_user
-from app.modules.identity.services.user import UserService
+from app.platform.identity import avatar
+from app.platform.identity.models import User
+from app.platform.identity.routers._deps import bind_tenant_user
+from app.platform.identity.services.user import UserService
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
 JPEG = b"\xff\xd8\xff" + b"\x00" * 24
@@ -180,13 +180,13 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from app.core.storage import StoredMedia  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.modules.identity.deps import (  # noqa: E402
+from app.platform.identity.deps import (  # noqa: E402
     AuthedUser,
     TenantContext,
     get_db,
     get_tenant_ctx,
 )
-from app.modules.identity.routers import users as users_router_module  # noqa: E402
+from app.platform.identity.routers import users as users_router_module  # noqa: E402
 
 PNG_KEY_SUFFIX = hashlib.sha256(PNG).hexdigest()[:8]
 

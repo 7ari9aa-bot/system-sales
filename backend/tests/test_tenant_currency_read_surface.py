@@ -24,9 +24,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.identity.router import tenants_router
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.identity.router import tenants_router
 
 
 def _permission_codes(routes, path: str, method: str) -> set[str]:

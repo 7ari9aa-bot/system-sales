@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from app.core.db import bind_tenant
 from app.core.sequences import next_sequence
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 
 pytestmark = [pytest.mark.gate]
 

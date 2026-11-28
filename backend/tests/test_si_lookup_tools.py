@@ -223,7 +223,7 @@ async def test_newest_order_comes_first(db, tenant_ctx):
 
 async def test_one_shop_never_finds_another_shops_order(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     c = await _customer(db, mine, name="Mine")
@@ -355,7 +355,7 @@ async def test_a_one_character_customer_query_is_refused(db, tenant_ctx):
 
 async def test_one_shop_never_finds_another_shops_customer(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     await _customer(db, tenant_ctx.tenant_id, name="Private Client")
     other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other")

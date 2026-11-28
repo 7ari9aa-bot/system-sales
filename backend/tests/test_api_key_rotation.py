@@ -67,7 +67,7 @@ class TestResolveRotationDays:
     @pytest.mark.asyncio
     async def test_default_when_no_override(self, db) -> None:
         from app.core.api_key_rotation import resolve_rotation_days
-        from app.modules.identity.service import AuthService
+        from app.platform.identity.service import AuthService
 
         email = f"rot-{uuid_hex()}@test.local"
         user, tenant = await AuthService.register(
@@ -85,9 +85,9 @@ class TestResolveRotationDays:
     @pytest.mark.asyncio
     async def test_override_is_read(self, db) -> None:
         from app.core.api_key_rotation import resolve_rotation_days
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         email = f"rot-{uuid_hex()}@test.local"
         user, tenant = await AuthService.register(
@@ -112,9 +112,9 @@ class TestResolveRotationDays:
     @pytest.mark.asyncio
     async def test_check_secret_rotation_respects_setting(self, db) -> None:
         from app.core.api_key_rotation import check_secret_rotation
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         email = f"rot-{uuid_hex()}@test.local"
         user, tenant = await AuthService.register(

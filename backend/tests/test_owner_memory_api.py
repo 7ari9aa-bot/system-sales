@@ -14,8 +14,8 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
 from app.applications.apparel.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES, MAX_MEMORY_CHARS, OwnerMemoryService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import User
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import User
 
 BASE = "/api/v1/ai/owner-memory"
 

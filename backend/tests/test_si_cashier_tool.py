@@ -49,7 +49,7 @@ def _d(x) -> Decimal:
 
 async def _user(db) -> uuid.UUID:
     """A real user: ``pos_sessions.cashier_user_id`` is a foreign key to users."""
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     u = User(
         email=f"c-{uuid.uuid4().hex[:10]}@test.local",
@@ -459,7 +459,7 @@ async def test_facts_carry_the_money_and_counts(db, tenant_ctx):
 
 async def test_one_shop_never_sees_another_shops_till(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     sh = await _shift(db, mine)

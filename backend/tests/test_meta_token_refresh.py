@@ -7,7 +7,7 @@ import httpx
 
 from app.core.meta_tokens import token_expiry
 from app.core.secrets import decrypt_credentials_dict
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 from app.workers import meta_token_refresh as refresh
 
 
@@ -84,7 +84,7 @@ async def test_page_token_is_reloaded_for_the_same_page() -> None:
 
 
 async def test_refresh_integration_rotates_whatsapp_credential(monkeypatch) -> None:
-    from app.modules.platform.services.secrets import IntegrationCredentialsService
+    from app.platform.platform.services.secrets import IntegrationCredentialsService
 
     now = datetime.now(UTC)
     integration = Integration(provider="whatsapp", credentials={})

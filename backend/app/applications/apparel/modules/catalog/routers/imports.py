@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse
 
 from app.core.errors import NotFoundError
 from app.applications.apparel.modules.catalog.external.csv_import import CSVImportService
-from app.modules.imports import service as import_service
-from app.modules.settings.service import SettingsService
+from app.platform.imports import service as import_service
+from app.platform.settings.service import SettingsService
 
 from ._deps import (
     CsvImportRequest,

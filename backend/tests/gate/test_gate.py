@@ -17,7 +17,7 @@ from app.core.lease import conversation_lease
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.service import IdentityMergeService
-from app.modules.platform.models import ProcessedEvent
+from app.platform.platform.models import ProcessedEvent
 
 pytestmark = [pytest.mark.gate]
 
@@ -125,7 +125,7 @@ async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
         ProviderCredentials,
     )
     from app.applications.apparel.modules.conversations.models import Message
-    from app.modules.platform.models import DeliveryAttempt
+    from app.platform.platform.models import DeliveryAttempt
     from app.workers.message_worker import MessageWorker
 
     class _AuditAdapter:
@@ -367,7 +367,7 @@ async def test_gate_approval_expiry(db, tenant_ctx):
 # --- 11. Webhook tenant resolution (§125/§176.3) ---
 async def test_gate_webhook_tenant_resolution(db, tenant_ctx):
     from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     public_key = f"pk-gate-{uuid.uuid4().hex[:10]}"
     db.add(
@@ -393,8 +393,8 @@ async def test_gate_deletion_propagation(db, tenant_ctx):
 
     from app.applications.apparel.modules.customers.models import Customer
     from app.applications.apparel.modules.customers.service import CustomerService
-    from app.modules.platform.models import AuditLog
-    from app.modules.privacy.service import DeletionService
+    from app.platform.platform.models import AuditLog
+    from app.platform.privacy.service import DeletionService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,
@@ -440,7 +440,7 @@ async def test_gate_outbox_skip_locked(db, tenant_ctx):
     )
     await db.flush()
     # Verify the outbox row exists and is unprocessed
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     row = (
         await db.execute(
@@ -453,7 +453,7 @@ async def test_gate_outbox_skip_locked(db, tenant_ctx):
 # --- 14. Consumer idempotency (§127) ---
 async def test_gate_consumer_idempotency(db, tenant_ctx):
     """Re-delivery of the same event must not duplicate side effects."""
-    from app.modules.platform.models import ProcessedEvent
+    from app.platform.platform.models import ProcessedEvent
 
     eid = uuid.uuid4()
     db.add(ProcessedEvent(consumer_name="gate_idem", event_id=eid, status="ok"))
@@ -547,7 +547,7 @@ async def test_gate_redis_outbox_buffer(db, tenant_ctx):
         payload={"check": True},
     )
     await db.flush()
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     row = (
         await db.execute(
@@ -562,7 +562,7 @@ async def test_gate_redis_outbox_buffer(db, tenant_ctx):
 # --- 19. DLQ replay (§24) ---
 async def test_gate_dlq_replay(db, tenant_ctx):
     """A dead-lettered event must be inspectable and replayable."""
-    from app.modules.platform.models import WebhookEvent
+    from app.platform.platform.models import WebhookEvent
 
     db.add(
         WebhookEvent(
@@ -707,7 +707,7 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
 async def test_gate_realtime_reconnect():
     """§176/§149: realtime gateway must support cursor-based reconnection.
     Verify the router has an SSE/streaming endpoint with a cursor query param."""
-    from app.modules.realtime.router import router
+    from app.platform.realtime.router import router
 
     assert router is not None, "Realtime router must exist"
     assert len(router.routes) > 0, "Realtime router must have at least one route"
@@ -731,7 +731,7 @@ async def test_gate_event_schema_versioning(db, tenant_ctx):
         payload={"v": 1},
     )
     await db.flush()
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     row = (
         await db.execute(

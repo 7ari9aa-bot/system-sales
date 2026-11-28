@@ -105,7 +105,7 @@ import uuid as _uuid  # noqa: E402
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
-from app.modules.identity.deps import (  # noqa: E402
+from app.platform.identity.deps import (  # noqa: E402
     AuthedUser,
     TenantContext,
     get_db,

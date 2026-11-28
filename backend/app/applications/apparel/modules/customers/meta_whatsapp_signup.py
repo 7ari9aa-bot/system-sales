@@ -34,8 +34,8 @@ from sqlalchemy.exc import IntegrityError
 from app.core.config import get_settings
 from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
-from app.modules.identity.deps import DbSession, TenantContext, require_permission
-from app.modules.platform.channel_specs.whatsapp import (
+from app.platform.identity.deps import DbSession, TenantContext, require_permission
+from app.platform.platform.channel_specs.whatsapp import (
     COEXISTENCE_PLATFORM,
     coexistence_evidence,
 )
@@ -335,7 +335,7 @@ async def _number_platform_facts(
     not record a mode: assuming ``cloud_api`` is what made every Business App number look like a
     plain API number, and assuming coexistence would skip a registration the number still needs.
     """
-    from app.modules.platform.channel_specs.whatsapp import number_platform_facts
+    from app.platform.platform.channel_specs.whatsapp import number_platform_facts
 
     try:
         response = await http.get(
@@ -747,14 +747,14 @@ async def whatsapp_signup_complete(
     ctx: TenantContext = Depends(require_permission("settings:write")),
 ):
     """Finish the popup: exchange → subscribe → verify → store the channel."""
-    from app.modules.billing.service import EntitlementService
+    from app.platform.billing.service import EntitlementService
     from app.applications.apparel.modules.customers.routers.integrations import (
         _activate_verified_channel,
         _verification_metadata,
         audit_channel_connected,
     )
-    from app.modules.platform.integration_verifier import verify_channel_credentials
-    from app.modules.platform.models import Integration
+    from app.platform.platform.integration_verifier import verify_channel_credentials
+    from app.platform.platform.models import Integration
 
     app_id, app_secret, _config_id = _whatsapp_config()
     tenant_id = ctx.tenant_id
@@ -972,7 +972,7 @@ def _select_integration(tenant_id, provider: str):
     """The tenant's channel row for this provider (one per provider)."""
     from sqlalchemy import select
 
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     return select(Integration).where(
         Integration.tenant_id == tenant_id,

@@ -16,9 +16,9 @@ import uuid
 import pytest
 
 from app.main import create_app
-from app.modules.operations.router import job_can_cancel, job_can_retry
-from app.modules.platform.models import Job, SavedView
-from app.modules.platform.router import (
+from app.platform.operations.router import job_can_cancel, job_can_retry
+from app.platform.platform.models import Job, SavedView
+from app.platform.platform.router import (
     _database_subsystem,
     build_health_response,
     can_modify_saved_view,

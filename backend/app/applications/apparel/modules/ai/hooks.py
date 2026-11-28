@@ -166,7 +166,7 @@ async def _do_auto_reply(
     # customer a human answer, so the withhold is recorded like every other one:
     # the row, the status and the event. §37's `policy` reason had no producer
     # before this; a plan that excludes AI is exactly what it names.
-    from app.modules.billing.service import EntitlementService
+    from app.platform.billing.service import EntitlementService
 
     if not await EntitlementService.can(session, tenant_id, "CanUseAI"):
         created = await handover("policy", "plan does not include AI", None)
@@ -181,7 +181,7 @@ async def _do_auto_reply(
     # includes AI but a shop that turned the agent off should NOT reply. Unlike
     # the entitlement gate, this is a preference, not a plan limitation, so the
     # conversation simply waits for a human instead of creating a handover row.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     agent_enabled = await SettingsService(session, tenant_id).value("customer_agent.enabled")
     if not agent_enabled:
@@ -499,7 +499,7 @@ async def _do_auto_reply(
         # §settings: build the style directive from customer_agent settings
         # (dialect, formality, response_language). These ride after the
         # persona in the system prompt, colouring the reply's voice.
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         _svc = SettingsService(session, tenant_id)
         dialect = await _svc.value("customer_agent.dialect")

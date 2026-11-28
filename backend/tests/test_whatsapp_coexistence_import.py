@@ -29,7 +29,7 @@ from app.applications.apparel.modules.conversations.models import (
 )
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.platform.models import Integration, OutboxEvent
+from app.platform.platform.models import Integration, OutboxEvent
 
 pytestmark = pytest.mark.asyncio
 

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.applications.apparel.modules.expenses.service import ExpenseService
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 

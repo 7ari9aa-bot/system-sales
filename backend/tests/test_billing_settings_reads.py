@@ -25,11 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.billing.models import Invoice
-from app.modules.billing.router import billing_router
-from app.modules.billing.services.subscriptions import BillingService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
+from app.platform.billing.models import Invoice
+from app.platform.billing.router import billing_router
+from app.platform.billing.services.subscriptions import BillingService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
 from tests.test_billing_gates import _permission_codes
 
 

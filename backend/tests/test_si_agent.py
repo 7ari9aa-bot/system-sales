@@ -24,8 +24,8 @@ from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentToo
 from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.orders.models import Order
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 
 
 def _patch_gateway(monkeypatch, results) -> dict:
@@ -299,7 +299,7 @@ async def test_failed_run_emits_the_failed_analysis_event(db, tenant_ctx):
     import pytest
     from sqlalchemy import select as sa_select
 
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     tenant_id = tenant_ctx.tenant_id
     agent = await _seed(db, tenant_id, agent_with_tools=False)

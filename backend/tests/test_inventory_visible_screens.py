@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 
 from app.applications.apparel.modules.inventory.services.screens import SCREEN_SWITCHES, decide, visible_screens
-from app.modules.settings.registry import get_definition
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import get_definition
+from app.platform.settings.service import SettingsService
 
 ALL = set(SCREEN_SWITCHES)
 

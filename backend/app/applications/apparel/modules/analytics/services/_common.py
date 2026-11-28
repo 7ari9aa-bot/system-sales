@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.analytics.timekit import ResolvedTimezone, resolve_timezone
-from app.modules.platform.metrics import MetricRegistry
+from app.platform.platform.metrics import MetricRegistry
 
 # The shape a status word is allowed to have.
 _STATUS_WORD = re.compile(r"^[a-z][a-z_]*$")

@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import NotFoundError
 from app.core.security import hash_password
 from app.main import create_app
-from app.modules.identity.models import User
-from app.modules.notifications.router import MarkReadRequest
-from app.modules.notifications.service import NotificationService
-from app.modules.platform.models import Notification
+from app.platform.identity.models import User
+from app.platform.notifications.router import MarkReadRequest
+from app.platform.notifications.service import NotificationService
+from app.platform.platform.models import Notification
 
 BASE = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
 

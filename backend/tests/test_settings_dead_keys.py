@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pathlib
 
-from app.modules.settings.registry import REGISTRY
+from app.platform.settings.registry import REGISTRY
 
 APP_DIR = pathlib.Path(__file__).resolve().parents[1] / "app"
 

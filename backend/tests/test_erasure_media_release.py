@@ -37,7 +37,7 @@ from typing import Any
 import app.core.search as search_mod
 import app.core.storage as storage_mod
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.privacy.service import DeletionService
+from app.platform.privacy.service import DeletionService
 
 TENANT = uuid.UUID("88888888-8888-8888-8888-888888888888")
 CUSTOMER = uuid.UUID("77777777-7777-7777-7777-777777777777")

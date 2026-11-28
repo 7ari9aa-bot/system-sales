@@ -28,7 +28,7 @@ from app.applications.apparel.modules.ai import gateway as ai_gateway
 from app.applications.apparel.modules.ai.knowledge import search_memory
 from app.applications.apparel.modules.ai.models import Memory
 from app.applications.apparel.modules.ai.providers import EmbeddingProvider
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 VECTOR_DIM = 1536
 

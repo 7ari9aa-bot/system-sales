@@ -12,8 +12,8 @@ import base64
 
 import pytest
 
-from app.modules.voice.application.live_loop import LiveCallLoop
-from app.modules.voice.runtime.gpt_live import GptLiveProtocolError
+from app.platform.voice.application.live_loop import LiveCallLoop
+from app.platform.voice.runtime.gpt_live import GptLiveProtocolError
 
 VOICE_SESSION = "11111111-1111-1111-1111-111111111111"
 
@@ -228,7 +228,7 @@ async def test_a_delegation_with_no_fresh_fragment_uses_the_recent_history():
 
 
 def test_the_transcript_history_is_bounded():
-    from app.modules.voice.application.live_loop import TranscriptBuffer
+    from app.platform.voice.application.live_loop import TranscriptBuffer
 
     buffer = TranscriptBuffer(limit=50)
     for _ in range(40):

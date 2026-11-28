@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import inspect
 
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 METHODS = ("create_change_request", "approve_change_request", "reject_change_request")
 

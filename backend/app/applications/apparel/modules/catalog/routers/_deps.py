@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from app.core.middleware import MAX_BODY_BYTES
 from app.core.storage import get_storage
 from app.applications.apparel.modules.catalog.limits import MATERIAL_MAX_LENGTH, SEASON_MAX_LENGTH
-from app.modules.identity.deps import TenantContext, require_permission
-from app.modules.identity.deps import (
+from app.platform.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import (
     TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for the routers
 )
 from app.applications.apparel.modules.inventory.models import (

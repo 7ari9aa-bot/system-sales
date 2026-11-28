@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.applications.apparel.modules.pos import receipt_settings as rs
-from app.modules.settings import registry as reg
+from app.platform.settings import registry as reg
 
 _DEFAULTS = {"print.copies": 1, "print.paper_width": "80mm", "pos.exchange_max_days": 0}
 
@@ -36,7 +36,7 @@ def stub(monkeypatch):
             out[key] = SimpleNamespace(value=value)
         return out
 
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     monkeypatch.setattr(SettingsService, "resolve_many", fake_resolve)
     return values

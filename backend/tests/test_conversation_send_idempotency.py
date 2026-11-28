@@ -27,7 +27,7 @@ from app.core.idempotency import IDEMPOTENT_PATHS, IdempotencyMiddleware
 from app.applications.apparel.modules.conversations.routers import inbox as inbox_router_module
 from app.applications.apparel.modules.conversations.routers.inbox import router as inbox_router
 from app.applications.apparel.modules.conversations.service import ConversationService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from tests.test_order_idempotency import MemoryStore
 
 KEY_HEADER = "Idempotency-Key"

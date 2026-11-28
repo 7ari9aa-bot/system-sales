@@ -13,8 +13,8 @@ import base64
 
 import pytest
 
-from app.modules.voice.application.live_loop import LiveCallLoop
-from app.modules.voice.runtime.gpt_live import GptLiveProtocolError
+from app.platform.voice.application.live_loop import LiveCallLoop
+from app.platform.voice.runtime.gpt_live import GptLiveProtocolError
 
 AUDIO = base64.b64encode(b"\x01\x02" * 240).decode()
 

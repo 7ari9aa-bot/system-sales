@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.db import bind_tenant
 from app.core.security import hash_password
 from app.core.shop_type import APPAREL_STARTER_TREE, choose_vertical
-from app.modules.identity.models import Role, Tenant, TenantUser, User
+from app.platform.identity.models import Role, Tenant, TenantUser, User
 
 RACERS = 8
 EXPECTED = len(APPAREL_STARTER_TREE) + sum(len(v) for v in APPAREL_STARTER_TREE.values())

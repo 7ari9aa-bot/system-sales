@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests.test_pos_close_variance_discipline import _shop
 
 pytestmark = pytest.mark.asyncio

@@ -14,7 +14,7 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.registry import ENFORCED_KEYS, get_definition
+from app.platform.settings.registry import ENFORCED_KEYS, get_definition
 
 check = PosService._assert_within_cash_movement_limit
 

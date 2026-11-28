@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.modules.platform.models import OutboxEvent, WebhookDelivery, WebhookEndpoint
+from app.platform.platform.models import OutboxEvent, WebhookDelivery, WebhookEndpoint
 from app.workers import scheduler_worker as sw
 
 

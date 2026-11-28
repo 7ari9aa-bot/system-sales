@@ -36,7 +36,7 @@ from app.applications.apparel.modules.ai.gateway import (
     _resolve_cap,
     reserve_budget,
 )
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 
 
 class _Policy:

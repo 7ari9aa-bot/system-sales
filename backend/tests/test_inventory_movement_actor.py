@@ -127,7 +127,7 @@ async def test_sale_and_return_record_the_cashier(db, tenant_ctx):
 
 
 async def test_movements_list_names_the_actor(db, tenant_ctx):
-    from app.modules.identity.service import UserService
+    from app.platform.identity.service import UserService
 
     _, variant, wh = await _variant(db, tenant_ctx, stock=0)
     await InventoryService.move(

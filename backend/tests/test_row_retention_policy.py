@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import bind_tenant
 from app.main import create_app
 from app.applications.apparel.modules.analytics import retention
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.workers import retention_worker
 
 MESSAGES = "messages"
@@ -715,7 +715,7 @@ async def _seed_message(
 async def _seed_ingress_event(
     db: AsyncSession, tenant_id, *, age_days: int, processing_status: str
 ) -> uuid.UUID:
-    from app.modules.platform.models import WebhookEvent
+    from app.platform.platform.models import WebhookEvent
 
     event = WebhookEvent(
         tenant_id=tenant_id,
@@ -845,7 +845,7 @@ async def test_another_tenants_rows_are_never_touched(db: AsyncSession, tenant_c
     """The tenant predicate is explicit, and RLS is the backstop — both must hold
     for a store whose tenant column is resolved at ingress rather than by FK.
     """
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     other = Tenant(slug=f"other-{uuid.uuid4().hex[:8]}", name="Other")
     db.add(other)

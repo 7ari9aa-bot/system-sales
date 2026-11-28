@@ -45,11 +45,11 @@ from app.applications.apparel.modules.catalog.external.csv_import import CSVImpo
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
-from app.modules.identity.deps import AuthedUser, resolve_scope
-from app.modules.identity.models import Location, Role, Tenant, TenantUser, User, Workspace
+from app.platform.identity.deps import AuthedUser, resolve_scope
+from app.platform.identity.models import Location, Role, Tenant, TenantUser, User, Workspace
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.router import _require_platform_admin
+from app.platform.platform.router import _require_platform_admin
 
 # ---------------------------------------------------------------------------
 # Deliberately-public surfaces: everything here resolves tenancy by some other

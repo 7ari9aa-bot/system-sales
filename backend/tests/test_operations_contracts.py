@@ -2,7 +2,7 @@
 
 Three defect classes, all reachable without a database.
 
-1. **No response contract.** Every route in ``app/modules/operations/router.py``
+1. **No response contract.** Every route in ``app/platform/operations/router.py``
    returns a hand-built ``dict``/``list[dict]`` with no ``response_model``, so
    OpenAPI says ``{}`` for the whole module: a client generator learns nothing,
    and a handler that forgets a key fails silently instead of at the edge. The
@@ -51,8 +51,8 @@ from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.main import create_app
-from app.modules.operations import sla
-from app.modules.operations.router import (
+from app.platform.operations import sla
+from app.platform.operations.router import (
     ScheduledJobReschedule,
     TaskCreate,
     TaskUpdate,
@@ -64,10 +64,10 @@ from app.modules.operations.router import (
     retry_job,
     update_task_status,
 )
-from app.modules.operations.slo_service import measure_slo
-from app.modules.operations.task_service import TaskService
+from app.platform.operations.slo_service import measure_slo
+from app.platform.operations.task_service import TaskService
 
-OPERATIONS_MODULE = "app.modules.operations.router"
+OPERATIONS_MODULE = "app.platform.operations.router"
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 

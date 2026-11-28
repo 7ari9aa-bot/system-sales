@@ -15,11 +15,11 @@ import sqlalchemy as sa
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.applications.apparel.modules.catalog.models import Category
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.imports import apply as apply_mod
-from app.modules.imports.apply import apply_batch
-from app.modules.imports.fields import SHEET_PRODUCTS
-from app.modules.imports.models import ImportRow, ImportSession
-from app.modules.imports.verdicts import encode_values, values_of
+from app.platform.imports import apply as apply_mod
+from app.platform.imports.apply import apply_batch
+from app.platform.imports.fields import SHEET_PRODUCTS
+from app.platform.imports.models import ImportRow, ImportSession
+from app.platform.imports.verdicts import encode_values, values_of
 from app.workers import import_runner
 from app.workers.import_runner import PORTS
 

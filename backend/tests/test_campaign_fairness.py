@@ -24,7 +24,7 @@ from sqlalchemy import select
 from app.core.events.schemas import EVENT_TYPES
 from app.applications.apparel.modules.marketing.campaign import CampaignExecutionService, CampaignRunStatus
 from app.applications.apparel.modules.marketing.service import MarketingService
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 
@@ -127,7 +127,7 @@ async def _customer(db, tenant_id, phone: str):
 
 
 async def _grant_marketing(db, tenant_id, customer_id) -> None:
-    from app.modules.privacy.models import Consent
+    from app.platform.privacy.models import Consent
 
     db.add(
         Consent(

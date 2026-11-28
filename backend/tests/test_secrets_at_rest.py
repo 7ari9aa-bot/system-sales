@@ -134,8 +134,8 @@ class TestPersistedCredentials:
         import sqlalchemy as sa
 
         from app.core.secrets import get_envelope_store
-        from app.modules.platform.models import AuditLog, Integration
-        from app.modules.platform.service import IntegrationCredentialsService
+        from app.platform.platform.models import AuditLog, Integration
+        from app.platform.platform.service import IntegrationCredentialsService
 
         store = get_envelope_store()
         integration = Integration(
@@ -181,8 +181,8 @@ class TestPersistedCredentials:
 
     async def test_tampered_stored_value_raises_on_read(self, db, tenant_ctx):
         from app.core.secrets import get_envelope_store
-        from app.modules.platform.models import Integration
-        from app.modules.platform.service import IntegrationCredentialsService
+        from app.platform.platform.models import Integration
+        from app.platform.platform.service import IntegrationCredentialsService
 
         store = get_envelope_store()
         integration = Integration(

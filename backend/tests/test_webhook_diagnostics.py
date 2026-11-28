@@ -106,7 +106,7 @@ async def test_a_recording_failure_cannot_change_the_answer(client, monkeypatch)
     async def boom(*a, **k):
         raise RuntimeError("trail unavailable")
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", boom)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", boom)
     monkeypatch.setattr("app.core.redis.get_redis_or_none", lambda: None)
     md._fallback.clear()
     response = await client.post(

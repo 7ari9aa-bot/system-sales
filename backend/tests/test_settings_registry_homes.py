@@ -10,7 +10,7 @@ page fails here, and a page filter can never quietly return its neighbour's cont
 
 from __future__ import annotations
 
-from app.modules.settings.registry import list_definitions
+from app.platform.settings.registry import list_definitions
 
 # The twenty section ids of the map, in order. Adding a section is a deliberate change here.
 SECTIONS = (

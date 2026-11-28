@@ -6,8 +6,8 @@ DB-backed endpoint tests skip locally (no ``DATABASE_URL_APP_ADMIN``), so a
 "the route returns a dr row" assertion would be a green-in-CI-only claim. These
 tests therefore pin the caller in a way that RUNS locally:
 
-* ``app.modules.platform.router`` is the sole runtime caller of
-  ``app.modules.platform.dr`` (the §103 health indicator). We assert the import
+* ``app.platform.platform.router`` is the sole runtime caller of
+  ``app.platform.platform.dr`` (the §103 health indicator). We assert the import
   edge statically AND drive ``_dr_subsystem`` directly over a fake session with
   a stubbed ``DRService``, so the status mapping is proven without a database.
 * ``app.applications.apparel.modules.conversations.gateway.registry`` is the sole caller of
@@ -48,16 +48,16 @@ def _imported_names(path: pathlib.Path) -> set[str]:
 def test_platform_router_imports_the_dr_service() -> None:
     """The §103 health route is what binds DRService into the app."""
     imported = _imported_names(PLATFORM_ROUTER)
-    assert "app.modules.platform.dr" in imported, (
-        "platform.router must import app.modules.platform.dr — it is dr.py's "
+    assert "app.platform.platform.dr" in imported, (
+        "platform.router must import app.platform.platform.dr — it is dr.py's "
         "only caller; the health indicator is its whole reason to exist"
     )
-    assert "app.modules.platform.dr.DRService" in imported
+    assert "app.platform.platform.dr.DRService" in imported
 
 
 async def test_dr_subsystem_maps_health_states(monkeypatch: pytest.MonkeyPatch) -> None:
     """_dr_subsystem turns a DRService.check_dr_health result into a row."""
-    from app.modules.platform import router as platform_router
+    from app.platform.platform import router as platform_router
 
     class _FakeService:
         def __init__(self, result: dict | None, raises: bool = False) -> None:

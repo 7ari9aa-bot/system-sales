@@ -21,7 +21,7 @@ import pytest
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
 from app.applications.apparel.modules.ai.tools import get_tool
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from tests.test_si_finance_tools import _category, _expense, _variant
 from tests.test_si_why_tool import _two_periods
 

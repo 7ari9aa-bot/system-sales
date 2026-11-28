@@ -82,7 +82,7 @@ class PricingService:
     async def _settings(self) -> dict:
         # Function scope: importing another module's service at module scope is what the boundary
         # guard counts, and pricing is not allowed to add to it.
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         return await SettingsService(self.session, self.tenant_id).resolve_many(list(_KEYS))
 

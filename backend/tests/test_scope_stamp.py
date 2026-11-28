@@ -150,7 +150,7 @@ async def test_unscoped_writer_leaves_scope_keys_none() -> None:
 
 
 async def _make_hierarchy(db, tenant_id):
-    from app.modules.identity.models import Location, Workspace
+    from app.platform.identity.models import Location, Workspace
 
     ws = Workspace(
         tenant_id=tenant_id,
@@ -204,7 +204,7 @@ async def test_scoped_insert_stamps_the_row(db, tenant_ctx) -> None:
 async def test_operations_task_carries_the_scope_columns(db, tenant_ctx) -> None:
     """Q4 concretization: operations entities join the hierarchy — the
     columns must exist and stamp like every other WorkspaceScopeMixin row."""
-    from app.modules.operations.models import Task
+    from app.platform.operations.models import Task
 
     ws, loc = await _make_hierarchy(db, tenant_ctx.tenant_id)
     token = set_current_scope(ws.id, loc.id)

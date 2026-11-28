@@ -30,7 +30,7 @@ from app.main import create_app
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.routers import customers as customers_router
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 # ---------------------------------------------------------------------------
 # Doubles — enough of a session/context for the conditional-write path

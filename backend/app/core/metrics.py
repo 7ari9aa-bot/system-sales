@@ -2,7 +2,7 @@
 
 O10 records "no ``/metrics``". Verified before writing this:
 ``GET /api/v1/platform/metrics`` answers from the BUSINESS metric registry
-(``app/modules/platform/metrics.py`` — revenue, ROAS, pipeline), and the string
+(``app/platform/platform/metrics.py`` — revenue, ROAS, pipeline), and the string
 ``prometheus`` appears nowhere in the tree. There is no operational exposition,
 and ``prometheus_client`` is not a dependency — so the format is rendered here
 by hand rather than adding a runtime dependency for five series.

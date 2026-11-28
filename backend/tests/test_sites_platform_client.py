@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from app.core.config import get_settings
-from app.modules.platform.services import sites_platform as sp
+from app.platform.platform.services import sites_platform as sp
 
 REAL_CLIENT = httpx.AsyncClient  # captured before any fixture replaces it
 KEY = "service-role-SECRET-DO-NOT-LEAK"

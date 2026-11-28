@@ -23,8 +23,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.settings.registry import Scope, SettingDef, get_definition
-from app.modules.settings.scope_graph import ScopeLink, resolve_chain
+from app.platform.settings.registry import Scope, SettingDef, get_definition
+from app.platform.settings.scope_graph import ScopeLink, resolve_chain
 
 
 async def resolve_setting(
@@ -81,7 +81,7 @@ def get_default(key: str) -> Any:
     Use this when you need the default value before a tenant exists (e.g. at
     registration).  Lives in ``app.core`` so callers in ``identity`` and other
     cycle-adjacent modules can read the default without importing
-    ``app.modules.settings`` directly.
+    ``app.platform.settings`` directly.
     """
     return get_definition(key).default
 

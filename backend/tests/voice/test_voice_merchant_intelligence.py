@@ -9,13 +9,13 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import PermissionDeniedError
-from app.modules.voice.application.merchant_intelligence import (
+from app.platform.voice.application.merchant_intelligence import (
     MerchantIntelligenceGateway,
     Reading,
 )
-from app.modules.voice.domain.contracts import Completeness, Period
-from app.modules.voice.domain.metrics import METRIC_REGISTRY, UnknownMetric
-from app.modules.voice.security.capabilities import (
+from app.platform.voice.domain.contracts import Completeness, Period
+from app.platform.voice.domain.metrics import METRIC_REGISTRY, UnknownMetric
+from app.platform.voice.security.capabilities import (
     AuthenticationLevel,
     ChannelType,
     PrincipalType,

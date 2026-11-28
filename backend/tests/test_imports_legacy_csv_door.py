@@ -16,8 +16,8 @@ from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
 from app.applications.apparel.modules.catalog.external.csv_import import CSVImportService
-from app.modules.identity.deps import get_db, get_tenant_ctx
-from app.modules.settings.service import SettingsService
+from app.platform.identity.deps import get_db, get_tenant_ctx
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import ctx_for
 
 pytestmark = pytest.mark.asyncio

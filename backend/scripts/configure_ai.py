@@ -27,7 +27,7 @@ from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
 from app.applications.apparel.modules.ai.knowledge import ingest_knowledge
 from app.applications.apparel.modules.ai.models import Agent, AgentTool, ModelConfig
 from app.applications.apparel.modules.ai.secret_backfill import set_model_config_secret
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai"
 CHAT_MODEL = "gemini-3.5-flash"

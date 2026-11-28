@@ -132,7 +132,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from app.core.db import bind_tenant  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.applications.apparel.modules.einvoice.service import EInvoiceService  # noqa: E402
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx  # noqa: E402
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx  # noqa: E402
 from tests.test_eta_db_layer import _ctx, _device, _other_tenant  # noqa: E402
 
 LIST = "/api/v1/einvoice/receipts"
@@ -256,7 +256,7 @@ async def test_a_group_filter_and_paging(db, tenant_ctx):
 
 
 async def test_the_warning_threshold_is_the_shops_setting(db, tenant_ctx):
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     t = tenant_ctx.tenant_id
     dev = await _device(db, t, serial="WRN-1")

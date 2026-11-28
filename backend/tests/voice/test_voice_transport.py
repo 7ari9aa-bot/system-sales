@@ -17,20 +17,20 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ConflictError, NotFoundError, StorageUnavailableError
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.application.transport import VoiceTransportService
-from app.modules.voice.domain.personas import PrincipalType
-from app.modules.voice.routers import sessions as api
-from app.modules.voice.runtime.livekit import (
+from app.platform.voice.application.transport import VoiceTransportService
+from app.platform.voice.domain.personas import PrincipalType
+from app.platform.voice.routers import sessions as api
+from app.platform.voice.runtime.livekit import (
     LiveKitCredentials,
     LiveKitTokenIssuer,
     MediaPlaneMisconfigured,
     MediaPlaneUnavailable,
 )
-from app.modules.voice.security.capabilities import ChannelType
+from app.platform.voice.security.capabilities import ChannelType
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
@@ -166,7 +166,7 @@ class TestWhenTheRoomIsRefused:
             state=None,
             capability=SimpleNamespace(channel=ChannelType.WEB_VOICE),
         )
-        from app.modules.voice.domain.states import VoiceSessionState
+        from app.platform.voice.domain.states import VoiceSessionState
 
         record.state = VoiceSessionState.CONFIGURING
         with pytest.raises(MediaPlaneUnavailable):

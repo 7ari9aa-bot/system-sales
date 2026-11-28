@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.voice.application.client_delegation import (
+from app.platform.voice.application.client_delegation import (
     FAILURE_NOTE,
     ClientDelegationService,
     parse_delegation,
 )
-from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveProtocolError, GptLiveProvider
+from app.platform.voice.runtime.gpt_live import GptLiveConfig, GptLiveProtocolError, GptLiveProvider
 
 SESSION = "live_test_1"
 

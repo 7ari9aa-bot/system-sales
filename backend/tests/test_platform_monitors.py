@@ -19,10 +19,10 @@ from sqlalchemy import select
 
 import app.applications.apparel.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
 import app.applications.apparel.modules.customers.models  # noqa: F401 — registers notifications' customers FK
-from app.modules.notifications.models import Notification
-from app.modules.platform.models import VisitorEvent
-from app.modules.platform.services import monitors
-from app.modules.platform.services.monitors import evaluate_monitors
+from app.platform.notifications.models import Notification
+from app.platform.platform.models import VisitorEvent
+from app.platform.platform.services import monitors
+from app.platform.platform.services.monitors import evaluate_monitors
 
 
 async def _seed(db, *, event_type: str, path: str = "/", minutes_ago: int = 5, **extra) -> None:
@@ -104,7 +104,7 @@ async def test_trip_dedupe_alerts_once_per_fingerprint() -> None:
             self.seen.add(key)
             return True
 
-    from app.modules.platform.services.monitors import Alert, trip_if_new
+    from app.platform.platform.services.monitors import Alert, trip_if_new
 
     redis = _FakeRedis()
     first = [
@@ -161,8 +161,8 @@ async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monk
     import uuid
 
     from app.core.config import get_settings
-    from app.modules.identity.models import User
-    from app.modules.platform.services.monitors import Alert
+    from app.platform.identity.models import User
+    from app.platform.platform.services.monitors import Alert
     from app.workers.scheduler_worker import _push_operator_emails
 
     # Force the delivery gate open: the push returns silently when email
@@ -202,7 +202,7 @@ async def test_trip_pushes_one_email_per_alert_per_operator(db, tenant_ctx, monk
             if recipient == admin2.email:
                 raise RuntimeError("resend down for this one")
 
-    monkeypatch.setattr("app.modules.identity.email_delivery.ResendEmailSender", _Sender)
+    monkeypatch.setattr("app.platform.identity.email_delivery.ResendEmailSender", _Sender)
     alerts = [Alert("critical", "visitor_error_spike", "boom", "fp:/checkout")]
 
     await _push_operator_emails(db, alerts)
@@ -218,7 +218,7 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
 
     from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
     from app.applications.apparel.modules.ai.usage import record_usage
-    from app.modules.platform.services.monitors import evaluate_tenant_monitors
+    from app.platform.platform.services.monitors import evaluate_tenant_monitors
 
     agent = Agent(
         tenant_id=tenant_ctx.tenant_id,
@@ -245,7 +245,7 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
     near = next(a for a in alerts if a.code == "ai_cap_near")
     assert near.severity == "warning"
 
-    from app.modules.notifications.service import NotificationService
+    from app.platform.notifications.service import NotificationService
     from app.workers.scheduler_worker import _tenant_owner_ids
 
     owner_ids = await _tenant_owner_ids(db, tenant_ctx.tenant_id)
@@ -292,7 +292,7 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
 
 async def test_tenant_monitor_silent_under_budget(db, tenant_ctx) -> None:
     """A tenant far from its cap with clean ingress trips nothing."""
-    from app.modules.platform.services.monitors import evaluate_tenant_monitors
+    from app.platform.platform.services.monitors import evaluate_tenant_monitors
 
     alerts = await evaluate_tenant_monitors(db, tenant_ctx.tenant_id)
     assert alerts == []

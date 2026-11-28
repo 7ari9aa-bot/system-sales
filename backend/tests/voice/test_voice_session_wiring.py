@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.voice.application.voice_profile import (
+from app.platform.voice.application.voice_profile import (
     BASE_CONTRACT,
     ArabicDialect,
     Presentation,
@@ -12,7 +12,7 @@ from app.modules.voice.application.voice_profile import (
     resolve_voice_profile,
     session_start_config,
 )
-from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
+from app.platform.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
 
 
 class RecordingTransport:
@@ -104,7 +104,7 @@ class TestThePromptIsReadFromTheShop:
     async def test_a_real_tenant_row_becomes_one_instruction_block(self) -> None:
         import uuid
 
-        from app.modules.voice.application.shop_voice import load_shop_voice_config
+        from app.platform.voice.application.shop_voice import load_shop_voice_config
 
         tenant_id = uuid.uuid4()
 
@@ -125,7 +125,7 @@ class TestThePromptIsReadFromTheShop:
     async def test_a_missing_tenant_still_starts_a_call_instead_of_crashing(self) -> None:
         import uuid
 
-        from app.modules.voice.application.shop_voice import load_shop_voice_config
+        from app.platform.voice.application.shop_voice import load_shop_voice_config
 
         class _Rows:
             def first(self):
@@ -144,7 +144,7 @@ class TestThePromptIsReadFromTheShop:
     async def test_the_dialect_column_can_be_a_value_we_do_not_know(self) -> None:
         import uuid
 
-        from app.modules.voice.application.shop_voice import load_shop_voice_config
+        from app.platform.voice.application.shop_voice import load_shop_voice_config
 
         class _Rows:
             def first(self):

@@ -19,7 +19,7 @@ from app.applications.apparel.modules.ai.agents.customer.ledger import facts_fro
 from app.applications.apparel.modules.ai.agents.customer.tools.store import GetStoreInfoArgs
 from app.applications.apparel.modules.ai.models import KnowledgeItem
 from app.applications.apparel.modules.ai.tools import get_tool, tool_to_openai_schema
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from app.applications.apparel.modules.orders.deposit_service import DepositService
 
 

@@ -28,8 +28,8 @@ from app.core.db import bind_tenant
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.identity.models import Role, Tenant
-from app.modules.identity.service import AuthService
+from app.platform.identity.models import Role, Tenant
+from app.platform.identity.service import AuthService
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.marketing.service import MarketingService
 from app.applications.apparel.modules.orders.service import OrderService

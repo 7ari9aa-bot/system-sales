@@ -18,7 +18,7 @@ from sqlalchemy import select
 from app.core.db import SessionLocal, bind_tenant
 from app.applications.apparel.modules.conversations.models import MessageTemplate
 from app.applications.apparel.modules.conversations.templates import TemplateService
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ WATCHED_STATUSES = ("submitted", "approved", "paused")
 
 async def _tenants_with_meta_templates() -> list[uuid.UUID]:
     """The stores that have at least one template Meta may still change."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     async with SessionLocal() as session:
         # Tenant is read first (RLS-free list), then each store is entered on its own binding.
@@ -76,7 +76,7 @@ async def sync_one_tenant(tenant_id: uuid.UUID, *, _client=None) -> dict | None:
             ).scalar_one_or_none()
             if integration is None:
                 return None
-            from app.modules.platform.services.channel_access import channel_credentials_config
+            from app.platform.platform.services.channel_access import channel_credentials_config
 
             credentials = await channel_credentials_config(session, tenant_id, "whatsapp")
             if not credentials or not credentials.get("access_token"):

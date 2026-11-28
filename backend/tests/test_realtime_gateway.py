@@ -27,7 +27,7 @@ import pytest
 from fakeredis import aioredis as fakeredis_aioredis
 
 from app.core.events.schemas import build_envelope, serialize
-from app.modules.realtime import router as realtime
+from app.platform.realtime import router as realtime
 
 # ------------------------------------------------------------- helpers ------
 

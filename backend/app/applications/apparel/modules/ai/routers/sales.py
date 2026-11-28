@@ -105,7 +105,7 @@ async def create_deep_analysis(
     from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import ensure_si_tools
     from app.applications.apparel.modules.ai.core.resolver import resolve_agent_by_kind
     from app.applications.apparel.modules.analytics.persistence import create_pending_analysis
-    from app.modules.platform.service import JobService
+    from app.platform.platform.service import JobService
 
     agent = await resolve_agent_by_kind(ctx.session, ctx.tenant_id, "sales_intelligence")
 

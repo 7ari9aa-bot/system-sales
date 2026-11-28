@@ -227,7 +227,7 @@ def _principal_from_request(request: Request) -> _Principal:
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
     else:
-        from app.modules.identity import cookies
+        from app.platform.identity import cookies
 
         token = request.cookies.get(cookies.ACCESS_COOKIE)
     if not token:

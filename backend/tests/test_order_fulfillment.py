@@ -332,7 +332,7 @@ async def test_shipment_writes_require_the_write_permission(
     from httpx import ASGITransport, AsyncClient
 
     from app.main import create_app
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
     ctx = TenantContext(
         session=db,

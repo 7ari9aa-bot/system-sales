@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
-from app.modules.applications.dependencies import workspace_gate
+from app.platform.applications.dependencies import workspace_gate
 from app.applications.apparel.modules.conversations.gateway.instagram_limits import InstagramLimitError, check_upload
 from app.applications.apparel.modules.conversations.gateway.messenger_media import (
     SENDABLE_REACTIONS,
@@ -50,8 +50,8 @@ from app.applications.apparel.modules.conversations.routers._deps import (
     require_permission,
 )
 from app.applications.apparel.modules.conversations.service import ConversationService
-from app.modules.identity.deps import get_tenant_ctx
-from app.modules.platform.services import channel_access as _channel_access
+from app.platform.identity.deps import get_tenant_ctx
+from app.platform.platform.services import channel_access as _channel_access
 
 logger = logging.getLogger(__name__)
 
@@ -796,7 +796,7 @@ async def assign(
     if body.user_id is not None and body.user_id != ctx.user.id:
         from sqlalchemy import select as sa_select
 
-        from app.modules.identity.models import TenantUser
+        from app.platform.identity.models import TenantUser
 
         member = (
             await ctx.session.execute(

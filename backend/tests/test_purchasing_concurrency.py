@@ -20,7 +20,7 @@ from app.core.db import bind_tenant
 from app.core.security import hash_password
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
-from app.modules.identity.models import Role, Tenant, TenantUser, User
+from app.platform.identity.models import Role, Tenant, TenantUser, User
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.purchasing.service import (
     CostService,

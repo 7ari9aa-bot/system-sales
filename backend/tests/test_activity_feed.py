@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.activity.service import KINDS, ActivityService, Cursor
+from app.platform.activity.service import KINDS, ActivityService, Cursor
 from app.applications.apparel.modules.expenses.service import ExpenseService
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
@@ -148,7 +148,7 @@ async def test_a_tenant_never_sees_another_tenants_activity(db, tenant_ctx) -> N
     from sqlalchemy import select
 
     from app.core.security import hash_password
-    from app.modules.identity.models import Role, Tenant, TenantUser, User
+    from app.platform.identity.models import Role, Tenant, TenantUser, User
 
     shift = await _shift(db, tenant_ctx)
     await _expense(db, tenant_ctx, shift, "77.00", "سري")
@@ -250,7 +250,7 @@ async def test_the_day_filter_uses_the_tenants_own_zone(db, tenant_ctx) -> None:
     """The same calendar date is a different window for a Cairo shop and a Dubai shop."""
     import sqlalchemy as sa
 
-    from app.modules.activity.router import window_for
+    from app.platform.activity.router import window_for
 
     async def zone(tz):
         await db.execute(
@@ -272,7 +272,7 @@ async def test_the_day_filter_uses_the_tenants_own_zone(db, tenant_ctx) -> None:
 async def test_a_tenant_with_no_zone_still_gets_a_window(db, tenant_ctx) -> None:
     import sqlalchemy as sa
 
-    from app.modules.activity.router import window_for
+    from app.platform.activity.router import window_for
 
     await db.execute(
         sa.text("UPDATE tenants SET timezone = NULL WHERE id = :t"), {"t": tenant_ctx.tenant_id}
@@ -284,7 +284,7 @@ async def test_a_tenant_with_no_zone_still_gets_a_window(db, tenant_ctx) -> None
 async def test_a_backwards_range_is_still_refused(db, tenant_ctx) -> None:
     from fastapi import HTTPException
 
-    from app.modules.activity.router import window_for
+    from app.platform.activity.router import window_for
 
     with pytest.raises(HTTPException) as err:
         await window_for(db, tenant_ctx.tenant_id, date(2026, 1, 10), date(2026, 1, 9))
@@ -296,7 +296,7 @@ async def test_a_void_is_its_own_row_with_the_reason_and_the_manager_who_approve
 ) -> None:
     """A void is not a return and must not hide: the timeline shows the reversing document, the
     original receipt it reverses, the reason typed, and the person who held the override."""
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
     from tests.test_pos_returns import _customer, _register, _sellable_variant
 
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", True)

@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 import app.core.model_registry  # noqa: F401 — complete table registration (FK chains)
-import app.modules.platform.models  # noqa: F401 — ensure tables registered
+import app.platform.platform.models  # noqa: F401 — ensure tables registered
 
 
 def _uuid_hex() -> str:
@@ -59,8 +59,8 @@ class TestSecretRotationSweep:
 
     @pytest.mark.asyncio
     async def test_sweep_notifies_owners_when_overdue(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.models import Notification
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.models import Notification
 
         email = f"sweep-{_uuid_hex()}@test.local"
         user, tenant = await AuthService.register(
@@ -106,9 +106,9 @@ class TestSecretRotationSweep:
 
     @pytest.mark.asyncio
     async def test_sweep_noop_when_rotation_disabled(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         email = f"sweep-{_uuid_hex()}@test.local"
         user, tenant = await AuthService.register(
@@ -139,7 +139,7 @@ class TestSecretRotationSweep:
 
     @pytest.mark.asyncio
     async def test_sweep_noop_when_no_overdue(self, db) -> None:
-        from app.modules.identity.service import AuthService
+        from app.platform.identity.service import AuthService
 
         email = f"sweep-{_uuid_hex()}@test.local"
         user, tenant = await AuthService.register(
@@ -163,8 +163,8 @@ class TestSecretRotationSweep:
 
     @pytest.mark.asyncio
     async def test_sweep_dedupes_per_day(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.notifications.models import Notification
+        from app.platform.identity.service import AuthService
+        from app.platform.notifications.models import Notification
 
         email = f"sweep-{_uuid_hex()}@test.local"
         user, tenant = await AuthService.register(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.voice.routers.sessions import control_frame
+from app.platform.voice.routers.sessions import control_frame
 
 
 def test_an_interrupt_frame_is_recognised() -> None:

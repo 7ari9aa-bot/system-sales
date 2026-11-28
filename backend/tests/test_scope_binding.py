@@ -21,13 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_scope, bind_tenant
 from app.core.errors import PermissionDeniedError
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     AuthedUser,
     TenantContext,
     get_tenant_ctx,
     resolve_scope,
 )
-from app.modules.identity.models import (
+from app.platform.identity.models import (
     Location,
     Tenant,
     UserLocationAccess,

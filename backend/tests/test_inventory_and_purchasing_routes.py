@@ -9,7 +9,7 @@ import pytest
 
 import app.applications.apparel.modules.purchasing.models  # noqa: F401
 from app.applications.apparel.modules.catalog.models import Product, ProductVariant
-from app.modules.identity.deps import TenantContext
+from app.platform.identity.deps import TenantContext
 from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.router import (
     InspectionCompleteRequest,
@@ -64,8 +64,8 @@ async def test_inventory_location_routes(db, tenant_ctx):
     # A warehouse location is refused while inventory.track_locations is off (its default):
     # create_warehouse_location reads that setting and raises. This test is about the routes, so
     # it switches tracking on the way an owner does instead of meeting the gate.
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     await SettingsService(db, tid).set("inventory.track_locations", True, scope=Scope.TENANT)
 

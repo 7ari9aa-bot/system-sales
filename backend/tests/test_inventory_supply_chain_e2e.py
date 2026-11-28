@@ -38,7 +38,7 @@ from app.applications.apparel.modules.purchasing.service import (
     PurchaseService,
     SupplierService,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 # ───────────────────────────── helpers ──────────────────────────────
 

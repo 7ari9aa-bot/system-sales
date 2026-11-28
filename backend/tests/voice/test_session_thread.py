@@ -13,8 +13,8 @@ import pytest
 
 from app.core.errors import NotFoundError
 from app.applications.apparel.modules.ai.chat import service as chat_service
-from app.modules.voice.application import session_thread
-from app.modules.voice.application.session_thread import DEFAULT_TITLE, ensure_session_thread
+from app.platform.voice.application import session_thread
+from app.platform.voice.application.session_thread import DEFAULT_TITLE, ensure_session_thread
 
 TENANT = uuid.uuid4()
 SESSION_ID = uuid.uuid4()

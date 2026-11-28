@@ -18,7 +18,7 @@ from app.applications.apparel.modules.ai.runtime import AgentRunner, AgentRunRes
 from app.applications.apparel.modules.conversations import models as conv_models
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 IMAGE_ID = "11111111-1111-1111-1111-111111111111"
 

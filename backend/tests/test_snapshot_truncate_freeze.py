@@ -99,8 +99,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.billing.models import Invoice, UsageRecord
-from app.modules.billing.service import BillingSnapshotService
+from app.platform.billing.models import Invoice, UsageRecord
+from app.platform.billing.service import BillingSnapshotService
 
 BACKEND = Path(__file__).resolve().parent.parent
 MIGRATION_PATH = (

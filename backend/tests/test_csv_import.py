@@ -32,7 +32,7 @@ from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -512,7 +512,7 @@ async def test_product_import_route_is_reachable(db: AsyncSession, tenant_ctx) -
     """The old CSV door is closed by default and, once the shop's data key opens it, no longer
     applies the file itself: it becomes an import session checked like any Import Center upload
     (tests/test_imports_legacy_csv_door.py pins the closed door and the validation)."""
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     tenant_id = tenant_ctx.tenant_id
     await SettingsService(db, tenant_id).set(

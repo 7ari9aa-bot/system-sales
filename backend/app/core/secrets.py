@@ -205,7 +205,7 @@ class DatabaseSecretStore:
         from sqlalchemy import or_, select
 
         from app.core.db import bind_tenant, get_sessionmaker
-        from app.modules.platform.models import SecretValue
+        from app.platform.platform.models import SecretValue
 
         tenant_id = self._tenant_id()
         now = datetime.now(UTC)
@@ -236,7 +236,7 @@ class DatabaseSecretStore:
         from sqlalchemy import func, select
 
         from app.core.db import bind_tenant, get_sessionmaker
-        from app.modules.platform.models import SecretValue
+        from app.platform.platform.models import SecretValue
 
         tenant_id = self._tenant_id()
         now = datetime.now(UTC)
@@ -271,7 +271,7 @@ class DatabaseSecretStore:
         from sqlalchemy import func, or_, select
 
         from app.core.db import bind_tenant, get_sessionmaker
-        from app.modules.platform.models import SecretValue
+        from app.platform.platform.models import SecretValue
 
         tenant_id = self._tenant_id()
         now = datetime.now(UTC)
@@ -322,7 +322,7 @@ class DatabaseSecretStore:
         from sqlalchemy import delete as sa_delete
 
         from app.core.db import bind_tenant, get_sessionmaker
-        from app.modules.platform.models import SecretValue
+        from app.platform.platform.models import SecretValue
 
         tenant_id = self._tenant_id()
         async with get_sessionmaker()() as session:

@@ -24,7 +24,7 @@ from app.applications.apparel.modules.ai.approvals import ApprovalService
 from app.applications.apparel.modules.ai.models import Agent, AgentRun, AIHandover, ApprovalRequest
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 AI_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules" / "ai"
 

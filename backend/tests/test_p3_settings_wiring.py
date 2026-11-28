@@ -28,7 +28,7 @@ import app.applications.apparel.modules.customers.models  # noqa: F401
 
 # Import all models so SQLAlchemy's metadata is complete (the Notification
 # model has a FK to customers.id; without this import the table is missing).
-import app.modules.platform.models  # noqa: F401
+import app.platform.platform.models  # noqa: F401
 
 # -----------------------------------------------------------------------
 # Behavioural tests (need DB)
@@ -39,9 +39,9 @@ import app.modules.platform.models  # noqa: F401
 async def test_session_timeout_changes_token_ttl(db):
     """Setting team.session_timeout_minutes to 5 makes _resolve_access_ttl
     return 300 seconds; setting it to 0 returns None."""
-    from app.modules.identity.service import AuthService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.service import AuthService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     # We need a real tenant for the settings GUC — create one via register.
     email = f"timeout-{uuid.uuid4().hex[:8]}@test.local"
@@ -78,9 +78,9 @@ async def test_allow_member_invites_blocks_invitation(db):
     """When team.allow_member_invites is False, TenantService.invite raises
     PermissionDeniedError."""
     from app.core.errors import PermissionDeniedError
-    from app.modules.identity.service import AuthService, TenantService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.service import AuthService, TenantService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"invites-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -123,10 +123,10 @@ async def test_allow_member_invites_blocks_invitation(db):
 @pytest.mark.asyncio
 async def test_default_role_fallback_when_role_code_is_none(db):
     """When role_code is None, the tenant's team.default_role setting is used."""
-    from app.modules.identity.models import Role
-    from app.modules.identity.service import AuthService, TenantService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.models import Role
+    from app.platform.identity.service import AuthService, TenantService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"defrole-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -162,7 +162,7 @@ async def test_require_strong_passwords_on_registration(db):
     """Registration with a weak password fails when
     security.require_strong_passwords is at its default (True)."""
     from app.core.errors import ValidationError
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     with pytest.raises(ValidationError, match="password must contain both"):
         await AuthService.register(
@@ -180,10 +180,10 @@ async def test_require_strong_passwords_off_allows_weak_password_on_reset(db):
     """When security.require_strong_passwords is False, a weak password is
     accepted on password reset."""
     from app.core.secrets import get_envelope_store
-    from app.modules.identity.models import PasswordResetToken
-    from app.modules.identity.service import AuthService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.models import PasswordResetToken
+    from app.platform.identity.service import AuthService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"reset-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -234,13 +234,13 @@ async def test_notification_dispatch_gates_email_and_push(db):
     """When email_enabled and push_enabled are both False (default), dispatch
     creates the in-app notification but does not stage email/push outbox
     events. When enabled, it does stage them."""
-    from app.modules.identity.service import AuthService
-    from app.modules.notifications.service import (
+    from app.platform.identity.service import AuthService
+    from app.platform.notifications.service import (
         NotificationPreferencesService,
         NotificationService,
     )
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"notif-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -345,10 +345,10 @@ async def test_ip_allowlist_blocks_unlisted_ip(db):
     from IPs not in the list."""
     from app.core.errors import PermissionDeniedError
     from app.core.security import create_access_token
-    from app.modules.identity.deps import get_current_user
-    from app.modules.identity.service import AuthService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.deps import get_current_user
+    from app.platform.identity.service import AuthService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"ip-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -388,10 +388,10 @@ async def test_ip_allowlist_blocks_unlisted_ip(db):
 async def test_ip_allowlist_allows_listed_ip(db):
     """When the request IP is in the allowlist, get_current_user succeeds."""
     from app.core.security import create_access_token
-    from app.modules.identity.deps import get_current_user
-    from app.modules.identity.service import AuthService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.deps import get_current_user
+    from app.platform.identity.service import AuthService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"ipok-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -429,10 +429,10 @@ async def test_ip_allowlist_allows_listed_ip(db):
 async def test_digest_mode_holds_non_critical_notifications(db):
     """When notifications.digest_mode is not 'realtime', should_send_immediately
     returns False for non-critical notifications."""
-    from app.modules.identity.service import AuthService
-    from app.modules.notifications.digest import NotificationAggregator
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.service import AuthService
+    from app.platform.notifications.digest import NotificationAggregator
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"digest-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -473,9 +473,9 @@ async def test_resolve_setting_returns_default_then_override(db):
     """resolve_setting returns the registry default when no override exists,
     and the tenant override when one is set."""
     from app.core.settings_read import resolve_setting, setting_bool
-    from app.modules.identity.service import AuthService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.service import AuthService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"resolve-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(
@@ -515,10 +515,10 @@ async def test_multi_branch_blocks_second_workspace(db):
     """When organization.multi_branch is False (default), creating a second
     workspace is rejected. Enabling it allows the second workspace."""
     from app.core.errors import ValidationError
-    from app.modules.identity.service import AuthService
-    from app.modules.identity.services.hierarchy import HierarchyService
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.identity.service import AuthService
+    from app.platform.identity.services.hierarchy import HierarchyService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     email = f"branch-{uuid.uuid4().hex[:8]}@test.local"
     user, tenant = await AuthService.register(

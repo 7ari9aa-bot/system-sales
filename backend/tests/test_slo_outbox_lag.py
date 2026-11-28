@@ -8,7 +8,7 @@
 Two independent defects, both invisible to every test that existed:
 
 1. **``relayed_at`` is not a column of ``outbox_events``.** ``OutboxEvent``
-   (:mod:`app.modules.platform.models`) models the relay's state as
+   (:mod:`app.platform.platform.models`) models the relay's state as
    ``status`` (``pending|publishing|published|failed``) plus ``published_at``;
    nothing in the schema has ever been called ``relayed_at``. So Postgres
    rejects the statement with ``UndefinedColumnError`` on *every* call. The
@@ -30,7 +30,7 @@ Two independent defects, both invisible to every test that existed:
    system.
 
 The correct shape already existed in the codebase, in the platform health
-check ``_outbox_subsystem`` (:mod:`app.modules.platform.router`): "Age of the
+check ``_outbox_subsystem`` (:mod:`app.platform.platform.router`): "Age of the
 oldest unpublished outbox event — the relay's backlog", written as
 ``MIN(created_at)`` over ``status = 'pending'``. This module now agrees with
 it, and the same claim predicate the relay itself drains with
@@ -57,8 +57,8 @@ from typing import Any
 
 import pytest
 
-from app.modules.operations.slo_service import measure_all_slos, measure_slo
-from app.modules.platform.models import OutboxEvent
+from app.platform.operations.slo_service import measure_all_slos, measure_slo
+from app.platform.platform.models import OutboxEvent
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 

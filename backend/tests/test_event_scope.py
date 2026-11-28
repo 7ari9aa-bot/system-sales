@@ -286,7 +286,7 @@ async def test_event_log_scope_columns_round_trip_in_postgres(db: AsyncSession, 
     """CI-only: the INSERT the relay runs must land the scope values in the
     real event_log columns (FKs to workspaces/locations, so this test uses a
     real workspace/location — the model/migration already has them)."""
-    from app.modules.identity.models import Location, Workspace
+    from app.platform.identity.models import Location, Workspace
 
     workspace = Workspace(
         tenant_id=tenant_ctx.tenant_id,

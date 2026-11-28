@@ -260,7 +260,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 
 from app.core.db import bind_tenant  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
-from app.modules.identity.models import Role, Tenant, TenantUser, User  # noqa: E402
+from app.platform.identity.models import Role, Tenant, TenantUser, User  # noqa: E402
 
 _RACERS = 8
 

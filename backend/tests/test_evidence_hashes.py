@@ -28,8 +28,8 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.evidence.models import EvidenceFact
-from app.modules.evidence.service import (
+from app.platform.evidence.models import EvidenceFact
+from app.platform.evidence.service import (
     EvidenceService,
     canonical_json,
     compute_content_hash,

@@ -24,10 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
 from app.core.security import hash_password, verify_password
-from app.modules.identity.models import RefreshToken, User
-from app.modules.identity.routers.auth import router as auth_router
-from app.modules.identity.services import AuthService, SignedInDeviceService
-from app.modules.identity.services._common import _hash_token, _now
+from app.platform.identity.models import RefreshToken, User
+from app.platform.identity.routers.auth import router as auth_router
+from app.platform.identity.services import AuthService, SignedInDeviceService
+from app.platform.identity.services._common import _hash_token, _now
 
 CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36"
 IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Version/17.5 Safari/604.1"

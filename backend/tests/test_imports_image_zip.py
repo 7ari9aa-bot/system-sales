@@ -18,8 +18,8 @@ from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.core.storage import StoredMedia
 from app.main import create_app
-from app.modules.identity.deps import get_db, get_tenant_ctx
-from app.modules.imports.image_zip import plan_images, sku_candidates, sku_from_name
+from app.platform.identity.deps import get_db, get_tenant_ctx
+from app.platform.imports.image_zip import plan_images, sku_candidates, sku_from_name
 from tests._pos_helpers import ctx_for
 
 pytestmark = pytest.mark.asyncio
@@ -220,7 +220,7 @@ async def test_a_zip_that_expands_past_the_limit_is_refused_before_anything_is_r
     db, tenant_ctx, monkeypatch
 ):
     """الحجم بعد الفك بيتقرا من فهرس الأرشيف: ملف صغير بيتفك كبير بيترفض من غير فك ولا حفظ."""
-    from app.modules.imports import router as imports_router
+    from app.platform.imports import router as imports_router
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     await _variant(db, tenant_ctx, "TEE-BK-M")
@@ -238,7 +238,7 @@ async def test_a_zip_that_expands_past_the_limit_is_refused_before_anything_is_r
 async def test_a_picture_over_the_size_limit_is_rejected_from_the_index_not_after_extracting(
     db, tenant_ctx, monkeypatch
 ):
-    from app.modules.imports import router as imports_router
+    from app.platform.imports import router as imports_router
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     await _variant(db, tenant_ctx, "BIG-1")

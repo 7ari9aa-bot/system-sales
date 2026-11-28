@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 SOURCE = pathlib.Path(inspect.getfile(SettingsService)).read_text(encoding="utf-8")
 START = SOURCE.index("async def set(")

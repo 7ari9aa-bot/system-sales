@@ -19,9 +19,9 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.voice.application.session_manager import VoiceSessionManager
-from app.modules.voice.domain.personas import PrincipalType
-from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.platform.voice.application.session_manager import VoiceSessionManager
+from app.platform.voice.domain.personas import PrincipalType
+from app.platform.voice.infrastructure.sql_store import SqlSessionStore
 
 SCOPES = frozenset({"assistant:use"})
 
@@ -116,7 +116,7 @@ async def test_the_database_itself_refuses_a_second_row_for_the_same_key(db, ten
 
 async def test_another_shop_may_use_the_same_key(db, tenant_ctx, owner_password_hash) -> None:
     """The key is the caller's own, so uniqueness is per shop, never global."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other Shop")
     db.add(other)
@@ -133,7 +133,7 @@ async def test_another_shop_may_use_the_same_key(db, tenant_ctx, owner_password_
 
 async def test_a_session_from_another_shop_is_invisible(db, tenant_ctx) -> None:
     """RLS, measured: the store cannot read a session that belongs to another tenant."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other Shop")
     db.add(other)

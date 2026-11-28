@@ -21,7 +21,7 @@ from __future__ import annotations
 import ast
 import pathlib
 
-from app.modules.platform.services import monitors
+from app.platform.platform.services import monitors
 
 _WORKER = pathlib.Path(__file__).resolve().parents[1] / "app/workers/scheduler_worker.py"
 _VERSIONS = pathlib.Path(__file__).resolve().parents[1] / "migrations/versions"

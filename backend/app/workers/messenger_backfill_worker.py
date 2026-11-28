@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def _record(integration: Integration, summary: dict) -> None:
 async def backfill_one_tenant(tenant_id: uuid.UUID, *, http=None) -> dict | None:
     """Read and store one store's Page history; None when its Messenger is not connected."""
     from app.applications.apparel.modules.conversations.messenger_backfill_service import MessengerBackfillService
-    from app.modules.platform.services.channel_access import channel_credentials_config
+    from app.platform.platform.services.channel_access import channel_credentials_config
 
     async with SessionLocal() as session:
         async with session.begin():
@@ -134,7 +134,7 @@ async def backfill_one_tenant(tenant_id: uuid.UUID, *, http=None) -> dict | None
 
 
 async def _tenants_with_messenger() -> list[uuid.UUID]:
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     async with SessionLocal() as session:
         return list(

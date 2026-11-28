@@ -12,7 +12,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.applications.apparel.modules.conversations.routers import whatsapp_flows as wf
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from tests.security.test_role_authz_matrix import _authz_app
 
 pytestmark = pytest.mark.asyncio

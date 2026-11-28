@@ -364,7 +364,7 @@ def _render() -> str:
         "> Do not edit by hand — run the script and commit the result.\n"
         "> An item is only ✅ when a real test file exists and is listed.\n"
     )
-    lines.append("Generated from: `backend/app/modules/settings/`")
+    lines.append("Generated from: `backend/app/platform/settings/`")
     lines.append("")
 
     priorities = ["P0", "P1", "P2", "P3", "P4"]

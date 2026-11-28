@@ -153,7 +153,7 @@ async def test_forget_all_through_the_real_turn_removes_the_words_from_the_table
 async def test_one_user_saving_never_shows_up_for_a_colleague_in_the_same_shop(
     db, tenant_ctx, monkeypatch
 ):
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     _no_model(monkeypatch)
     t = await _thread_with_question(db, tenant_ctx, "افتكر إن سر نجاحي الصبر")

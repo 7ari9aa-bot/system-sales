@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.applications.manifests import REGISTRY
+from app.platform.applications.manifests import REGISTRY
 
 BACKEND = Path(__file__).resolve().parents[1]
 

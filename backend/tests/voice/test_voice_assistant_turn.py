@@ -22,8 +22,8 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.ai.assistant.contracts import LIVE_VOICE
-from app.modules.voice.application import assistant_turn
-from app.modules.voice.application.transcript_sync import (
+from app.platform.voice.application import assistant_turn
+from app.platform.voice.application.transcript_sync import (
     DELIVERED,
     CompletedTurn,
     OpenedTurn,

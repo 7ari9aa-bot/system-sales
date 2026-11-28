@@ -15,13 +15,13 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings import service as service_module
-from app.modules.settings.models import SettingChangeRequest
-from app.modules.settings.schemas import ChangeRequestOut, CreateChangeRequestInput
-from app.modules.settings.service import SettingsService
+from app.platform.settings import service as service_module
+from app.platform.settings.models import SettingChangeRequest
+from app.platform.settings.schemas import ChangeRequestOut, CreateChangeRequestInput
+from app.platform.settings.service import SettingsService
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
-ROUTER = (BACKEND / "app/modules/settings/router.py").read_text(encoding="utf-8")
+ROUTER = (BACKEND / "app/platform/settings/router.py").read_text(encoding="utf-8")
 MIGRATION = (BACKEND / "migrations/versions/fe2026112605_change_request_resets.py").read_text(
     encoding="utf-8"
 )

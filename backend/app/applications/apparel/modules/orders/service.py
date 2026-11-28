@@ -47,7 +47,7 @@ from app.applications.apparel.modules.orders.money import (
     refund_state,
     to_money,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -831,7 +831,7 @@ class OrderService:
             "notifications.order_received"
         )
         if notify_order:
-            from app.modules.notifications.service import NotificationService
+            from app.platform.notifications.service import NotificationService
 
             owner_ids = (
                 (

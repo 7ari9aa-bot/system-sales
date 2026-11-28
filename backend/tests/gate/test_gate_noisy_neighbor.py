@@ -42,8 +42,8 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.db import bind_tenant
 from app.core.fairness import DEFAULT_DAILY_BUDGETS, ResourceType, check_budget, consume
-from app.modules.identity.models import Tenant
-from app.modules.platform.models import ScheduledJob
+from app.platform.identity.models import Tenant
+from app.platform.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 
 pytestmark = [pytest.mark.gate]

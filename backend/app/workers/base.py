@@ -101,8 +101,8 @@ async def defer_unless_tenant_allows(session, tenant_id, capability: str) -> Non
     """
     from sqlalchemy import select
 
-    from app.modules.identity.models import Tenant
-    from app.modules.identity.service import STATE_POLICIES
+    from app.platform.identity.models import Tenant
+    from app.platform.identity.service import STATE_POLICIES
 
     state = (
         await session.execute(select(Tenant.lifecycle_state).where(Tenant.id == tenant_id))

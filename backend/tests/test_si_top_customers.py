@@ -195,7 +195,7 @@ async def test_a_hostile_customer_name_is_withheld_but_the_numbers_stay(db, tena
 
 async def test_one_shop_never_ranks_another_shops_customers(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     await _order(db, mine, await _customer(db, mine, "Mine Only"), total=999)

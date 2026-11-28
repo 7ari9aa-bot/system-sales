@@ -264,7 +264,7 @@ class JourneyExecutionService:
         producer half of a pair that was broken here for the whole life of the
         feature (the row was created, claimed and failed with "no handler").
         """
-        from app.modules.platform.models import ScheduledJob
+        from app.platform.platform.models import ScheduledJob
 
         delay_minutes = int(config.get("minutes", config.get("delay_minutes", 5)))
         run_at = datetime.now(UTC) + timedelta(minutes=delay_minutes)

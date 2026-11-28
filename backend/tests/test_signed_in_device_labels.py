@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.identity.services.session import describe_device
+from app.platform.identity.services.session import describe_device
 
 CHROME_WINDOWS = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "

@@ -19,7 +19,7 @@ from fakeredis.aioredis import FakeRedis
 from sqlalchemy import select
 
 from app.core import break_glass as bg
-from app.modules.platform.models import SecurityEvent
+from app.platform.platform.models import SecurityEvent
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ class TestBreakGlassIssuePath:
     ):
         import sqlalchemy as sa
 
-        from app.modules.platform.models import AuditLog
+        from app.platform.platform.models import AuditLog
 
         db = tenant_ctx.session
         token = await bg.break_glass(

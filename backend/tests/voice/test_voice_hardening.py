@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.voice.application.hardening import (
+from app.platform.voice.application.hardening import (
     BudgetExceeded,
     CostGuard,
     ResilientChooser,
@@ -19,9 +19,9 @@ from app.modules.voice.application.hardening import (
     autoscale_action,
     evaluate_quality,
 )
-from app.modules.voice.domain.contracts import AudioPath, ProviderCapabilities
-from app.modules.voice.domain.resilience import BreakerState, CircuitBreaker
-from app.modules.voice.runtime.providers import FakeRealtimeProvider, ProviderRouter
+from app.platform.voice.domain.contracts import AudioPath, ProviderCapabilities
+from app.platform.voice.domain.resilience import BreakerState, CircuitBreaker
+from app.platform.voice.runtime.providers import FakeRealtimeProvider, ProviderRouter
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 T0 = dt.datetime(2026, 11, 27, 10, 0, tzinfo=dt.UTC)

@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import pathlib
 
-from app.modules.settings.registry import ENFORCED_KEYS, list_definitions
+from app.platform.settings.registry import ENFORCED_KEYS, list_definitions
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
-SETTINGS_DIR = APP / "modules" / "settings"
+#: The registry lives in platform infrastructure after the restructuring; the scan
+#: must skip it wherever it sits, or the registry's own key literals count as reads.
+SETTINGS_DIR = APP / "platform" / "settings"
 
 
 def _keys_read_outside_settings() -> set[str]:

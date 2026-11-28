@@ -77,7 +77,7 @@ from pydantic import ValidationError as PydanticValidationError
 from app.main import create_app
 from app.applications.apparel.modules.analytics import retention
 from app.applications.apparel.modules.analytics import router as analytics_router
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.marketing import analytics as marketing_analytics
 from app.applications.apparel.modules.marketing import router as marketing_router
 from app.applications.apparel.modules.marketing.attribution_service import AttributionService

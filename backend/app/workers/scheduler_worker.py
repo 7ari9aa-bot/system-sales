@@ -31,7 +31,7 @@ from sqlalchemy import select, text
 
 from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import Event
-from app.modules.platform.models import ScheduledJob
+from app.platform.platform.models import ScheduledJob
 from app.workers.base import StreamWorker
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ RECURRING_JOBS: dict[str, tuple[timedelta, dict]] = {
 
 
 async def _deliver_password_reset_email() -> int:
-    from app.modules.identity.email_delivery import PasswordResetEmailDelivery
+    from app.platform.identity.email_delivery import PasswordResetEmailDelivery
 
     return await PasswordResetEmailDelivery.run_once()
 
@@ -122,13 +122,13 @@ async def _deliver_email_verification_email() -> int:
     # Same pre-GUC possession pattern as the reset sweep: the delivery worker
     # claims leased verification-token rows by token hash, so it binds no
     # tenant/user GUC and must run as a global sweeper.
-    from app.modules.identity.email_delivery import EmailVerificationEmailDelivery
+    from app.platform.identity.email_delivery import EmailVerificationEmailDelivery
 
     return await EmailVerificationEmailDelivery.run_once()
 
 
 async def _lock_expired_trials() -> int:
-    from app.modules.billing.services.trial_expiry import lock_expired_trials
+    from app.platform.billing.services.trial_expiry import lock_expired_trials
 
     return await lock_expired_trials()
 
@@ -305,7 +305,7 @@ async def _handle_webhook_delivery_sweep(session, tenant_id, payload: dict) -> d
 
     from app.core.config import get_settings
     from app.core.events.writer import add_outbox_event
-    from app.modules.platform.models import WebhookDelivery
+    from app.platform.platform.models import WebhookDelivery
 
     now = datetime.now(UTC)
     grace = now - timedelta(minutes=5)
@@ -361,7 +361,7 @@ async def _operator_emails(session, tenant_id=None) -> list[str]:
     """Active platform admins — the recipients of platform-level alerts."""
     from sqlalchemy import select as sa_select
 
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     rows = (
         (
@@ -401,7 +401,7 @@ async def _push_operator_emails(session, alerts: list) -> int:
     from datetime import datetime as _dt
 
     from app.core.config import get_settings
-    from app.modules.identity.email_delivery import (
+    from app.platform.identity.email_delivery import (
         EmailDeliveryError,
         ResendEmailSender,
     )
@@ -473,7 +473,7 @@ async def _tenant_owner_ids(session, tenant_id) -> list:
     """Users holding the owner role in the tenant (the people to wake)."""
     from sqlalchemy import select as sa_select
 
-    from app.modules.identity.models import Role, TenantUser
+    from app.platform.identity.models import Role, TenantUser
 
     rows = (
         await session.execute(
@@ -495,7 +495,7 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
     import json as _json
 
     from app.core.redis import get_redis
-    from app.modules.platform.services import monitors
+    from app.platform.platform.services import monitors
 
     redis = get_redis()
     lock_key = "platform:monitors:run-lock"
@@ -541,7 +541,7 @@ async def _handle_platform_monitors(session, tenant_id, payload: dict) -> dict:
         if tenant_fresh:
             # The glue: monitors evaluates, notifications records — the two
             # modules never import each other (boundary discipline).
-            from app.modules.notifications.service import NotificationService
+            from app.platform.notifications.service import NotificationService
 
             owner_ids = await _tenant_owner_ids(session, tenant_id)
             await NotificationService.record_monitor_alerts(
@@ -567,7 +567,7 @@ register_job_handler("platform_monitors", _handle_platform_monitors)
 
 async def _handle_sla_sweep(session, tenant_id, payload: dict) -> dict:
     """§46: mark first-response SLAs whose deadline has passed as breached."""
-    from app.modules.operations.sla import SlaService
+    from app.platform.operations.sla import SlaService
 
     return await SlaService.sweep(session, tenant_id)
 
@@ -635,8 +635,8 @@ async def _handle_segments_recompute(session, tenant_id, payload: dict) -> dict:
     A still-pending job is not doubled: the sweep re-fires every 6 hours and
     a stalled runner must not turn it into a queue pile-up.
     """
-    from app.modules.platform.models import Job
-    from app.modules.platform.service import JobService
+    from app.platform.platform.models import Job
+    from app.platform.platform.service import JobService
 
     pending = (
         await session.execute(
@@ -723,7 +723,7 @@ async def ensure_recurring_jobs() -> None:
     from sqlalchemy import select as sa_select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     # `tenants` itself carries no RLS, so the enumeration needs no context.
     async with SessionLocal() as session:
@@ -842,7 +842,7 @@ class SchedulerWorker(StreamWorker):
         view while logging a healthy loop. `tenants` has no RLS, so the
         enumeration itself needs no context. Same shape as retention_worker.
         """
-        from app.modules.identity.models import Tenant
+        from app.platform.identity.models import Tenant
 
         async with SessionLocal() as session:
             tenant_ids = (
@@ -977,7 +977,7 @@ async def _handle_secret_rotation_sweep(session, tenant_id, payload: dict) -> di
     per overdue key (deduped per day so a persistent overdue reminds once).
     """
     from app.core.api_key_rotation import due_secret_references
-    from app.modules.notifications.service import NotificationService
+    from app.platform.notifications.service import NotificationService
 
     due = await due_secret_references(session, tenant_id)
     if not due:
@@ -1030,8 +1030,8 @@ async def _handle_low_stock_alerts(session, tenant_id, payload: dict) -> dict:
     reminds once, not every sweep).
     """
     from app.applications.apparel.modules.inventory.services.reporting import InventoryReportingService
-    from app.modules.notifications.service import NotificationService
-    from app.modules.settings.service import SettingsService
+    from app.platform.notifications.service import NotificationService
+    from app.platform.settings.service import SettingsService
 
     enabled = await SettingsService(session, tenant_id).value("notifications.low_stock_alert")
     if not enabled:
@@ -1075,7 +1075,7 @@ async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
     and closes them (record-only close, no counted cash). Gated by the tenant's
     ``branch.auto_close_shift`` setting; ``branch.shift_end_time`` sets the cutoff.
     """
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     auto_close = await SettingsService(session, tenant_id).value("branch.auto_close_shift")
     if not auto_close:
@@ -1142,7 +1142,7 @@ async def _handle_audit_retention_sweep(session, tenant_id, payload: dict) -> di
     touches this tenant's rows even without an explicit tenant_id filter (the
     filter is kept for clarity and for tests that run without RLS).
     """
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     days = await SettingsService(session, tenant_id).value("security.audit_retention_days")
     if not days or int(days) <= 0:
@@ -1150,7 +1150,7 @@ async def _handle_audit_retention_sweep(session, tenant_id, payload: dict) -> di
 
     from sqlalchemy import delete
 
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     cutoff = datetime.now(UTC) - timedelta(days=int(days))
     result = await session.execute(

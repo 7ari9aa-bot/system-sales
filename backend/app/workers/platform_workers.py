@@ -28,8 +28,8 @@ from app.core.db import SessionLocal, bind_tenant
 from app.core.errors import ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import EventEnvelope, deserialize_event
-from app.modules.platform.models import Notification, WebhookEvent
-from app.modules.platform.service import NotificationDispatcher, WebhookDispatcher
+from app.platform.platform.models import Notification, WebhookEvent
+from app.platform.platform.service import NotificationDispatcher, WebhookDispatcher
 from app.workers.base import StreamWorker, defer_unless_tenant_allows
 
 logger = logging.getLogger(__name__)

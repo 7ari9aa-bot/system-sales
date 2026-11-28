@@ -301,7 +301,7 @@ async def test_a_window_with_no_shifts_answers_zero_and_reads_no_rows(db, tenant
 async def _other_user(db):
     """A second real user: a hand-off's giver is a foreign key, so a random uuid is refused."""
     from app.core.security import hash_password
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     user = User(
         email=f"h-{uuid.uuid4().hex[:8]}@test.local",

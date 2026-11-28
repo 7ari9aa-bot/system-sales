@@ -29,7 +29,7 @@ from app.applications.apparel.modules.ai.runtime import AgentRunner
 from app.applications.apparel.modules.conversations.models import Conversation, Message
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 # ------------------------------------------------------------- the intake ----
 

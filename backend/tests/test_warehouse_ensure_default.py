@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from app.core.errors import PermissionDeniedError
 from app.main import create_app
 from app.applications.apparel.modules.catalog.routers import taxonomy
-from app.modules.identity.deps import require_permission
+from app.platform.identity.deps import require_permission
 from app.applications.apparel.modules.inventory.models import Warehouse
 from tests.conftest import TenantCtx
 

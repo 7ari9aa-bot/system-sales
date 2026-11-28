@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.schemas import build_envelope, serialize
 from app.core.tenancy import current_scope
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 
 def _auto_correlation_id() -> str | None:

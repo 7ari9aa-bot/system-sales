@@ -81,7 +81,7 @@ async def test_one_address_is_capped_across_different_receipts(db, tenant_ctx) -
 async def test_a_refused_request_stages_nothing(db, tenant_ctx) -> None:
     from sqlalchemy import func, select
 
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     receipt_id = await _sale(db, tenant_ctx)
     for i in range(5):
@@ -105,7 +105,7 @@ async def test_a_refused_request_stages_nothing(db, tenant_ctx) -> None:
 async def test_an_old_request_stops_counting_after_a_day(db, tenant_ctx) -> None:
     from sqlalchemy import update
 
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     receipt_id = await _sale(db, tenant_ctx)
     for i in range(5):

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.marketing.models import Attribution, Conversion
 from app.applications.apparel.modules.marketing.service import MarketingService
 from app.applications.apparel.modules.orders.models import Order

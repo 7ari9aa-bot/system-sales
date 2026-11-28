@@ -18,9 +18,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.modules.voice.routers import sessions as voice_sessions
-from app.modules.voice.runtime.gpt_live import GptLiveUnavailable
-from app.modules.voice.runtime.stream_ticket import (
+from app.platform.voice.routers import sessions as voice_sessions
+from app.platform.voice.runtime.gpt_live import GptLiveUnavailable
+from app.platform.voice.runtime.stream_ticket import (
     StreamTicketInvalid,
     StreamTicketIssuer,
     StreamTicketUnavailable,
@@ -101,7 +101,7 @@ class _FakeGrants:
         return jti
 
     async def take(self, jti):
-        from app.modules.voice.infrastructure.stream_grants import (
+        from app.platform.voice.infrastructure.stream_grants import (
             StreamGrant,
             StreamGrantMissing,
         )
@@ -283,7 +283,7 @@ class _FakeRedis:
 
 
 async def test_the_grant_lives_one_minute_and_dies_when_redeemed():
-    from app.modules.voice.infrastructure.stream_grants import (
+    from app.platform.voice.infrastructure.stream_grants import (
         StreamGrantMissing,
         StreamGrantStore,
     )
@@ -300,6 +300,6 @@ async def test_the_grant_lives_one_minute_and_dies_when_redeemed():
 
 
 def StreamGrantFor(session_id, tenant_id, user_id):
-    from app.modules.voice.infrastructure.stream_grants import StreamGrant
+    from app.platform.voice.infrastructure.stream_grants import StreamGrant
 
     return StreamGrant(session_id=str(session_id), tenant_id=str(tenant_id), user_id=str(user_id))

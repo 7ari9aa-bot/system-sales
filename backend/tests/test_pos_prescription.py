@@ -15,7 +15,7 @@ from app.applications.apparel.modules.inventory.models import InventoryBalance
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.pos.prescription import clean_reference, is_prescription_only
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import ctx_for, start_day, till
 from tests.test_pos_sale_http import _post
 

@@ -57,11 +57,11 @@ from app.applications.apparel.modules.analytics.timekit import (
     UnknownTimezoneError,
     resolve_timezone,
 )
-from app.modules.identity import service as identity_service
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.identity.router import tenants_router
-from app.modules.identity.service import TenantSettingsService
+from app.platform.identity import service as identity_service
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.identity.router import tenants_router
+from app.platform.identity.service import TenantSettingsService
 from tests.test_analytics_correctness import W1_SINCE, W1_UNTIL, _collected
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -536,7 +536,7 @@ async def test_setting_the_same_zone_twice_writes_one_audit_row(
     db: AsyncSession, tenant_ctx
 ) -> None:
     """An idempotent PUT must not claim a change it did not make."""
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     await TenantSettingsService.set_timezone(
         db, tenant_ctx.tenant_id, "Africa/Cairo", actor_user_id=tenant_ctx.user.id
@@ -574,7 +574,7 @@ async def test_an_unresolvable_zone_is_refused_and_not_stored(db: AsyncSession, 
 
 
 async def test_the_zone_change_leaves_an_audit_row(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     await TenantSettingsService.set_timezone(
         db, tenant_ctx.tenant_id, "Asia/Dubai", actor_user_id=tenant_ctx.user.id

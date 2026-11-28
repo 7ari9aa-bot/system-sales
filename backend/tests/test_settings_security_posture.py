@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.settings.service import SettingsService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.settings.service import SettingsService
 
 POSTURE_URL = "/api/v1/settings/security-posture"
 

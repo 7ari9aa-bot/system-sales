@@ -9,7 +9,7 @@ redeliveries on. Every delivery now carries:
     X-SalesOS-Delivery-Id the webhook_deliveries row id (dedupe key)
 
 These tests pin the contract from the RECEIVER's side: follow the docstring
-recipe in app/modules/platform/service.py and the checks must hold — the
+recipe in app/platform/platform/service.py and the checks must hold — the
 signature verifies only over "<timestamp>.<body>", the delivery id header is
 the delivery row id, an inactive endpoint is never contacted, and the SSRF
 guard still wins over any configured URL.
@@ -29,9 +29,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.platform.models import WebhookDelivery, WebhookEndpoint, WebhookEvent
-from app.modules.platform.router import admin_retry_webhook_event
-from app.modules.platform.service import WebhookDispatcher, WebhookService
+from app.platform.platform.models import WebhookDelivery, WebhookEndpoint, WebhookEvent
+from app.platform.platform.router import admin_retry_webhook_event
+from app.platform.platform.service import WebhookDispatcher, WebhookService
 
 SECRET = "whsec-0123456789abcdef"
 
@@ -43,7 +43,7 @@ def _bypass_dns_guard(monkeypatch):
     consumer module (the same pattern tests/test_media_pipeline.py uses).
     The SSRF test deliberately does NOT use this fixture — it exercises the
     real guard with a literal metadata IP, which is rejected before any DNS."""
-    monkeypatch.setattr("app.modules.platform.service.assert_public_url", lambda url: url)
+    monkeypatch.setattr("app.platform.platform.service.assert_public_url", lambda url: url)
 
 
 def _sign_body_only(secret: str, body: bytes) -> str:
@@ -241,7 +241,7 @@ async def test_registration_rejects_internal_targets_before_any_row(db, tenant_c
 async def test_registration_issues_a_secret_once_and_audits(db, tenant_ctx, _bypass_dns_guard):
     from sqlalchemy import select
 
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     endpoint = await WebhookService.register_endpoint(
         db,
@@ -281,7 +281,7 @@ async def test_rotation_replaces_the_secret_exactly_once_and_audits(
     rotation without ever carrying the new secret."""
     from sqlalchemy import select
 
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     endpoint = await WebhookService.register_endpoint(
         db,
@@ -338,7 +338,7 @@ async def test_rotation_and_deactivation_are_tenant_scoped(db, tenant_ctx, _bypa
 async def test_deactivation_is_soft_idempotent_and_audited_once(db, tenant_ctx, _bypass_dns_guard):
     from sqlalchemy import func, select
 
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     endpoint = await WebhookService.register_endpoint(
         db,
@@ -411,7 +411,7 @@ def test_the_registry_routes_stay_permission_gated():
     """Every registry mutation is a settings:write act (an unguarded endpoint
     registry is a credential surface), and the only read is a settings:read
     that can never see a secret."""
-    from app.modules.billing.router import webhooks_router
+    from app.platform.billing.router import webhooks_router
 
     assert _permission_codes(webhooks_router.routes, "/webhook-endpoints", "POST") == {
         "settings:write"
@@ -431,8 +431,8 @@ def test_no_registry_read_response_declares_a_secret():
     """The show-once contract at the schema level: only the create/rotate
     models carry a ``secret`` field — the list/deleted models must not, so no
     read can ever be widened into a secret dump."""
-    from app.modules.billing import router as billing_router_module
-    from app.modules.billing.router import WebhookEndpointCreated, WebhookEndpointOut
+    from app.platform.billing import router as billing_router_module
+    from app.platform.billing.router import WebhookEndpointCreated, WebhookEndpointOut
 
     assert "secret" in WebhookEndpointCreated.model_fields
     assert "secret" not in WebhookEndpointOut.model_fields

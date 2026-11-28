@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.applications.apparel.modules.purchasing.models  # noqa: F401
 from app.applications.apparel.modules.catalog.models import Product
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.deps import TenantContext
+from app.platform.identity.deps import TenantContext
 from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.router import (
     ChannelAllocationIn,

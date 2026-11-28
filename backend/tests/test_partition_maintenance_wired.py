@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import partitioning
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.analytics import retention
-from app.modules.platform.models import ScheduledJob
+from app.platform.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 
 _WORKER_SRC = pathlib.Path(sw.__file__).read_text(encoding="utf-8")

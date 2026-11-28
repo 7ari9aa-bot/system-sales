@@ -18,13 +18,13 @@ import pytest
 
 from app.core.commands import command_hash as compute_command_hash
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.authority.models import (
+from app.platform.authority.models import (
     AutonomyBudget,
     CapabilityGrant,
 )
-from app.modules.authority.service import AuthorityService
-from app.modules.decisions.models import Decision
-from app.modules.decisions.service import DecisionService
+from app.platform.authority.service import AuthorityService
+from app.platform.decisions.models import Decision
+from app.platform.decisions.service import DecisionService
 
 # ───────────────────────────────────── helpers ──────────────────────────────
 

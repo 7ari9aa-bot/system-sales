@@ -80,7 +80,7 @@ async def set_model_config_secret(session, tenant_id, alias: str, api_key: str) 
     """
     from sqlalchemy import func, select
 
-    from app.modules.platform.models import SecretValue
+    from app.platform.platform.models import SecretValue
 
     vault_key = model_config_vault_key(tenant_id, alias)
     current = (

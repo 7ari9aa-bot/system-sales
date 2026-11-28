@@ -21,15 +21,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.applications.apparel.modules.ai.models import BudgetPolicy
-from app.modules.billing.models import Entitlement, Subscription
-from app.modules.identity.bootstrap import (
+from app.platform.billing.models import Entitlement, Subscription
+from app.platform.identity.bootstrap import (
     DEFAULT_HOURS,
     seed_tenant_defaults,
 )
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import AuthService
-from app.modules.operations.models import BusinessCalendar, SLAPolicy
-from app.modules.operations.sla import BusinessClock, validate_calendar
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import AuthService
+from app.platform.operations.models import BusinessCalendar, SLAPolicy
+from app.platform.operations.sla import BusinessClock, validate_calendar
 
 
 @dataclass
@@ -181,7 +181,7 @@ async def test_register_does_not_fail_when_the_plan_is_absent(
 ):
     """A missing plan is an environment state (provision.py not run), not a
     reason to refuse a signup — and it is reported, not swallowed."""
-    from app.modules.identity import bootstrap as bootstrap_module
+    from app.platform.identity import bootstrap as bootstrap_module
 
     # plans is SELECT-only for the runtime role since fd2026100410, so the
     # old "rename the seeded row" simulation now dies on privilege. Point

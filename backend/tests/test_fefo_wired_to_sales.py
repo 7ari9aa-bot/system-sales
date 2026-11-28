@@ -20,14 +20,14 @@ import app.applications.apparel.modules.purchasing.models  # noqa: F401 - regist
 from app.core.tenancy import reset_current_scope, set_current_scope
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.identity.models import Workspace
+from app.platform.identity.models import Workspace
 from app.applications.apparel.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryReservationService, InventoryService
 from app.applications.apparel.modules.inventory.services.expiry import consumption_order
 from app.applications.apparel.modules.inventory.services.transfers import TransferServiceMixin
 from app.applications.apparel.modules.inventory.services.valuation import ValuationService
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

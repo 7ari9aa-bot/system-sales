@@ -20,7 +20,7 @@ import app.core.model_registry  # noqa: F401  (loads every model so foreign keys
 import app.applications.apparel.modules.ai.budget as budget_module
 from app.applications.apparel.modules.ai.budget import reserve_budget
 from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 
 
 def _spend(value: Decimal):

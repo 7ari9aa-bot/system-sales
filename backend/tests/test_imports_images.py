@@ -9,12 +9,12 @@ import app.core.model_registry  # noqa: F401  (loads every table so foreign keys
 from app.core.errors import ValidationError
 from app.core.storage import FetchedMedia, StoredMedia
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.imports import apply as apply_mod
-from app.modules.imports import normalize as n
-from app.modules.imports.apply import IMAGE_BATCH_LIMIT, SHEET_ORDER, ApplyError
-from app.modules.imports.fields import SHEET_FIELDS, SHEET_IMAGES, SHEET_PRODUCTS, SHEET_VARIANTS
-from app.modules.imports.mapping import suggest_mapping
-from app.modules.imports.validation import MAX_IMAGES_PER_SKU, validate_images
+from app.platform.imports import apply as apply_mod
+from app.platform.imports import normalize as n
+from app.platform.imports.apply import IMAGE_BATCH_LIMIT, SHEET_ORDER, ApplyError
+from app.platform.imports.fields import SHEET_FIELDS, SHEET_IMAGES, SHEET_PRODUCTS, SHEET_VARIANTS
+from app.platform.imports.mapping import suggest_mapping
+from app.platform.imports.validation import MAX_IMAGES_PER_SKU, validate_images
 from app.workers import import_runner
 from app.workers.import_runner import run_batch
 from tests.test_imports_run import _job, _row, _session

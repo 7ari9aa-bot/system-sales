@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.applications.apparel.modules.customer_accounts.models import CustomerLedgerEntry
 from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Svc
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 
 router = APIRouter(prefix="/customer-accounts", tags=["customer-accounts"])
 

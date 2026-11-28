@@ -8,18 +8,18 @@ import uuid
 import pytest
 
 from app.core.errors import PermissionDeniedError
-from app.modules.voice.application.customer_context import (
+from app.platform.voice.application.customer_context import (
     CustomerContextBuilder,
     OrderRef,
 )
-from app.modules.voice.security.capabilities import (
+from app.platform.voice.security.capabilities import (
     AuthenticationLevel,
     ChannelType,
     PrincipalType,
     ToolGateway,
     resolve_capability,
 )
-from app.modules.voice.security.identity_verification import (
+from app.platform.voice.security.identity_verification import (
     IdentityVerificationEngine,
     InMemoryChallengeStore,
     VerificationExpired,

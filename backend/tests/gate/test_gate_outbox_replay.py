@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.events.replay import replay_unprocessed_published
 from app.core.events.writer import add_outbox_event
-from app.modules.platform.models import ProcessedEvent
+from app.platform.platform.models import ProcessedEvent
 
 
 class RecordingBus:

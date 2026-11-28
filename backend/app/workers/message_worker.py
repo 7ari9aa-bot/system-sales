@@ -64,7 +64,7 @@ from app.applications.apparel.modules.conversations.models import Attachment, Co
 from app.applications.apparel.modules.conversations.policy import MessagingPolicyService
 from app.applications.apparel.modules.conversations.voice import STTProvider, VoiceService, stt_cost_estimate
 from app.applications.apparel.modules.customers.models import CustomerIdentity
-from app.modules.platform.models import DeliveryAttempt, Integration, ProcessedEvent
+from app.platform.platform.models import DeliveryAttempt, Integration, ProcessedEvent
 from app.workers.base import (
     DeferredError,
     PermanentError,
@@ -747,7 +747,7 @@ class MessageWorker(StreamWorker):
         # per integration per event.
         credentials_config: dict = {}
         if integration is not None:
-            from app.modules.platform.service import IntegrationCredentialsService
+            from app.platform.platform.service import IntegrationCredentialsService
 
             credentials_config = dict(integration.config or {})
             decrypted = await IntegrationCredentialsService.decrypt(session, integration)
@@ -872,7 +872,7 @@ class MessageWorker(StreamWorker):
             # ProcessedEvent marker, so no double metering.
             from decimal import Decimal
 
-            from app.modules.billing.service import BillingService
+            from app.platform.billing.service import BillingService
 
             await BillingService.record_usage(
                 session, tenant_id, feature="messages_outbound", quantity=Decimal("1")
@@ -914,7 +914,7 @@ class MessageWorker(StreamWorker):
 
         from sqlalchemy import text as sa_text
 
-        from app.modules.notifications.service import NotificationService
+        from app.platform.notifications.service import NotificationService
 
         try:
             owner_ids = (

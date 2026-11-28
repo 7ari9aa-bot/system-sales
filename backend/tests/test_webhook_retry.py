@@ -33,9 +33,9 @@ from app.core.events.writer import add_outbox_event
 from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 from app.applications.apparel.modules.conversations.models import Message
-from app.modules.identity.deps import AuthedUser, TenantContext
-from app.modules.platform.models import OutboxEvent, WebhookEvent
-from app.modules.platform.router import admin_retry_webhook_event
+from app.platform.identity.deps import AuthedUser, TenantContext
+from app.platform.platform.models import OutboxEvent, WebhookEvent
+from app.platform.platform.router import admin_retry_webhook_event
 from app.workers.platform_workers import retry_failed_webhook_events
 
 

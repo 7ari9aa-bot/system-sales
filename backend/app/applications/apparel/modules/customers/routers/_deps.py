@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.core.contact_norm import normalize_email, normalize_phone
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("customers:write"))]
 # P4 — the seeded matrix (scripts/provision.py ROLE_MATRIX) grants

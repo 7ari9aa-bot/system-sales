@@ -12,7 +12,7 @@ import pathlib
 import re
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
-ROUTER = (BACKEND / "app/modules/settings/router.py").read_text(encoding="utf-8")
+ROUTER = (BACKEND / "app/platform/settings/router.py").read_text(encoding="utf-8")
 MIGRATION = (BACKEND / "migrations/versions/fe2026112604_settings_approve_permission.py").read_text(
     encoding="utf-8"
 )

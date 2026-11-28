@@ -12,9 +12,9 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings import service as service_module
-from app.modules.settings.models import CHANGE_REQUEST_STATES
-from app.modules.settings.service import SettingsService
+from app.platform.settings import service as service_module
+from app.platform.settings.models import CHANGE_REQUEST_STATES
+from app.platform.settings.service import SettingsService
 
 SOURCE = inspect.getsource(service_module)
 
@@ -37,7 +37,7 @@ def test_approval_refuses_when_the_value_moved():
     # returns instead of raising (a raise rolled it back), so the message is composed in
     # the router, from the keys the service attached to the returned request.
     assert "stale_keys" in src
-    router = pathlib.Path(__file__).resolve().parents[1] / "app/modules/settings/router.py"
+    router = pathlib.Path(__file__).resolve().parents[1] / "app/platform/settings/router.py"
     body = router.read_text(encoding="utf-8")
     assert "changed after it was submitted" in body
 

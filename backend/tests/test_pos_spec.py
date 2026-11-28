@@ -32,7 +32,7 @@ def test_manual_cash_and_handover_routes_are_permission_guarded() -> None:
     """Petty cash (pay-in / pay-out / drop) and the drawer handover were added on purpose with the
     supply-chain wave (migration fe2026111728). They move money between people, so what must hold is
     that every one of them sits behind a real RBAC permission, not that they are absent."""
-    from app.modules.identity.deps import require_permission
+    from app.platform.identity.deps import require_permission
 
     def permissions(dependant) -> set[str]:  # noqa: ANN001
         found: set[str] = set()

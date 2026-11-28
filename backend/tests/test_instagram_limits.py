@@ -60,7 +60,7 @@ def test_every_instagram_call_uses_the_one_pinned_version() -> None:
 
 
 def test_the_connection_spec_verifies_on_the_same_version() -> None:
-    from app.modules.platform.channel_specs.instagram import INSTAGRAM_GRAPH_BASE
+    from app.platform.platform.channel_specs.instagram import INSTAGRAM_GRAPH_BASE
 
     assert INSTAGRAM_GRAPH_BASE.endswith(f"/{INSTAGRAM_API_VERSION}")
 

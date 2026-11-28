@@ -114,7 +114,7 @@ async def request_human_takeover(
     # imports `ai`, and a model import here would close a NEW cycle that
     # tests/test_module_boundaries.py fails on — the same shape gateway.py's
     # budget alerts use.
-    from app.modules.notifications.service import NotificationService
+    from app.platform.notifications.service import NotificationService
 
     owner_ids = (
         (

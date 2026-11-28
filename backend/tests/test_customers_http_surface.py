@@ -54,8 +54,8 @@ from app.applications.apparel.modules.customers.router import platform_router
 from app.applications.apparel.modules.customers.router import router as customers_router
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.applications.apparel.modules.customers.timeline import Customer360Service
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.platform.models import Integration
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.platform.models import Integration
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 USER = uuid.UUID("22222222-2222-2222-2222-222222222222")

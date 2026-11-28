@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from app.modules.billing.service import EntitlementService  # noqa: F401
+from app.platform.billing.service import EntitlementService  # noqa: F401
 
 # Also re-export shared helpers that other modules may import from here.
 from app.applications.apparel.modules.customers.routers._deps import (  # noqa: F401
@@ -62,7 +62,7 @@ from app.applications.apparel.modules.customers.schemas import (  # noqa: F401
     NoteBody,
     TagBody,
 )
-from app.modules.platform.integration_verifier import (  # noqa: F401
+from app.platform.platform.integration_verifier import (  # noqa: F401
     configure_telegram_webhook,
     verify_channel_credentials,
 )

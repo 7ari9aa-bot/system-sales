@@ -48,8 +48,8 @@ from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.router import router as customers_router
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import NotFoundError
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
 
 EGYPT = "+201001234567"
 FABRICATED = "+9640201001234567"

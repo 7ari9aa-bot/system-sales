@@ -43,7 +43,7 @@ from app.applications.apparel.modules.einvoice.providers.eta.notifications impor
     parse_receipt_notification,
 )
 from app.applications.apparel.modules.einvoice.tracking import attention_of, summarize_documents
-from app.modules.identity.deps import DbSession, TenantContext, require_permission
+from app.platform.identity.deps import DbSession, TenantContext, require_permission
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ import uuid
 import pytest
 from sqlalchemy.sql.dml import Update
 
-from app.modules.voice.application.transcript_sync import (
+from app.platform.voice.application.transcript_sync import (
     VOICE_MODALITY,
     TranscriptError,
     plan_turn,

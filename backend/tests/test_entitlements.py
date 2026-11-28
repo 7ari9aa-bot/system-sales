@@ -31,14 +31,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.core.errors import RateLimitExceededError
-from app.modules.billing.models import Entitlement, Plan, Subscription
-from app.modules.billing.service import (
+from app.platform.billing.models import Entitlement, Plan, Subscription
+from app.platform.billing.service import (
     _CAPABILITY_FEATURE,
     _DERIVED_USAGE,
     BillingService,
     EntitlementService,
 )
-from app.modules.identity.models import TenantUser
+from app.platform.identity.models import TenantUser
 
 # fd2026100410 Finding 2: plans is SELECT-only for the runtime role, so the
 # fixtures plant plan rows through the admin DSN and this registry tracks
@@ -179,7 +179,7 @@ async def test_an_unlimited_entitlement_is_not_limited(db, tenant_ctx):
 
 async def test_a_deactivated_tenant_loses_every_capability(db, tenant_ctx):
     """Tenant status is checked before any plan logic."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     tenant = (
         await db.execute(select(Tenant).where(Tenant.id == tenant_ctx.tenant_id))

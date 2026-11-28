@@ -9,7 +9,7 @@ Three rules, in increasing strictness:
 1. **No new import CYCLE between modules.** Cycles are counted as strongly
    connected components, and two of them are baselined below; a third, or a
    bigger one, fails. Cycles are the reason this codebase is full of
-   function-scope imports like `from app.modules.identity.models import Tenant`
+   function-scope imports like `from app.platform.identity.models import Tenant`
    inside a method — the cycle has to be broken *somewhere*, and a lazy import
    is the cheapest place. They also make a module impossible to load in
    isolation or test without dragging in the world.
@@ -49,7 +49,8 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 APPAREL_MODULES_DIR = (
     pathlib.Path(__file__).resolve().parent.parent / "app" / "applications" / "apparel" / "modules"
 )
-MODULES_DIRS = (MODULES_DIR, APPAREL_MODULES_DIR)
+PLATFORM_MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "platform"
+MODULES_DIRS = (MODULES_DIR, PLATFORM_MODULES_DIR, APPAREL_MODULES_DIR)
 
 # --- baselines: these may only SHRINK -------------------------------------
 #
@@ -241,7 +242,7 @@ MODULES_DIRS = (MODULES_DIR, APPAREL_MODULES_DIR)
 # Measured with the counter in this file, not guessed.
 # 237 -> 240 on 2026-11-18 (settings branch, measured on top of main's 237): +3 deliberate edges.
 # settings router -> identity.deps (permission gate); then:
-# Bumped to 237 when app/modules/settings was introduced (settings router -> identity.deps).
+# Bumped to 237 when app/platform/settings was introduced (settings router -> identity.deps).
 # 237 -> 238 on 2026-11-18, ONE deliberate edge: pos -> settings.service (SettingsService), in
 # pos/service.py::_discount_ceiling. The discount ceiling a till enforces falls back to the
 # resolved setting `pos.max_discount_pct` when the profile has none of its own. The settings
@@ -353,7 +354,7 @@ MODULES_DIRS = (MODULES_DIR, APPAREL_MODULES_DIR)
 # the module's reason to exist, not coupling added to an existing one — every existing count is
 # unchanged. Lower this again if the catalogue read ever moves behind a service.
 # 338 -> 339: the voice module (merged from feat/voice-intelligence) imports
-# app.modules.identity.deps for `require_permission`, which is the gate that makes opening a voice
+# app.platform.identity.deps for `require_permission`, which is the gate that makes opening a voice
 # session ask for the same permission the text assistant asks for. It is the voice module's only
 # cross-module edge, and it is the right direction (voice -> identity, never identity -> voice).
 # Recorded as a deliberate ratchet step rather than absorbed silently.
@@ -621,6 +622,7 @@ def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
             target = _imported_module(node)
             if not target or not (
                 target.startswith("app.modules.")
+                or target.startswith("app.platform.")
                 or target.startswith("app.applications.apparel.modules.")
             ):
                 continue
@@ -628,7 +630,12 @@ def _cross_module_imports() -> list[tuple[str, str, str, bool]]:
             # Both roots are scanned: app.modules.<name> for platform modules and
             # app.applications.apparel.modules.<name> for the sector application's
             # own. The module name is the segment after the modules package.
-            index = 4 if target.startswith("app.applications.apparel.modules.") else 2
+            if target.startswith("app.applications.apparel.modules."):
+                index = 4
+            elif target.startswith("app.platform."):
+                index = 2
+            else:
+                index = 2
             if len(parts) <= index or parts[index] == source:
                 continue
             if len(parts) == index + 1 and parts[index] == "errors":
@@ -782,7 +789,7 @@ def test_audit_writers_no_longer_cost_a_platform_edge() -> None:
     Regression guard for the §66 writer refactor. These files previously imported
     ``platform.service.AuditService`` purely to write one audit row, which cost a
     cross-module edge each. The writer now lives in ``app.core.audit`` (a core
-    capability, not another module), so importing ``app.modules.platform`` here at
+    capability, not another module), so importing ``app.platform.platform`` here at
     all would pay back an edge the ratchet just removed.
     """
     migrated = [
@@ -798,11 +805,11 @@ def test_audit_writers_no_longer_cost_a_platform_edge() -> None:
             if not isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
             target = _imported_module(node)
-            if target and target.startswith("app.modules.platform"):
+            if target and target.startswith("app.platform.platform"):
                 offenders.append(rel)
                 break
     assert not offenders, (
-        "audit writer(s) still import app.modules.platform: "
+        "audit writer(s) still import app.platform.platform: "
         + ", ".join(sorted(set(offenders)))
         + " — write through app.core.audit.write_audit_row instead."
     )

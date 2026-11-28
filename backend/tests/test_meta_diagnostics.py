@@ -95,7 +95,7 @@ async def test_recording_never_raises_even_when_the_writer_fails(monkeypatch):
     async def boom(*a, **k):
         raise RuntimeError("database down")
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", boom)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", boom)
     await md.record_channel_issue("webhook.bad_signature", channel="messenger")
 
 
@@ -105,7 +105,7 @@ async def test_event_type_is_prefixed_and_details_reach_the_writer(monkeypatch):
     async def fake(event_type, **kwargs):
         seen.update(event_type=event_type, **kwargs)
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", fake)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", fake)
     await md.record_channel_issue(
         "link.no_instagram_account", channel="instagram", details={"page_id": "1215323418341930"}
     )
@@ -144,7 +144,7 @@ async def test_a_flood_of_the_same_failure_writes_one_row(monkeypatch):
     async def fake(event_type, **kwargs):
         rows.append(event_type)
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", fake)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", fake)
     for _ in range(500):
         await md.record_channel_issue("webhook.bad_signature", channel="messenger")
     assert rows == ["meta.webhook.bad_signature"]
@@ -156,7 +156,7 @@ async def test_different_channels_and_keys_are_counted_separately(monkeypatch):
     async def fake(event_type, **kwargs):
         rows.append((event_type, kwargs["details"]["channel"]))
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", fake)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", fake)
     await md.record_channel_issue("webhook.bad_signature", channel="messenger")
     await md.record_channel_issue("webhook.bad_signature", channel="instagram")
     await md.record_channel_issue("webhook.unparsable", channel="messenger")
@@ -169,7 +169,7 @@ async def test_without_redis_the_row_count_is_still_bounded(monkeypatch):
     async def fake(event_type, **kwargs):
         rows.append(event_type)
 
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", fake)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", fake)
     for i in range(500):
         await md.record_channel_issue("webhook.unknown_account", channel=f"c{i}")
     assert len(rows) == md._FALLBACK_BUDGET
@@ -185,6 +185,6 @@ async def test_redis_failure_falls_back_instead_of_losing_the_event(monkeypatch)
         raise ConnectionError("redis down")
 
     monkeypatch.setattr("app.core.redis.get_redis_or_none", broken)
-    monkeypatch.setattr("app.modules.platform.security_events.record_security_event", fake)
+    monkeypatch.setattr("app.platform.platform.security_events.record_security_event", fake)
     await md.record_channel_issue("webhook.bad_signature", channel="messenger")
     assert rows == ["meta.webhook.bad_signature"]

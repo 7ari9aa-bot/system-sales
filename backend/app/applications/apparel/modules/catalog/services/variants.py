@@ -72,7 +72,7 @@ class VariantServiceMixin:
         # batch: the limit is the shop's setting, not a per-row one, and the count only moves by
         # the rows this batch adds.
         if max_variants is None:
-            from app.modules.settings.service import SettingsService
+            from app.platform.settings.service import SettingsService
 
             max_variants = await SettingsService(session, tenant_id).value(
                 "catalog.max_variants_per_product"
@@ -181,7 +181,7 @@ class VariantServiceMixin:
         Returns ``None`` when the pattern is empty or would collide.
         """
         from app.applications.apparel.modules.catalog.models import Product
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         fmt = await SettingsService(session, tenant_id).value("catalog.sku_format")
         if not fmt:

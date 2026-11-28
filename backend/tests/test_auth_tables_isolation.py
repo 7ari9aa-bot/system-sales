@@ -31,7 +31,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.identity.service import AuthService
+from app.platform.identity.service import AuthService
 
 pytestmark = pytest.mark.usefixtures("db")
 

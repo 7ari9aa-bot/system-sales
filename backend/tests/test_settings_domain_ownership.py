@@ -14,8 +14,8 @@ import pytest
 from app.applications.registry import register_all
 from app.core.context import application_key_contextvar
 from app.core.errors import PermissionDeniedError
-from app.modules.settings.registry import list_definitions
-from app.modules.settings.service import _definition
+from app.platform.settings.registry import list_definitions
+from app.platform.settings.service import _definition
 
 
 def _key_in(domain: str) -> str:

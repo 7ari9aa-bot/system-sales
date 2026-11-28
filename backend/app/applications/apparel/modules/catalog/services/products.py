@@ -98,7 +98,7 @@ class ProductServiceMixin:
         # it when no explicit tax class is assigned.
         merged_attrs = attributes or {}
         if "default_tax_rate" not in merged_attrs:
-            from app.modules.settings.service import SettingsService
+            from app.platform.settings.service import SettingsService
 
             default_tax = await SettingsService(session, tenant_id).value(
                 "catalog.default_tax_rate"

@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.applications.apparel.modules.conversations.models import Message
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 from app.workers.message_worker import MessageWorker
 
 

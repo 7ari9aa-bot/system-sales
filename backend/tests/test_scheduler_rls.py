@@ -31,7 +31,7 @@ import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.platform.models import ScheduledJob
+from app.platform.platform.models import ScheduledJob
 from app.workers import scheduler_worker
 from app.workers.scheduler_worker import (
     RECURRING_JOBS,

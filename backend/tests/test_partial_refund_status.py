@@ -135,7 +135,7 @@ def test_no_order_status_was_invented_for_a_refund() -> None:
 def test_a_refunded_order_still_counts_as_an_order() -> None:
     """The registry's own words, pinned against the analytics filter it drives:
     net subtracts the money, the order's existence is untouched."""
-    from app.modules.platform.metrics import MetricRegistry
+    from app.platform.platform.metrics import MetricRegistry
 
     assert MetricRegistry.get("orders_count").filters["status_excluded"] == [
         "draft",

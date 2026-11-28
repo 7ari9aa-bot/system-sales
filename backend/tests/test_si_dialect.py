@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
-from app.modules.identity import dialects
+from app.platform.identity import dialects
 
 
 def test_the_assistants_mirror_equals_the_settings_owner() -> None:

@@ -255,7 +255,7 @@ async def test_every_number_the_model_may_quote_is_registered_evidence(db, tenan
 
 async def test_one_shop_never_sees_another_shops_stock(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     wh = await _warehouse(db, mine)

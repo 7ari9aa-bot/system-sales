@@ -23,9 +23,9 @@ from __future__ import annotations
 import asyncio
 import base64
 
-from app.modules.voice.application.client_delegation import ClientDelegationService
-from app.modules.voice.application.live_loop import LiveCallLoop
-from app.modules.voice.application.spoken_turns import TurnLedger
+from app.platform.voice.application.client_delegation import ClientDelegationService
+from app.platform.voice.application.live_loop import LiveCallLoop
+from app.platform.voice.application.spoken_turns import TurnLedger
 
 SESSION = "11111111-1111-1111-1111-111111111111"
 PROVIDER_SESSION = "prov_1"

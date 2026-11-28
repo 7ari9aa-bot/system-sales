@@ -22,7 +22,7 @@ import sqlalchemy as sa
 
 from app.core.secrets import DatabaseSecretStore, EnvelopeSecretStore
 from app.core.tenancy import reset_current_tenant, set_current_tenant
-from app.modules.platform.models import SecretValue
+from app.platform.platform.models import SecretValue
 
 _KEY_B64 = base64.b64encode(b"g06-db-store-test-key-32-bytes!!!"[:32]).decode("ascii")
 

@@ -36,7 +36,7 @@ from app.main import create_app
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.inventory.models import InventoryMovement, InventoryReservation, Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.models import Order, OrderStatusHistory
@@ -253,7 +253,7 @@ async def test_the_compensation_result_is_stored_not_just_applied(
 async def test_the_engine_publishes_its_own_lifecycle(
     db: AsyncSession, tenant_ctx, saga_registry
 ) -> None:
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
 
     tenant_id = tenant_ctx.tenant_id
     log: list[str] = []

@@ -7,7 +7,7 @@ import uuid
 import pytest
 
 from app.core.errors import PermissionDeniedError
-from app.modules.voice.security.capabilities import (
+from app.platform.voice.security.capabilities import (
     ENTRY_SCOPE,
     AuthenticationLevel,
     ChannelType,

@@ -7,12 +7,12 @@ import uuid
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.models import Tenant
-from app.modules.imports import lookup
-from app.modules.imports.validation import Existing
+from app.platform.identity.models import Tenant
+from app.platform.imports import lookup
+from app.platform.imports.validation import Existing
 from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 
 async def _warehouse(db, tenant_id, code: str, *, active: bool = True) -> Warehouse:

@@ -13,9 +13,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.platform.routers import sites_platform
-from app.modules.platform.services import sites_platform as sp
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.platform.routers import sites_platform
+from app.platform.platform.services import sites_platform as sp
 
 BASE = "/api/v1/owner/sites-platform"
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -405,7 +405,7 @@ def test_limit_body_field_is_a_count_named_limit_not_money() -> None:
     A regression to `value` fails test_the_published_money_fields_are_strings_everywhere, and a
     client still sending the old `value` key is refused instead of silently saving 0.
     """
-    from app.modules.platform.routers.sites_platform import LimitIn
+    from app.platform.platform.routers.sites_platform import LimitIn
 
     assert set(LimitIn.model_fields) == {"limit"}
     assert LimitIn(limit=600).limit == 600

@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.errors import DomainError, build_error_body
 from app.applications.apparel.modules.conversations.routers.inbox import router as inbox_router
 from app.applications.apparel.modules.conversations.service import ConversationService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 CONVERSATION = uuid.UUID("88888888-8888-8888-8888-888888888888")
 PATH = f"/api/v1/conversations/{CONVERSATION}/messages"

@@ -436,7 +436,7 @@ def test_a_malformed_cursor_is_a_client_error_with_a_code() -> None:
 async def test_search_never_crosses_the_tenant_boundary(db: AsyncSession, tenant_ctx) -> None:
     from app.applications.apparel.modules.catalog.models import Product
     from app.applications.apparel.modules.customers.models import Customer
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     suffix = uuid.uuid4().hex[:8]
     mine = Customer(

@@ -6,8 +6,8 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
-from app.modules.imports.normalize import (
+from app.platform.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.platform.imports.normalize import (
     CellError,
     parse_code,
     parse_cost,
@@ -16,7 +16,7 @@ from app.modules.imports.normalize import (
     parse_status,
     slugify,
 )
-from app.modules.imports.validation import (
+from app.platform.imports.validation import (
     Existing,
     summarize,
     validate_products,

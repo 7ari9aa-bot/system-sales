@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 from app.applications.apparel.modules.taxation.models import BusinessProfile, TaxClass
 from app.applications.apparel.modules.taxation.service import TaxationService
 

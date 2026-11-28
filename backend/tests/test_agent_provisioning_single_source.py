@@ -35,9 +35,9 @@ from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import 
 from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
 from app.applications.apparel.modules.ai.models import Agent, AgentTool
-from app.modules.identity.bootstrap import seed_tenant_defaults
+from app.platform.identity.bootstrap import seed_tenant_defaults
 
-BOOTSTRAP = pathlib.Path(__file__).resolve().parents[1] / "app/modules/identity/bootstrap.py"
+BOOTSTRAP = pathlib.Path(__file__).resolve().parents[1] / "app/platform/identity/bootstrap.py"
 
 
 async def _provision(db, tenant_id) -> None:

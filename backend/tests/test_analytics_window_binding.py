@@ -64,7 +64,7 @@ from app.main import create_app
 from app.applications.apparel.modules.analytics import router as analytics_router
 from app.applications.apparel.modules.analytics import service as analytics_service
 from app.applications.apparel.modules.analytics.timekit import ResolvedTimezone
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from tests.test_analytics_correctness import _collected
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")

@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.applications.apparel.modules.customers.models import Customer
 from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
-from app.modules.identity.deps import TenantContext
-from app.modules.privacy.service import DeletionService
+from app.platform.identity.deps import TenantContext
+from app.platform.privacy.service import DeletionService
 
 
 async def _two_customers(db: AsyncSession, tenant_id: uuid.UUID):

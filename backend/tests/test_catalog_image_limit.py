@@ -14,8 +14,8 @@ from app.applications.apparel.modules.catalog.limits import MAX_IMAGES_PER_SKU
 from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
-from app.modules.imports.image_zip import MAX_IMAGES_PER_SKU as ZIP_LIMIT
-from app.modules.imports.validation import MAX_IMAGES_PER_SKU as SHEET_LIMIT
+from app.platform.imports.image_zip import MAX_IMAGES_PER_SKU as ZIP_LIMIT
+from app.platform.imports.validation import MAX_IMAGES_PER_SKU as SHEET_LIMIT
 
 pytestmark = pytest.mark.asyncio
 

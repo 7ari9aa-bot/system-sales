@@ -142,14 +142,14 @@ def test_sweep_is_not_vacuous() -> None:
     for owned in (
         "app.applications.apparel.modules.ai.router",
         "app.applications.apparel.modules.analytics.router",
-        "app.modules.automation.router",
+        "app.platform.automation.router",
         "app.applications.apparel.modules.conversations.router",
         "app.applications.apparel.modules.customers.router",
         "app.applications.apparel.modules.marketing.router",
-        "app.modules.operations.router",
+        "app.platform.operations.router",
         "app.applications.apparel.modules.orders.router",
-        "app.modules.platform.router",
-        "app.modules.privacy.router",
+        "app.platform.platform.router",
+        "app.platform.privacy.router",
     ):
         assert owned in modules, f"sweep never reached {owned}"
 

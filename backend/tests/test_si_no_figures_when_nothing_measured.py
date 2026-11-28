@@ -19,7 +19,7 @@ from app.applications.apparel.modules.ai.gateway import AIGateway
 from app.applications.apparel.modules.ai.models import AgentTool
 from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from app.applications.apparel.modules.ai.tools import TOOLS
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests.test_si_agent import _seed
 
 

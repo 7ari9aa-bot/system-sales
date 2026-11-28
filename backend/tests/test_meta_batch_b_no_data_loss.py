@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.security import create_oauth_state_token
 from app.applications.apparel.modules.customers import meta_oauth
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 from app.workers import meta_token_refresh as refresh
 from tests.test_meta_oauth import (
     ALL_FACEBOOK_PERMISSIONS,
@@ -239,7 +239,7 @@ async def _refreshable_after_link(
             )
         )
     ).scalar_one()
-    from app.modules.platform.services.secrets import IntegrationCredentialsService
+    from app.platform.platform.services.secrets import IntegrationCredentialsService
 
     creds = await IntegrationCredentialsService.decrypt(db, row)
     return bool(creds["_meta"]["refreshable"])
@@ -286,8 +286,8 @@ def _due_credentials() -> dict:
 
 async def _run_refresh(monkeypatch, response: httpx.Response) -> Integration:
     from app.core.config import get_settings
-    from app.modules.platform.services.audit import AuditService
-    from app.modules.platform.services.secrets import IntegrationCredentialsService
+    from app.platform.platform.services.audit import AuditService
+    from app.platform.platform.services.secrets import IntegrationCredentialsService
 
     integration = Integration(provider="facebook", status="active", credentials={})
     integration.tenant_id = None

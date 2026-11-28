@@ -22,7 +22,7 @@ from app.applications.apparel.modules.ai.models import Agent, AIHandover
 from app.applications.apparel.modules.ai.runtime import AgentRunner
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 
 def test_block_mode_raises_the_budget_error() -> None:

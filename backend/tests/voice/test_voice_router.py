@@ -14,11 +14,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.applications.apparel.modules.ai.chat import service as chat_service
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.routers import sessions as api
+from app.platform.voice.routers import sessions as api
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
@@ -168,7 +168,7 @@ class TestStreamTicket:
     async def test_the_ticket_names_the_session_it_was_minted_for(
         self, manager: VoiceSessionManager, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from app.modules.voice.domain.personas import PrincipalType
+        from app.platform.voice.domain.personas import PrincipalType
 
         record = await manager.start(
             principal_type=PrincipalType.MERCHANT_USER,

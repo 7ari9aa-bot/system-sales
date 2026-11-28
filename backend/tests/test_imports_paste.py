@@ -16,9 +16,9 @@ from app.core.errors import ValidationError
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.identity.deps import get_db, get_tenant_ctx
-from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
-from app.modules.imports.paste import parse_pasted
+from app.platform.identity.deps import get_db, get_tenant_ctx
+from app.platform.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.platform.imports.paste import parse_pasted
 from tests._pos_helpers import ctx_for
 
 pytestmark = pytest.mark.asyncio

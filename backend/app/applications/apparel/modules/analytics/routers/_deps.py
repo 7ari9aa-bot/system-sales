@@ -11,11 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.analytics import service as analytics_service
 from app.applications.apparel.modules.analytics.timekit import ResolvedTimezone
-from app.modules.identity.deps import TenantContext, require_permission
-from app.modules.identity.deps import (
+from app.platform.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import (
     TenantCtxDep as TenantCtxDep,  # noqa: F401  — re-exported for metrics.py
 )
-from app.modules.platform.metrics import (
+from app.platform.platform.metrics import (
     MetricRegistry as MetricRegistry,  # noqa: F401  — re-exported for metrics.py
 )
 

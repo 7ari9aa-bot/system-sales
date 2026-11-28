@@ -70,7 +70,7 @@ async def test_get_db_opens_one_transaction_around_the_session(
     transaction-scoped. ``get_session`` did not do this, which is why keeping it
     as a "duplicate" was a landmine rather than harmless redundancy.
     """
-    from app.modules.identity import deps
+    from app.platform.identity import deps
 
     events: list[str] = []
 

@@ -20,7 +20,7 @@ from app.modules.errors import ConflictError, ValidationError
 from app.applications.apparel.modules.inventory.models import InventoryReservation
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.models import Order, OrderPayment
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 

@@ -16,7 +16,8 @@ MODULES_DIR = Path(__file__).resolve().parent.parent / "app" / "modules"
 APPAREL_MODULES_DIR = (
     Path(__file__).resolve().parent.parent / "app" / "applications" / "apparel" / "modules"
 )
-MODULES_DIRS = (MODULES_DIR, APPAREL_MODULES_DIR)
+PLATFORM_MODULES_DIR = Path(__file__).resolve().parent.parent / "app" / "platform"
+MODULES_DIRS = (MODULES_DIR, PLATFORM_MODULES_DIR, APPAREL_MODULES_DIR)
 
 
 def module_file(*parts: str) -> Path:

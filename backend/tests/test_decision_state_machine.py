@@ -32,8 +32,8 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.decisions.models import Decision
-from app.modules.decisions.service import (
+from app.platform.decisions.models import Decision
+from app.platform.decisions.service import (
     ALLOWED_TRANSITIONS,
     DECISION_STATUSES,
     DecisionService,

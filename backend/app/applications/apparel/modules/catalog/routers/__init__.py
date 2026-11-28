@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.modules.applications.dependencies import workspace_gate
-from app.modules.identity.deps import TenantContext, get_tenant_ctx
+from app.platform.applications.dependencies import workspace_gate
+from app.platform.identity.deps import TenantContext, get_tenant_ctx
 
 from .apparel import router as apparel_router
 from .identifiers import router as identifiers_router

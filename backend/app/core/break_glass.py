@@ -39,8 +39,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis
-from app.modules.notifications.service import NotificationService
-from app.modules.platform.models import AuditLog, SecurityEvent
+from app.platform.notifications.service import NotificationService
+from app.platform.platform.models import AuditLog, SecurityEvent
 
 # A capability token is short-lived: 15 minutes is enough for a human to
 # perform the emergency action, and short enough that a leaked token is
@@ -73,7 +73,7 @@ async def _emit_security_event(
     its audit boundary without a module-scope coupling to the writer.
     ``details`` carries the scoped action only — never the token itself.
     """
-    from app.modules.platform.security_events import record_security_event
+    from app.platform.platform.security_events import record_security_event
 
     await record_security_event(
         event_type,

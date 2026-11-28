@@ -17,8 +17,8 @@ from app.main import create_app
 from app.applications.apparel.modules.ai.models import Agent, AIChatMessage, AIChatThread, OwnerMemory
 from app.applications.apparel.modules.ai.owner_habits import MIN_PERIOD_QUESTIONS
 from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import User
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import User
 
 BASE = "/api/v1/ai/owner-memory/suggestions"
 LAST7 = "إيه المبيعات في آخر 7 أيام؟"
@@ -389,7 +389,7 @@ async def test_the_service_itself_refuses_a_period_that_is_not_one_of_ours(db, t
 
 async def test_a_sibling_shops_questions_never_count(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     # The same person asking in ANOTHER shop (a user can belong to several) must not count here.
     sibling = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Sibling")

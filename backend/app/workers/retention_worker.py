@@ -119,7 +119,7 @@ class RetentionWorker(StreamWorker):
         order the database handed them back: a child whose rows cascade with a
         parent's must be cleared first or its objects orphan (``_SWEEP_ORDER``).
         """
-        from app.modules.privacy.models import RetentionPolicy
+        from app.platform.privacy.models import RetentionPolicy
 
         now = datetime.now(UTC)
         deleted: dict[str, int] = {}
@@ -214,8 +214,8 @@ class OffboardingWorker:
         If the retention window has NOT expired, returns the remaining days.
         If it HAS expired, performs the final hard delete (CASCADE).
         """
-        from app.modules.identity.models import Tenant
-        from app.modules.platform.models import AuditLog
+        from app.platform.identity.models import Tenant
+        from app.platform.platform.models import AuditLog
 
         now = now or datetime.now(UTC)
         tenant = (
@@ -296,7 +296,7 @@ class OffboardingWorker:
         from sqlalchemy import select
 
         from app.core.model_registry import Base
-        from app.modules.identity.models import Role, Tenant, TenantUser, User
+        from app.platform.identity.models import Role, Tenant, TenantUser, User
 
         def json_value(value):
             if isinstance(value, (UUID, uuid.UUID)):
@@ -435,8 +435,8 @@ class OffboardingWorker:
         destructive cascade runs in its own tenant-bound transaction, and its
         audit record commits before the independent security event is emitted.
         """
-        from app.modules.identity.models import Tenant
-        from app.modules.identity.service import _record_security_event
+        from app.platform.identity.models import Tenant
+        from app.platform.identity.service import _record_security_event
 
         now = datetime.now(UTC)
         async with SessionLocal() as session:

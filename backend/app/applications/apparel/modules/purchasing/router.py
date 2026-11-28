@@ -15,8 +15,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.modules.applications.dependencies import workspace_gate
-from app.modules.identity.deps import TenantContext, get_tenant_ctx, require_permission
+from app.platform.applications.dependencies import workspace_gate
+from app.platform.identity.deps import TenantContext, get_tenant_ctx, require_permission
 from app.applications.apparel.modules.purchasing.service import (
     CostService,
     GoodsReceiptService,

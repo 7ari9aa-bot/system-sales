@@ -8,11 +8,11 @@ pages call so a page cannot point at an endpoint that does not exist.
 
 from __future__ import annotations
 
-from app.modules.identity.models import Team, TeamMember
-from app.modules.identity.routers.roles import roles_router
-from app.modules.identity.routers.teams import teams_router
-from app.modules.identity.routers.tenants import tenants_router
-from app.modules.identity.services.teams import TeamService
+from app.platform.identity.models import Team, TeamMember
+from app.platform.identity.routers.roles import roles_router
+from app.platform.identity.routers.teams import teams_router
+from app.platform.identity.routers.tenants import tenants_router
+from app.platform.identity.services.teams import TeamService
 
 
 def _operations(router) -> set[tuple[str, str]]:

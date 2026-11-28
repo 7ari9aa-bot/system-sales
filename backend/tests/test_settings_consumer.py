@@ -25,8 +25,8 @@ import app.core.model_registry  # noqa: F401 — complete table registration
 from app.core.db import bind_tenant
 from app.core.events.bus import Event
 from app.core.events.schemas import build_envelope, serialize
-from app.modules.settings import cache
-from app.modules.settings.cache import put
+from app.platform.settings import cache
+from app.platform.settings.cache import put
 from app.workers.settings_consumer import SettingsConsumer
 
 
@@ -35,7 +35,7 @@ def _uuid_hex() -> str:
 
 
 async def _create_tenant(db) -> tuple:
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"sc-{_uuid_hex()}@test.local"
     user, tenant = await AuthService.register(
@@ -114,7 +114,7 @@ class TestSettingsConsumer:
     ) -> None:
         from sqlalchemy import select
 
-        from app.modules.platform.models import OutboxEvent
+        from app.platform.platform.models import OutboxEvent
 
         cache.clear()
         user, tenant = await _create_tenant(db)
@@ -174,7 +174,7 @@ class TestSettingsConsumer:
     ) -> None:
         from sqlalchemy import select
 
-        from app.modules.platform.models import OutboxEvent
+        from app.platform.platform.models import OutboxEvent
 
         cache.clear()
         user, tenant = await _create_tenant(db)

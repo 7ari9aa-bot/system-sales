@@ -14,11 +14,11 @@ from __future__ import annotations
 import pytest
 
 import app.core.model_registry  # noqa: F401
-from app.modules.imports import normalize as n
-from app.modules.imports.apply import SHEET_ORDER
-from app.modules.imports.fields import SHEET_FIELDS, SHEET_ITEM_CODES
-from app.modules.imports.mapping import suggest_mapping
-from app.modules.imports.validation import validate_item_codes
+from app.platform.imports import normalize as n
+from app.platform.imports.apply import SHEET_ORDER
+from app.platform.imports.fields import SHEET_FIELDS, SHEET_ITEM_CODES
+from app.platform.imports.mapping import suggest_mapping
+from app.platform.imports.validation import validate_item_codes
 
 MAP = {"SKU": "sku", "Type": "code_type", "Code": "code"}
 
@@ -188,7 +188,7 @@ def test_the_header_names_a_merchant_would_use_are_matched_in_both_languages():
 
 import sqlalchemy as sa  # noqa: E402
 
-from app.modules.imports import lookup  # noqa: E402
+from app.platform.imports import lookup  # noqa: E402
 from app.workers.import_runner import run_batch  # noqa: E402
 from tests.test_imports_images import _shop_with_sku  # noqa: E402
 from tests.test_imports_run import _job, _session  # noqa: E402

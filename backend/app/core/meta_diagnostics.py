@@ -343,7 +343,7 @@ async def record_channel_issue(
     try:
         if not await _should_persist(key, channel, tenant_id):
             return
-        from app.modules.platform.security_events import record_security_event
+        from app.platform.platform.security_events import record_security_event
 
         await record_security_event(f"{EVENT_PREFIX}{key}", details=body, tenant_id=tenant_id)
     except Exception:  # noqa: BLE001 - diagnostics must never break the flow they describe

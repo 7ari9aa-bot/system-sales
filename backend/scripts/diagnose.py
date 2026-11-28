@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.modules.identity.models import Tenant
-from app.modules.platform.diagnostics import SystemDiagnosticsService
+from app.platform.identity.models import Tenant
+from app.platform.platform.diagnostics import SystemDiagnosticsService
 
 # Terminal colors
 GREEN = "\033[92m"

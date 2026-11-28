@@ -22,8 +22,8 @@ from app.applications.apparel.modules.inventory.service import (
 )
 from app.applications.apparel.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine
 from app.applications.apparel.modules.purchasing.service import PurchaseService, SupplierService
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:

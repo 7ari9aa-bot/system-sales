@@ -18,8 +18,8 @@ import pytest
 from sqlalchemy import select
 
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.identity.models import Permission, Role, role_permissions
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.models import Permission, Role, role_permissions
 
 
 async def _ctx_for(db, tenant_ctx, role_code: str) -> TenantContext:

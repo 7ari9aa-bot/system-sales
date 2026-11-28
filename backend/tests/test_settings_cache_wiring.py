@@ -12,9 +12,9 @@ from __future__ import annotations
 import pathlib
 import uuid
 
-from app.modules.settings import cache
+from app.platform.settings import cache
 
-SERVICE = pathlib.Path(__file__).resolve().parents[1] / "app/modules/settings/service.py"
+SERVICE = pathlib.Path(__file__).resolve().parents[1] / "app/platform/settings/service.py"
 
 
 def test_the_resolver_does_not_consult_the_cache() -> None:

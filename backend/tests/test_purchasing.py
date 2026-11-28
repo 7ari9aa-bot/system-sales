@@ -248,8 +248,8 @@ async def test_a_draft_moves_nothing_until_it_is_received(db, tenant_ctx) -> Non
     # PO and the row is never a draft: this test is about the draft stage, so it asks for the
     # approval gate instead of assuming the default. Without it the test read "approved" and
     # failed on the status word, not on the invariant it exists to pin.
-    from app.modules.settings.registry import Scope
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.registry import Scope
+    from app.platform.settings.service import SettingsService
 
     await SettingsService(db, tenant_ctx.tenant_id).set(
         "purchasing.approval_required", True, scope=Scope.TENANT

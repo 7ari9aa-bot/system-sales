@@ -119,13 +119,13 @@ def spy(monkeypatch):
         return {"phone_number_id": "1065", "access_token": "tok"}
 
     monkeypatch.setattr(
-        "app.modules.platform.service.IntegrationCredentialsService.decrypt", _decrypt
+        "app.platform.platform.service.IntegrationCredentialsService.decrypt", _decrypt
     )
     return s
 
 
 async def _connect(db, tenant_id) -> None:
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     db.add(Integration(tenant_id=tenant_id, provider="whatsapp", kind="channel", config={}))
     await db.flush()

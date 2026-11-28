@@ -41,8 +41,8 @@ from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import NotFoundError, ValidationError
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.identity.models import Tenant
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.models import Tenant
 from app.applications.apparel.modules.orders.deposit import (
     BASE_GRAND_TOTAL,
     BASE_ITEMS_AFTER_DISCOUNTS,

@@ -343,7 +343,7 @@ def ingested(monkeypatch) -> list[dict]:
 
 
 def _app_with_fake_session():
-    from app.modules.identity.deps import get_db
+    from app.platform.identity.deps import get_db
 
     app = create_app()
     fake = _FakeSession()

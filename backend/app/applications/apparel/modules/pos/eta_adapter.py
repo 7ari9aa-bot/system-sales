@@ -59,7 +59,7 @@ class EtaSettings:
 
 
 async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettings:
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     svc = SettingsService(session, tenant_id)
     return EtaSettings(
@@ -77,7 +77,7 @@ async def eta_settings(session: AsyncSession, tenant_id: uuid.UUID) -> EtaSettin
 
 async def eta_branch(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
     """The store's registered branch, exactly as the merchant typed it (never defaulted)."""
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     svc = SettingsService(session, tenant_id)
     return {
@@ -93,7 +93,7 @@ async def eta_branch(session: AsyncSession, tenant_id: uuid.UUID) -> dict:
 
 
 async def _seller(session: AsyncSession, tenant_id: uuid.UUID) -> PartyInfo:
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     svc = SettingsService(session, tenant_id)
     name = (await svc.value("business.legal_name")) or (await svc.value("business.trade_name"))
@@ -224,7 +224,7 @@ async def _sold_before_adoption(
 
 async def vat_rate_percent(session: AsyncSession, issued_at: datetime) -> Decimal:
     """Egypt's VAT on the issue date, from the shared tax table (never a literal here)."""
-    from app.modules.billing.services.tax import resolve_applicable_tax_rate
+    from app.platform.billing.services.tax import resolve_applicable_tax_rate
 
     fraction = await resolve_applicable_tax_rate(session, "EG", as_of_date=issued_at.date())
     if fraction is None:

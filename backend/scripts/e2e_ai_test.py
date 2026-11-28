@@ -26,7 +26,7 @@ from app.applications.apparel.modules.ai.knowledge import search_knowledge
 from app.applications.apparel.modules.ai.models import Agent
 from app.applications.apparel.modules.ai.runtime import AgentRunner
 from app.applications.apparel.modules.conversations.models import Conversation, Message
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 
 
 async def main() -> int:

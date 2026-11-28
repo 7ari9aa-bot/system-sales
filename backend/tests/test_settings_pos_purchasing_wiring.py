@@ -14,7 +14,7 @@ from sqlalchemy import update
 
 import app.applications.apparel.modules.customers.models  # noqa: F401  (pos_held_carts has an FK to customers)
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_line_discounts import _customer, _register, _sellable_variant
 

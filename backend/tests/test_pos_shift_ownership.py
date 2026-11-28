@@ -28,7 +28,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _user(db, name):
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     user = User(
         email=f"{name}-{uuid.uuid4().hex[:8]}@test.local",

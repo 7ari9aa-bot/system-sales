@@ -17,14 +17,14 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.platform.flags import FeatureFlagService
-from app.modules.platform.metrics import (
+from app.platform.platform.flags import FeatureFlagService
+from app.platform.platform.metrics import (
     METRIC_DEFINITIONS,
     TZ_MERCHANT,
     MetricRegistry,
 )
-from app.modules.platform.models import FeatureFlag, MetricDefinition
-from app.modules.platform.router import list_tenant_metric_definitions
+from app.platform.platform.models import FeatureFlag, MetricDefinition
+from app.platform.platform.router import list_tenant_metric_definitions
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 FEATURE = "voice.enabled"

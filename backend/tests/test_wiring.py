@@ -35,7 +35,7 @@ from app.applications.apparel.modules.customers.service import CustomerService
 from app.applications.apparel.modules.inventory.models import InventoryBalance, InventoryReservation, Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import EventLog, Integration, ProcessedEvent, WebhookEvent
+from app.platform.platform.models import EventLog, Integration, ProcessedEvent, WebhookEvent
 from app.workers.run import POOLS
 
 # ---------------------------------------------------------------- helpers --

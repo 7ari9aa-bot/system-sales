@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Response
 from app.core.field_auth import PII_FIELDS, redact_fields
 from app.core.idempotency import IfMatch, apply_etag  # §17
 from app.core.pagination import decode_cursor, page_slice
-from app.modules.identity.deps import TenantContext, TenantCtxDep, get_db, require_permission
+from app.platform.identity.deps import TenantContext, TenantCtxDep, get_db, require_permission
 from app.applications.apparel.modules.orders.models import OrderPayment, OrderStatusHistory, Shipment
 from app.applications.apparel.modules.orders.returns import ReturnsService
 from app.applications.apparel.modules.orders.service import OrderService

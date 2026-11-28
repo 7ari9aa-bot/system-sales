@@ -36,9 +36,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.billing.models import UsageRecord
-from app.modules.billing.router import billing_router, webhooks_router
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.billing.models import UsageRecord
+from app.platform.billing.router import billing_router, webhooks_router
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 
 def _permission_codes(routes, path: str, method: str) -> set[str]:

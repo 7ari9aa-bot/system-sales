@@ -13,8 +13,8 @@ from sqlalchemy.exc import IntegrityError
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.db import bind_tenant
-from app.modules.identity.models import Tenant
-from app.modules.imports.models import ImportRow, ImportSession
+from app.platform.identity.models import Tenant
+from app.platform.imports.models import ImportRow, ImportSession
 
 
 async def _other_tenant(db) -> uuid.UUID:

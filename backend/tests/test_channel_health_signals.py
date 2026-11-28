@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.modules.platform.routers.health import (
+from app.platform.platform.routers.health import (
     WEBHOOK_FAILURES_DOWN,
     WEBHOOK_STALE_AFTER,
     integration_health,
@@ -164,7 +164,7 @@ async def test_bookkeeping_failure_never_breaks_the_quarantine(monkeypatch):
 # wrong for one linked weeks ago whose webhook subscription silently never worked (app still in
 # Development mode, a missing field, a wrong callback). That channel looks fine and is dead.
 
-from app.modules.platform.routers.health import (  # noqa: E402
+from app.platform.platform.routers.health import (  # noqa: E402
     NO_WEBHOOK_AFTER_LINK,
     integration_health_since_link,
 )
@@ -200,8 +200,8 @@ def test_failures_still_win_over_the_link_age():
 async def _rollup(db, tenant_ctx, rows: list[dict]) -> dict:
     import uuid
 
-    from app.modules.platform.models import Integration
-    from app.modules.platform.routers.health import _integrations_subsystem
+    from app.platform.platform.models import Integration
+    from app.platform.platform.routers.health import _integrations_subsystem
 
     old = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     for row in rows:

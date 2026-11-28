@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.analytics.timekit import resolve_timezone
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from app.applications.apparel.modules.pos.models import PosDailySales, PosSession
 from app.applications.apparel.modules.pos.service import PosService
 

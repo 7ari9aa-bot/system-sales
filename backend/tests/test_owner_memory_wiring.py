@@ -15,8 +15,8 @@ from app.applications.apparel.modules.ai.gateway import AIGateway
 from app.applications.apparel.modules.ai.models import Agent
 from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
 from app.applications.apparel.modules.ai.providers import ChatCompletionResult
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -97,7 +97,7 @@ async def test_another_owners_notes_never_reach_this_asker(db, tenant_ctx, monke
     seen = _record(monkeypatch)
     agent = await _agent(db, tenant_ctx.tenant_id)
     other = uuid.uuid4()
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     db.add(User(id=other, email=f"o-{other.hex[:8]}@t.local", password_hash="x", full_name="O"))
     await db.flush()

@@ -25,7 +25,7 @@ NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 async def _user(db):
     """A real user row: a shift's cashier is a foreign key, so a random uuid is refused."""
     from app.core.security import hash_password
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     u = User(
         email=f"c-{uuid.uuid4().hex[:8]}@test.local",

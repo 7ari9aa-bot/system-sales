@@ -6,7 +6,7 @@ import io
 
 from openpyxl import load_workbook
 
-from app.modules.imports.fields import (
+from app.platform.imports.fields import (
     SHEET_CUSTOMERS,
     SHEET_FIELDS,
     SHEET_IMAGES,
@@ -15,9 +15,9 @@ from app.modules.imports.fields import (
     SHEET_STOCK,
     SHEET_VARIANTS,
 )
-from app.modules.imports.mapping import ignored_columns, suggest_mapping
-from app.modules.imports.reader import read_workbook
-from app.modules.imports.template import TEMPLATE_SHEETS, build_template
+from app.platform.imports.mapping import ignored_columns, suggest_mapping
+from app.platform.imports.reader import read_workbook
+from app.platform.imports.template import TEMPLATE_SHEETS, build_template
 from tests.test_imports_http import BOTH, _upload, _xlsx, api  # noqa: F401, F811  (api: fixture)
 
 

@@ -54,7 +54,7 @@ from app.applications.apparel.modules.orders.money import (
     to_money,
 )
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 SERVICE_TREE = ast.parse(pathlib.Path(orders_service.__file__).read_text(encoding="utf-8"))
 

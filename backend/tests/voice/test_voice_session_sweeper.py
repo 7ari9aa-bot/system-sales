@@ -27,8 +27,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.modules.voice.application import session_sweeper
-from app.modules.voice.application.session_sweeper import (
+from app.platform.voice.application import session_sweeper
+from app.platform.voice.application.session_sweeper import (
     CONNECT_TIMEOUT,
     CONNECTION_LOST,
     DEFAULT_CONFIGURING_GRACE,
@@ -40,7 +40,7 @@ from app.modules.voice.application.session_sweeper import (
     ending_for,
     sweep_tenant_sessions,
 )
-from app.modules.voice.domain.states import VoiceSessionState
+from app.platform.voice.domain.states import VoiceSessionState
 
 TENANT = uuid.uuid4()
 NOW = dt.datetime(2026, 11, 28, 12, 0, tzinfo=dt.UTC)

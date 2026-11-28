@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 from app.applications.apparel.modules.pos.router import _session_out
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till

@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 
 def _uuid_hex() -> str:
@@ -23,7 +23,7 @@ def _uuid_hex() -> str:
 
 async def _create_tenant(db: AsyncSession, slug: str = "aud"):
     """Register a fresh tenant and return (user, tenant)."""
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"{slug}-{_uuid_hex()}@test.local"
     user, tenant = await AuthService.register(
@@ -43,7 +43,7 @@ async def _create_second_admin(db: AsyncSession, tenant, slug: str = "rev"):
     from sqlalchemy import select
 
     from app.core.security import hash_password
-    from app.modules.identity.models import Role, TenantUser, User
+    from app.platform.identity.models import Role, TenantUser, User
 
     user = User(
         email=f"{slug}-{_uuid_hex()}@test.local",
