@@ -59,6 +59,7 @@ def register_setup_completed_hook(hook: Callable[..., Any]) -> None:
     if hook not in _setup_hooks:
         _setup_hooks.append(hook)
 
+
 def _settings(session: AsyncSession, tenant_id: UUID) -> SettingsService:
     return SettingsService(session, tenant_id)
 
