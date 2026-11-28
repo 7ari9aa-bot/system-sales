@@ -297,3 +297,116 @@ async def test_a_failing_delegated_turn_does_not_kill_the_pump():
     assert loop.counts["failed"] == 1
     assert await asyncio.wait_for(loop.pump(), timeout=1) == "audio"
     assert sink
+
+
+# ------------------------------- the caller's own voice is the barge-in -------------------
+#
+# Measured defect: caller speech only appended to the transcript buffer and lifted the mute.
+# The answer being prepared kept being prepared, and the model's audio kept being played, until
+# a NEW delegation arrived or somebody pressed the interrupt button — i.e. the assistant talked
+# over the person who was interrupting it, and only stopped once they had finished their
+# sentence. These pin the fix: the first words of the caller stop the speaker, immediately.
+
+
+async def test_the_speaker_stops_the_moment_the_caller_starts_talking():
+    """The user-visible contract: audio in the sink, the caller speaks, audio stops.
+
+    Read as a call, frame by frame: the model is answering (its audio reaches the speaker), the
+    caller talks over it, and from that frame on nothing else is played — without a delegation,
+    without an interrupt button, and without waiting for the caller's sentence to end.
+    """
+    provider = SocketProvider([_delegation("item_1"), _delta(), _said("استنى"), _delta()])
+    delegations = SlowDelegations()
+    sink: list[bytes] = []
+    loop = LiveCallLoop(provider, delegations, audio_sink=sink.append)
+    await _started(loop)
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "delegating"
+    await asyncio.wait_for(delegations.started.wait(), timeout=1)
+    # the model's answer is now audible
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "audio"
+    assert len(sink) == 1
+
+    # ONE word from the caller is the barge-in: the speaker goes down on this frame.
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "barged_in"
+    assert loop.muted is True
+
+    # and everything the model had queued behind that word is dropped, not played late
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "muted"
+    assert len(sink) == 1, "no model audio may reach the speaker after the caller speaks"
+
+
+async def test_the_speaker_stays_down_while_the_caller_keeps_talking():
+    """A barge-in is not one frame: the caller's next words must not bring the speaker back."""
+    provider = SocketProvider([_delegation("item_1"), _delta(), _said("استنى"), _said("شوية")])
+    delegations = SlowDelegations()
+    sink: list[bytes] = []
+    loop = LiveCallLoop(provider, delegations, audio_sink=sink.append)
+    await _started(loop)
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "delegating"
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "audio"
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "barged_in"
+    # the second fragment is more of the same interruption, not a new turn
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "transcript"
+    assert loop.muted is True
+
+
+async def test_the_answer_the_caller_overtalked_is_cancelled_not_finished():
+    """The answer still being written when the caller interrupts is cancelled, not paid for."""
+    provider = SocketProvider([_delegation("item_1"), _delta(), _said("لأ خلاص")])
+    delegations = SlowDelegations()
+    loop = LiveCallLoop(provider, delegations, audio_sink=lambda _pcm: None)
+    await _started(loop)
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "delegating"
+    await asyncio.wait_for(delegations.started.wait(), timeout=1)
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "audio"
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "barged_in"
+    await asyncio.wait_for(delegations.cancelled.wait(), timeout=1)
+    await loop.drain()
+    assert loop.counts["cancelled"] == 1
+    assert loop.counts.get("answered") is None
+
+
+async def test_an_answer_being_written_is_cancelled_once_the_tail_grace_has_passed():
+    """The other half: no audio yet, but the caller has clearly moved on to a new utterance.
+
+    A provider flushes the end of an utterance after it has already delegated, so speech inside
+    the grace belongs to the question being answered. Speech after it does not: the caller is
+    saying something else, and the answer to the old question must stop being written.
+    """
+    provider = SocketProvider([_delegation("item_1"), _said("طيب وامتى")])
+    delegations = SlowDelegations()
+    loop = LiveCallLoop(provider, delegations, audio_sink=lambda _pcm: None)
+    await _started(loop)
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "delegating"
+    await asyncio.wait_for(delegations.started.wait(), timeout=1)
+    # the answer has been running long enough that this is a new utterance
+    loop._now = lambda: loop._delegated_at + 5  # noqa: SLF001 — the test's clock
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "barged_in"
+    await asyncio.wait_for(delegations.cancelled.wait(), timeout=1)
+    await loop.drain()
+    assert loop.counts["cancelled"] == 1
+
+
+async def test_a_flushed_tail_does_not_cancel_the_answer_to_the_question_just_asked():
+    """The regression the grace exists to prevent: silence with no second delegation coming."""
+    provider = SocketProvider([_delegation("item_1"), _said("كمان")])
+    delegations = SlowDelegations()
+    loop = LiveCallLoop(provider, delegations, audio_sink=lambda _pcm: None)
+    await _started(loop)
+
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "delegating"
+    await asyncio.wait_for(delegations.started.wait(), timeout=1)
+    # no clock advance: this is the tail of the same sentence
+    assert await asyncio.wait_for(loop.pump(), timeout=1) == "transcript"
+    assert not delegations.cancelled.is_set()
+
+    delegations.release.set()
+    await loop.drain()
+    assert loop.counts["answered"] == 1
+    assert loop.counts.get("cancelled") is None

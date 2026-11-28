@@ -41,6 +41,14 @@ SESSION_CLOSED = "session.closed"
 #: answer itself arrives later, as a commentary frame, and is counted then.
 DELEGATING = "delegating"
 
+#: How long after a delegation the caller's words are still read as the tail of the
+#: question that produced it. A provider flushes the last transcript fragments of an
+#: utterance AFTER it has decided to delegate, so the first frames to arrive can belong
+#: to the question already being answered. Cancelling that answer would leave the caller
+#: with silence and no second delegation coming, so the grace is the difference between
+#: "they moved on" and "that was the end of their sentence".
+QUESTION_TAIL_GRACE_SECONDS = 0.6
+
 #: How many delegation ids this loop remembers. The service keeps its own memory;
 #: this one exists so a redelivery cannot be mistaken for a newer question while
 #: the first copy is still starting up in the background.
@@ -131,6 +139,16 @@ class LiveCallLoop:
         #: frame. A redelivery is not a newer question and must not cancel the answer
         #: its own first copy is still writing.
         self._remembered: dict[str, None] = {}
+        #: True while model audio is actually reaching the speaker. This is the one
+        #: unambiguous barge-in signal: the caller talking while the model is talking.
+        self._speaking = False
+        #: When the answer in flight was delegated, on the loop's own clock. Used with
+        #: QUESTION_TAIL_GRACE_SECONDS to tell a new utterance from a flushed tail.
+        self._delegated_at = 0.0
+        #: The caller talked over the model, so the mute is theirs to lift: it stays
+        #: down while they keep talking and comes up when their question is delegated.
+        #: An explicit ``interrupt()`` does not set this — there the next word resumes.
+        self._barged_in = False
         self.counts: dict[str, int] = {}
 
     @property
@@ -177,6 +195,10 @@ class LiveCallLoop:
         if self._closed:
             return
         self._muted = True
+        self._speaking = False
+        # An explicit interrupt is the caller's own gesture, not their voice: the next
+        # word they say brings the speaker back, which is what this loop has always done.
+        self._barged_in = False
         await self._drop_in_flight()
         interrupt = getattr(self._provider, "interrupt", None)
         if interrupt is not None and self._provider_session is not None:
@@ -219,6 +241,7 @@ class LiveCallLoop:
                 # The caller interrupted: the rest of this model turn is not played.
                 return self._count("muted")
             self._audio_sink(_decode(delta))
+            self._speaking = True
             return self._count("audio")
 
         if kind == INPUT_TRANSCRIPT_DELTA:
@@ -227,8 +250,19 @@ class LiveCallLoop:
             delta = event.get("delta")
             if isinstance(delta, str) and delta:
                 self._transcripts.append(delta)
-                # The caller talking again is a new turn: the speaker comes back.
-                self._muted = False
+                if self._is_barge_in():
+                    # The caller is talking NOW. This is the barge-in itself, not a note
+                    # to act on later: waiting for a delegation or an explicit interrupt
+                    # is how the model ends up talking over the person who interrupted
+                    # it. Silence our side and stop the answer being written.
+                    self._muted = True
+                    self._speaking = False
+                    self._barged_in = True
+                    await self._drop_in_flight()
+                    return self._count("barged_in")
+                if not self._barged_in:
+                    # The caller talking again is a new turn: the speaker comes back.
+                    self._muted = False
                 return self._count("transcript")
             return "ignored"
 
@@ -243,8 +277,7 @@ class LiveCallLoop:
             return self._count("closed")
 
         if kind == DELEGATION_CREATED:
-            # An answer is about to be spoken, so the mute must not swallow it.
-            self._muted = False
+            # ``_delegate`` lifts the mute: it is the answer to the caller's last words.
             return self._count(await self._delegate(self._provider_session, event))
 
         return "ignored"
@@ -259,6 +292,7 @@ class LiveCallLoop:
         if self._closed:
             return
         self._closed = True
+        self._speaking = False
         self._cancel_turn()
         if self._provider_session is not None:
             await self._provider.close_session(self._provider_session)
@@ -300,6 +334,13 @@ class LiveCallLoop:
         # moment the answer being written is stale, whether or not it is still running.
         await self._drop_in_flight()
 
+        # This delegation is the answer to whatever the caller last said, so their mute
+        # is lifted here and the tail grace starts now.
+        self._muted = False
+        self._barged_in = False
+        self._speaking = False
+        self._delegated_at = self._now()
+
         task = asyncio.create_task(
             self._answer(session_id, event, self._current_transcript()),
             name=f"voice-delegation:{request.delegation_id}",
@@ -339,6 +380,30 @@ class LiveCallLoop:
             if asyncio.iscoroutine(result):
                 await result
         self._cancel_turn()
+
+    def _now(self) -> float:
+        """The loop's own clock, behind a method so a test can hold it still."""
+        return asyncio.get_running_loop().time()
+
+    def _is_barge_in(self) -> bool:
+        """Is the caller's speech talking over an answer rather than finishing a question?
+
+        Two cases, and they are not the same:
+
+        * **The model is speaking.** Unambiguous: stop the speaker at once. This is the
+          barge-in the caller experiences, and it must not wait for their sentence to end.
+        * **An answer is being written, not yet spoken.** Also a barge-in, but only once
+          the tail grace has passed. A provider flushes the end of an utterance after it
+          has already delegated, and cancelling on that fragment would throw away the
+          answer to the question the caller actually asked — with no second delegation
+          coming to replace it.
+        """
+        if self._speaking:
+            return True
+        task = self._turn_task
+        if task is None or task.done():
+            return False
+        return (self._now() - self._delegated_at) > QUESTION_TAIL_GRACE_SECONDS
 
     def _cancel_turn(self) -> None:
         task = self._turn_task
