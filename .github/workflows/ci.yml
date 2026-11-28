@@ -65,19 +65,18 @@ jobs:
   # each running its own share of the test files against its own disposable Postgres + Redis,
   # and one small job that combines their coverage and keeps the 80% gate.
   #
-  # Six, not four: run 45733494289 finished shard 4 in 23 minutes while shards 1-3 were still
-  # running at 48 — an even split by test COUNT is not an even split by time, because a
-  # DB-touching test costs far more than a pure one. Six cuts every shard's share by a third
-  # while the fixed cost per shard (install, migrations, provision) stays ~2 minutes.
-  backend:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 75
+  # Ten, not six: run 46090487395 kept all six shards in pytest for more than 13 minutes at once
+  # (measured from each job's started_at, not guessed), so the split is still leaving ~15 minutes of
+  # tests per shard on the table. Six was chosen when four put 23 minutes on one shard (run
+  # 45733494289); the same arithmetic at today's suite size lands on ten, which cuts every shard's
+  # share to roughly eight minutes while the fixed cost per shard (install, migrations, provision)
+  # stays ~2 minutes.
     strategy:
+      # A cancelled run must not leave half a matrix behind, and one failing shard should not
+      # hide the others' results: every shard reports its own verdict.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     defaults:
       run:
         working-directory: backend
@@ -172,7 +171,7 @@ jobs:
       # pass over the suite (~40s) and yields a balanced, deterministic split.
       - name: Choose this shard's test files
         run: |
-          python - "${{ matrix.shard }}" 6 > /tmp/shard_files.txt <<'PY'
+          python - "${{ matrix.shard }}" 10 > /tmp/shard_files.txt <<'PY'
           import pathlib, re, subprocess, sys
 
           shard, total = int(sys.argv[1]), int(sys.argv[2])
@@ -211,7 +210,7 @@ jobs:
       # (set in pyproject.toml addopts so it applies everywhere).
       # Coverage is measured here but gated in the `coverage` job: a shard only
       # sees a quarter of the suite, so its own percentage means nothing.
-      - name: pytest (shard ${{ matrix.shard }}/6)
+      - name: pytest (shard ${{ matrix.shard }}/10)
         run: xargs -a /tmp/shard_files.txt pytest -q -rs --durations=30 --cov=app --cov-report=
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
