@@ -98,9 +98,7 @@ async def install_entitled_many(
     """
     installed: dict[str, list[str]] = {}
     for workspace_id in workspace_ids:
-        keys = await install_entitled(
-            session, tenant_id=tenant_id, workspace_id=workspace_id
-        )
+        keys = await install_entitled(session, tenant_id=tenant_id, workspace_id=workspace_id)
         if keys:
             installed[str(workspace_id)] = keys
     return installed
