@@ -83,6 +83,16 @@ describe('public SEO routes (country-aware marketing)', () => {
     expect(localizePath('/pricing', 'en', 'sa')).toBe('/sa/en/pricing');
     expect(localizePath('/blog/x', 'ar', 'sa')).toBe('/sa/ar/blog/x');
     expect(localizePath('/login', 'en')).toBe('/login');
+    // The prerendered HTML carries the default country's links; a visitor on a Saudi page must not
+    // be handed Egyptian ones (this is what e2e/seo-localized.spec.js asserts in the browser).
+    expect(localizePath('/eg/en/pricing', 'en', 'sa')).toBe('/sa/en/pricing');
+    expect(localizePath('/eg/ar/terms', 'ar', 'sa')).toBe('/sa/ar/terms');
+    expect(localizePath('/eg', 'en', 'sa')).toBe('/sa');
+    expect(localizePath('/sa/en/pricing', 'en', 'sa')).toBe('/sa/en/pricing');
+    expect(localizePath('/eg/en/pricing?x=1#a', 'en', 'sa')).toBe('/sa/en/pricing?x=1#a');
+    // Without a known country nothing is retargeted, so a caller that cannot know the market
+    // cannot silently move a Saudi visitor to Egypt.
+    expect(localizePath('/eg/en/pricing', 'en')).toBe('/eg/en/pricing');
     expect(localizePath('/dashboard', 'en', 'sa')).toBe('/dashboard');
     // An old English address keeps its meaning; a prefixed one is left alone.
     expect(localizePath('/en/pricing', 'ar')).toBe('/eg/en/pricing');

@@ -3,7 +3,7 @@ import { Globe2, ArrowRight, Check } from 'lucide-react';
 import { MARKETS, LIVE_COUNTRIES, WAITLIST_COUNTRIES, DEFAULT_COUNTRY_SLUG, isCountryLive } from '@/lib/markets';
 import { detectCountrySlug, rememberCountry } from '@/lib/country-detection';
 import { useCountry } from '@/lib/CountryContext';
-import { buildLocalizedRoute } from '@/lib/public-seo-routes.mjs';
+import { buildLocalizedRoute, resolveLocalizedPath } from '@/lib/public-seo-routes.mjs';
 
 /**
  * Full page market and language selector shown at root `/`.
@@ -256,12 +256,13 @@ export function RootRedirect() {
 /**
  * Keeps a visitor on their own market's pages, whatever address they landed on.
  *
- * `/` already redirects by routing (307). This covers the rest: someone
- * following a shared link to /eg/ar/pricing while sitting in Riyadh should see
- * Saudi pricing, not Egyptian. It only acts when the detected market is LIVE and
- * different — Egypt is the only live market today, so it is a no-op until
- * another one launches — and it fires at most once per session so a wrong geo
- * answer cannot start a redirect loop.
+ * `/` already redirects by routing (307). This covers only the addresses that
+ * name no market at all: it moves those to the detected one when that market is
+ * LIVE. An address that names its country is left alone — /sa/en/pricing is
+ * Saudi Arabia's page whatever geo says, and moving it to /eg/en/pricing showed
+ * Egyptian prices under a Saudi address (e2e/seo-localized.spec.js asserts
+ * this). It fires at most once per session so a wrong geo answer cannot start a
+ * redirect loop.
  */
 export function MarketAutoSwitch() {
   const { country, locale, basePath } = useCountry();
@@ -279,6 +280,8 @@ export function MarketAutoSwitch() {
     detectCountrySlug()
       .then((slug) => {
         if (!alive || !slug || slug === country || !isCountryLive(slug)) return;
+        // The address wins: a page that names its country is that country's page.
+        if (resolveLocalizedPath(window.location.pathname).country) return;
         try {
           window.sessionStorage.setItem('fihrist:market-switched', '1');
         } catch {

@@ -18,10 +18,18 @@ const ALREADY_PREFIXED = new RegExp(`^/(${COUNTRY_SLUGS.join('|')})(/|$)`)
  * The address of a public page in `locale` for `country`. Links that already carry a country
  * prefix, and every non-marketing path, come back unchanged.
  */
-export function localizePath(path, locale, country = DEFAULT_COUNTRY) {
+export function localizePath(path, locale, country) {
   if (typeof path !== 'string' || !path.startsWith('/')) return path
   const [pathname, rest = ''] = path.split(/([?#].*)/)
-  if (ALREADY_PREFIXED.test(pathname)) return path
+  const prefixed = pathname.match(ALREADY_PREFIXED)
+  if (prefixed) {
+    // A page can arrive carrying another market's prefix: the prerendered HTML is built with the
+    // default country, so a visitor who lands on /sa/en/pricing finds /eg/... links inside it and
+    // following one moved them to Egypt's prices and VAT. When the caller knows the visitor's
+    // country, move the link to it. Without that knowledge (no country argument) leave it as is.
+    if (!country || prefixed[1] === country) return path
+    return `/${country}${pathname.slice(prefixed[1].length + 1)}${rest}`
+  }
   // An old English address keeps its meaning: /en/pricing is the English pricing page.
   let base = pathname
   let lang = locale
@@ -31,7 +39,7 @@ export function localizePath(path, locale, country = DEFAULT_COUNTRY) {
   }
   const first = base.split('/')[1] ?? ''
   if (!LOCALIZED_FIRST_SEGMENTS.has(first)) return path
-  return `${buildLocalizedRoute(country, lang, base)}${rest}`
+  return `${buildLocalizedRoute(country || DEFAULT_COUNTRY, lang, base)}${rest}`
 }
 
 /** Rewrite internal <a href> values inside a DOM subtree so pages link to their own country and language. */
