@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Iterator
+from typing import TypeVar
 
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.imports.validation import Existing
+
+_T = TypeVar("_T")
 
 CHUNK = 500  # the same ceiling as an import batch
 OPENING_STOCK_REASON = "opening_stock"
@@ -69,8 +72,10 @@ async def load_customer_contacts(
     return taken_phones, taken_emails
 
 
-def _chunks[T](values: Iterable[T], size: int = CHUNK) -> Iterator[list[T]]:
-    batch: list[T] = []
+# PEP 695 syntax is the target, but the release must also import on the 3.11
+# interpreter some runners still use; a TypeVar costs nothing and keeps both.
+def _chunks(values: Iterable[_T], size: int = CHUNK) -> Iterator[list[_T]]:  # noqa: UP047
+    batch: list[_T] = []
     for value in values:
         batch.append(value)
         if len(batch) == size:
