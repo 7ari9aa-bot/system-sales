@@ -64,50 +64,97 @@ class _Result:
     def all(self):
         return self._rows
 
+    def one(self):
+        assert len(self._rows) == 1, f"expected one row, got {len(self._rows)}"
+        return self._rows[0]
+
+
+#: The fixture shop's drawer as the DATABASE would hand it back: one closed shift that opened with
+#: 100.00, took 50.00 in cash sales, dropped 30.00, so 120.00 was expected and 115.00 counted.
+SHIFT_ROW = SimpleNamespace(
+    session_id=SESSION,
+    register_id=REGISTER,
+    register_name="Front till",
+    cashier_user_id=CASHIER,
+    opening_float=OPENING_FLOAT,
+    counted_cash=COUNTED,
+    expected_cash=EXPECTED,
+    opened_at=DAY,
+    closed_at=DAY + timedelta(hours=8),
+)
+
+#: What the totals statement answers for the same shop.
+SHIFT_TOTALS_ROW = SimpleNamespace(
+    shifts_closed=1,
+    shifts_counted=1,
+    total_expected=EXPECTED,
+    total_counted=COUNTED,
+    shortage_total=Decimal("5.00"),
+    overage_total=Decimal("0.00"),
+    shifts_with_a_difference=1,
+)
+
 
 class FakeSession:
     """Answers each read model statement with the rows the fixture shop would produce.
 
     The statements are matched on a fragment of their own SQL, so a read that starts selecting
-    something else fails loudly here instead of silently returning nothing.
+    something else fails loudly here instead of silently returning nothing. Every answer is the
+    shape the NEW statements return: the database groups and sums, so the rows arriving here are
+    already per-shift, per-reason, per-method — never one row per ledger entry.
     """
 
-    def __init__(self):
+    def __init__(self, page=None, totals=None, shifts=None):
         self.calls: list[str] = []
+        #: What the bounded page returns, when a test wants fewer rows than the window holds.
+        self.page = page
+        self.totals = totals
+        #: Overrides for the closed-shift count (``None`` keeps the fixture shop's one).
+        self.shifts = shifts
 
     async def execute(self, statement, params=None):
         sql = " ".join(str(statement).split())
         self.calls.append(sql)
-        if "FROM pos_sessions s" in sql:
+        if "WITH closed AS" in sql:
+            if "AS shifts_with_a_difference" in sql:
+                return _Result([self.totals or SHIFT_TOTALS_ROW])
+            if "counted_cash <> expected_cash" in sql:
+                return _Result(self.page if self.page is not None else [SHIFT_ROW])
+            return _Result(self.page if self.page is not None else [SHIFT_ROW])
+        if "AS shifts_closed FROM pos_sessions s" in sql:
+            return _Result([SimpleNamespace(shifts_closed=self.shifts or 1)])
+        if "GROUP BY m.direction, m.reason" in sql:
             return _Result(
                 [
                     SimpleNamespace(
-                        session_id=SESSION,
-                        register_id=REGISTER,
-                        register_name="Front till",
-                        cashier_user_id=CASHIER,
-                        opening_float=OPENING_FLOAT,
-                        counted_cash=COUNTED,
-                        opened_at=DAY,
-                        closed_at=DAY + timedelta(hours=8),
+                        direction="in", reason="cash_sale", movements=1, total=Decimal("50.00")
+                    ),
+                    SimpleNamespace(
+                        direction="out", reason="cash_drop", movements=1, total=Decimal("30.00")
+                    ),
+                ]
+            )
+        if "AS movement_count" in sql:
+            return _Result(
+                [
+                    SimpleNamespace(
+                        movement_count=2, cash_in=Decimal("50.00"), cash_out=Decimal("30.00")
                     )
                 ]
             )
-        if "FROM pos_cash_movements m" in sql and "created_at" in sql:
-            return _Result(MOVEMENTS)
-        if "FROM pos_cash_movements m" in sql:
-            return _Result(MOVEMENTS)
         if "FROM pos_session_reconciliations c" in sql:
             return _Result(
                 [
                     SimpleNamespace(
                         method="cash",
+                        reconciliations=1,
                         expected_amount=Decimal("120.00"),
                         counted_amount=Decimal("115.00"),
                         variance=Decimal("-5.00"),
                     ),
                     SimpleNamespace(
                         method="card",
+                        reconciliations=1,
                         expected_amount=Decimal("200.00"),
                         counted_amount=Decimal("200.00"),
                         variance=Decimal("0.00"),
@@ -122,6 +169,16 @@ class FakeSession:
                 ]
             )
         if "FROM pos_session_handovers h" in sql:
+            if "AS handover_count" in sql:
+                return _Result(
+                    [
+                        SimpleNamespace(
+                            handover_count=1,
+                            shortage_total=Decimal("5.00"),
+                            overage_total=Decimal("0.00"),
+                        )
+                    ]
+                )
             return _Result(
                 [
                     SimpleNamespace(
@@ -139,6 +196,17 @@ class FakeSession:
                 ]
             )
         if "FROM pos_daily_sales d" in sql:
+            if "COUNT(DISTINCT" in sql:
+                return _Result(
+                    [
+                        SimpleNamespace(
+                            days=1,
+                            sales_total=Decimal("250.00"),
+                            returns_total=Decimal("10.00"),
+                            taxes_total=Decimal("12.50"),
+                        )
+                    ]
+                )
             return _Result(
                 [
                     SimpleNamespace(
@@ -157,8 +225,8 @@ class FakeSession:
         if "FROM order_payments p" in sql:
             return _Result(
                 [
-                    SimpleNamespace(method="cash", amount=Decimal("50.00")),
-                    SimpleNamespace(method="card", amount=Decimal("200.00")),
+                    SimpleNamespace(method="card", amount=Decimal("200.00"), payment_count=1),
+                    SimpleNamespace(method="cash", amount=Decimal("50.00"), payment_count=1),
                 ]
             )
         raise AssertionError(f"the read model ran an unexpected statement: {sql}")
@@ -493,3 +561,91 @@ def test_the_tool_is_registered_low_risk_and_known_to_the_risk_engine():
     assert "si_cashier" in known_actions()
     # the tool points the model at tools that exist
     assert "si_shop view=cashier" in TOOLS["si_cashier"].description
+
+
+# ------------------------------ the reads are bounded by the database ----------------------
+#
+# A shop's drawer ledger grows with every cash sale. The read model used to pull the whole window
+# into Python and then show `rows[:limit]` of it, which made one question cost as much as the
+# shop's whole history. These pin the shape that replaced it: the LIST is bounded by SQL and the
+# TOTALS are aggregated over the whole window, so a busy shop reads the same number of rows as a
+# quiet one and a shortened list can never shorten a total.
+
+
+async def test_every_list_read_is_bounded_by_sql_not_by_python_slicing():
+    """``LIMIT :limit`` in the statement, with the caller's limit as a bound parameter."""
+    fake = FakeSession()
+    await reads.expected_vs_counted(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=7)
+    await reads.drawer_differences(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=7)
+    await reads.shift_handovers(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=7)
+    await reads.daily_by_device(fake, TENANT, start_day=DAY.date(), end_day=DAY.date(), limit=7)
+    bounded = [sql for sql in fake.calls if "LIMIT :limit" in sql]
+    assert len(bounded) == 4, fake.calls
+    # the bounded ones are exactly the reads that return a list of rows to display
+    assert all(
+        any(table in sql for table in ("closed", "pos_session_handovers", "pos_daily_sales"))
+        for sql in bounded
+    )
+
+
+async def test_a_bounded_page_never_shortens_the_window_totals():
+    """Two shifts closed, one row fits the page: the totals still describe both."""
+    totals = SimpleNamespace(
+        shifts_closed=2,
+        shifts_counted=2,
+        total_expected=Decimal("240.00"),
+        total_counted=Decimal("225.00"),
+        shortage_total=Decimal("15.00"),
+        overage_total=Decimal("0.00"),
+        shifts_with_a_difference=2,
+    )
+    fake = FakeSession(page=[SHIFT_ROW], totals=totals)
+    summary = await reads.expected_vs_counted(
+        fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=1
+    )
+    assert len(summary["shifts"]) == 1, "the page must honour the limit"
+    assert summary["shifts_closed"] == 2, "the count must cover the window, not the page"
+    assert summary["shortage_total"] == "15.00", "the total must cover the window, not the page"
+    assert summary["total_expected"] == "240.00"
+
+
+async def test_every_read_model_statement_is_scoped_to_one_tenant():
+    """RLS is the second lock; this is the first. No statement may be tenant-less."""
+    fake = FakeSession()
+    await reads.expected_vs_counted(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5)
+    await reads.drawer_differences(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5)
+    await reads.cash_in_out(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5)
+    await reads.reconciliation_by_method(
+        fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5
+    )
+    await reads.shift_handovers(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5)
+    await reads.daily_by_device(fake, TENANT, start_day=DAY.date(), end_day=DAY.date(), limit=5)
+    await reads.sales_by_method(fake, TENANT, start=DAY, end=DAY + timedelta(days=1), limit=5)
+    for sql in fake.calls:
+        assert "tenant_id = :tenant_id" in sql, sql
+
+
+async def test_the_drawer_arithmetic_in_sql_is_the_reference_python_arithmetic():
+    """The database computes ``opening + in - out``; the Python reference must agree to the cent.
+
+    Both sides are exercised here on the same fixture, and the DB-backed test in
+    ``tests/test_cashier_reads_db.py`` repeats it against a real shift.
+    """
+    reference = reads.drawer_rows(
+        [
+            SimpleNamespace(
+                session_id=SESSION,
+                register_id=REGISTER,
+                register_name="Front till",
+                cashier_user_id=CASHIER,
+                opening_float=OPENING_FLOAT,
+                counted_cash=COUNTED,
+                opened_at=DAY,
+                closed_at=DAY + timedelta(hours=8),
+            )
+        ],
+        {SESSION: MOVEMENTS},
+    )[0]
+    from_sql = reads.drawer_row(SHIFT_ROW)
+    assert from_sql == reference
+    assert from_sql["expected_cash"] == "120.00"
