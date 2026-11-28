@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.shop_type import CHOOSABLE_VERTICALS, choose_vertical
 from app.core.tenancy import register_signup_choices_hook
+from app.modules.applications.install import install_entitled
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.presets import PRESETS
@@ -189,7 +190,7 @@ async def get_activity_setup(ctx: TenantCtxDep) -> dict[str, Any]:
 
 @router.post("/activity-setup/complete")
 async def complete_activity_setup(body: CompleteSetupBody, ctx: SetupWriteCtx) -> dict[str, Any]:
-    return await complete_setup(
+    result = await complete_setup(
         ctx.session,
         ctx.tenant_id,
         vertical=body.vertical,
@@ -197,6 +198,13 @@ async def complete_activity_setup(body: CompleteSetupBody, ctx: SetupWriteCtx) -
         user_id=ctx.user.id,
         permissions=ctx.permission_codes,
     )
+    if result.get("changed") and getattr(ctx, "workspace_id", None):
+        # Finishing setup is the moment a licensed product becomes an installed
+        # one; before this the gates had nothing to enforce.
+        result["applications_installed"] = await install_entitled(
+            ctx.session, tenant_id=ctx.tenant_id, workspace_id=ctx.workspace_id
+        )
+    return result
 
 
 @router.post("/activity-setup/reopen")
