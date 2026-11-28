@@ -337,7 +337,10 @@ async def _lifecycle(tenant_id: uuid.UUID, step) -> None:  # noqa: ANN001 - a ca
 
     A socket that is already carrying audio is worth more than a tidy row, so a
     bookkeeping failure is logged and the call continues. The sweeper exists for
-    exactly the rows this can leave behind.
+    exactly the rows this can leave behind: it runs every 5 minutes from
+    ``scheduler_worker.GLOBAL_SWEEPERS`` and ends a session left in CONFIGURING
+    or ACTIVE past its grace (``voice/application/session_sweeper.py``), so this
+    failure leaves a row that is late, never one that is stuck forever.
     """
     try:
         async with _session_factory()() as session:
