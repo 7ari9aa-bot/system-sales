@@ -17,6 +17,7 @@ const CORE_KEYS = [
   ['/assistant', 'assistant'],
   ['/automation', 'automation'],
   ['/pricing', 'pricing'],
+  ['/apps', 'apps'],
   ['/security', 'security'],
   ['/privacy', 'privacy'],
   ['/terms', 'terms'],
@@ -24,6 +25,17 @@ const CORE_KEYS = [
   ['/contact-sales', 'contact-sales'],
   ['/support', 'support'],
   ['/download', 'download'],
+];
+
+// Applications: one page per registered application, plus the index.
+export const APP_SLUGS = [
+  'retail-core',
+  'retail-purchasing',
+  'retail-warehouse',
+  'inventory-advanced',
+  'customer-engagement',
+  'ai-support',
+  'business-intelligence',
 ];
 
 // Keyword landing pages
@@ -74,6 +86,7 @@ export const HREFLANG_CODES = {
 export const PUBLIC_SEO_ROUTES = [
   ...CORE_KEYS.map(([path, key]) => ({ path, key })),
   ...SOLUTION_SLUGS.map((slug) => ({ path: `/solutions/${slug}`, key: `solution:${slug}` })),
+  ...APP_SLUGS.map((slug) => ({ path: `/apps/${slug}`, key: `app:${slug}` })),
   { path: '/solutions', key: 'solutions' },
   { path: '/blog', key: 'blog' },
   ...BLOG_SLUGS.map((slug) => ({ path: `/blog/${slug}`, key: `post:${slug}` })),

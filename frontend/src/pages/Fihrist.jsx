@@ -21,6 +21,8 @@ import HeroRelationCanvas from '@/components/HeroRelationCanvas'
 import Spotlight from '@/components/Spotlight'
 import { getTokens } from '@/lib/api'
 import SolutionPage, { SolutionsIndex } from '@/pages/fhrist/Solutions'
+import AppPage, { AppsIndex } from '@/pages/fhrist/Apps'
+import { APPS } from '@/lib/apps-content'
 import { SOLUTIONS, SOLUTIONS_INDEX } from '@/lib/solutions-content'
 import BlogPost, { BlogIndex } from '@/pages/fhrist/Blog'
 import { BLOG_POSTS, BLOG_INDEX } from '@/lib/blog-content'
@@ -37,6 +39,7 @@ const navItems = [
   { href: '/conversations', label: c('المحادثات', 'Conversations') },
   { href: '/assistant', label: c('AI', 'AI') },
   { href: '/download', label: c('التطبيقات', 'Apps') },
+  { href: '/apps', label: c('التطبيقات', 'Applications') },
   { href: '/solutions', label: c('الحلول', 'Solutions') },
   { href: '/blog', label: c('المدونة', 'Blog') },
   { href: '/pricing', label: c('الأسعار', 'Pricing') },
@@ -59,7 +62,7 @@ export const pageMeta = {
   terms: c('شروط استخدام منصة FIHRIST لإدارة المبيعات', 'FIHRIST Sales Platform Terms of Use'),
   'data-deletion': c('تعليمات حذف بياناتك من منصة FIHRIST', 'How to Delete Your Data from FIHRIST'),
   'contact-sales': c('تواصل مع فريق مبيعات FIHRIST للاستفسارات', 'Contact the FIHRIST Sales Team | FIHRIST'),
-  support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
+  apps: c('تطبيقات FIHRIST لمحلك: أساسي ومخزون ومشتريات', 'FIHRIST applications for your store'),  support: c('دعم FIHRIST لإدارة المبيعات ومتابعة العملاء', 'FIHRIST Support for Sales and Customer Follow-up'),
   download: c('تحميل تطبيقات FIHRIST لنقاط البيع | ديسكتوب وموبايل', 'Download FIHRIST POS Apps | Desktop & Mobile'),
   // The root no longer asks anything: it resolves the visitor's market and
   // moves them there, so the tab title must not promise a picker.
@@ -81,7 +84,7 @@ export const pageDescription = {
   terms: c('راجع شروط استخدام FIHRIST لإدارة حسابات الفريق ومحادثات العملاء والطلبات ومتابعة المبيعات.', 'Review the terms for using FIHRIST to manage team accounts, customer conversations, orders, and sales follow-up.'),
   'data-deletion': c('تعرّف على طريقة حذف بياناتك التي وصلت إلى FIHRIST عبر فيسبوك أو إنستجرام، وما الذي يحدث بعد طلب الحذف.', 'Learn how to delete the data that reached FIHRIST through Facebook or Instagram, and what happens after you request deletion.'),
   'contact-sales': c('تواصل مع فريق FIHRIST لمناقشة احتياجاتك في محادثات العملاء والطلبات والمخزون وقراءة أداء المبيعات.', 'Contact the FIHRIST team to discuss customer conversations, orders, inventory, and sales performance insights.'),
-  support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
+  apps: c('تطبيقات FIHRIST لمحلك: أساسي ومخزون ومشتريات وعملاء وردود وأرقام، وكل تطبيق بيتفتح حسب باقتك وإعدادات نشاطك.', 'FIHRIST applications for your store: core, purchasing, inventory, customers, replies and numbers, each opened by your plan and business setup.'),  support: c('اعثر على إرشادات استخدام FIHRIST لمتابعة المحادثات والمنتجات والطلبات وتحديد الخطوة التالية لفريقك.', 'Find practical guidance for using FIHRIST to follow conversations, products, and orders and choose your team’s next step.'),
   download: c('حمل تطبيقات فهرس لنقاط البيع على الكمبيوتر والموبايل. كاشير سريع، بيع دون اتصال، ودعم طابعات الإيصالات وقارئات الباركود وأدراج النقدية.', 'Download Fihrist POS apps for Desktop & Mobile. Fast cashier, offline sales, barcode scanners, cash drawers, and thermal receipt printing.'),
   selector: c('نظام تشغيل المبيعات للمتاجر: محادثات، منتجات، طلبات، مخزون، ومبيعات في مكان واحد — بأسعار وميزات سوقك تلقائيًا.', 'The sales operating system for stores: conversations, products, orders, inventory and sales in one place — with your market pricing and features.'),
   'waitlist:ae': c('منصة FIHRIST قادمة قريباً إلى دولة الإمارات العربية المتحدة. سجّل في قائمة الانتظار للحصول على وصول مبكر.', 'FIHRIST platform is coming soon to the UAE. Join the waitlist for exclusive early access.'),
@@ -93,6 +96,10 @@ const solutionMeta = (key, kind) => {
   if (key?.startsWith('post:')) return BLOG_POSTS[key.slice('post:'.length)]?.[kind]
   if (key === 'solutions') return SOLUTIONS_INDEX[kind]
   if (key?.startsWith('solution:')) return SOLUTIONS[key.slice('solution:'.length)]?.[kind]
+  if (key?.startsWith('app:')) {
+    const page = APPS[key.slice('app:'.length)]
+    return kind === 'title' ? page?.title : page?.description
+  }
   return null
 }
 export const metaFor = (key, kind) => solutionMeta(key, kind) || (kind === 'title' ? pageMeta : pageDescription)[key]
@@ -281,6 +288,8 @@ function App() {
     if (page === 'blog') return <BlogIndex locale={locale}/>
     if (page.startsWith('post:')) return <BlogPost slug={page.slice('post:'.length)} locale={locale}/>
     if (page === 'solutions') return <SolutionsIndex locale={locale}/>
+    if (page === 'apps') return <AppsIndex locale={locale}/>
+    if (page.startsWith('app:')) return <AppPage slug={page.slice('app:'.length)} locale={locale}/>
     if (page.startsWith('solution:')) return <SolutionPage slug={page.slice('solution:'.length)} locale={locale}/>
     return page === 'home' || !PageComponent ? <Home locale={locale}/> : <PageComponent locale={locale}/>
   }, [locale, page, PageComponent]); return <div className={`app ${theme === 'dark' ? 'theme-dark' : ''}`} data-theme={theme} data-lang={locale}><MarketAutoSwitch/><InteractiveBackground/><Spotlight/><Header locale={locale} setLocale={setLocale} theme={theme} toggleTheme={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}/><main className="route-shell" key={page}>{content}</main><footer className="site-footer"><div className="container footer-center"><div className="footer-brand-large"><img src="/fihrist-mark.svg" alt="" /><span>FIHRIST</span></div><p className="footer-tagline">{tx(c('نظام مبيعات يربط المحادثات بالمنتجات والطلبات والمبيعات والمخزون والمتابعة والرؤية.', 'A sales system connecting conversations with products, orders, sales, inventory, follow-up, and insight.'), locale)}</p><nav className="footer-nav-links"><a href="/product">{tx(c('المنصة','Platform'), locale)}</a><a href="/download">{tx(c('تحميل التطبيقات','Download apps'), locale)}</a><a href="/conversations">{tx(c('المحادثات','Conversations'), locale)}</a><a href="/automation">{tx(c('التذكيرات والمتابعة','Reminders & follow-up'), locale)}</a><a href="/security">{tx(c('الأمان','Security'), locale)}</a><a href="/privacy">{tx(c('الخصوصية','Privacy'), locale)}</a><a href="/terms">{tx(c('الشروط','Terms'), locale)}</a><a href="/data-deletion">{tx(c('حذف البيانات','Data deletion'), locale)}</a><a href="/blog">{tx(c('المدونة','Blog'), locale)}</a><a href="/support">{tx(c('الدعم','Support'), locale)}</a><a href="/contact-sales">{tx(c('المبيعات','Sales'), locale)}</a></nav><nav className="footer-nav-links footer-solutions" aria-label={tx(c('الحلول','Solutions'), locale)}>{Object.entries(SOLUTIONS).map(([slug, page]) => <a key={slug} href={`/solutions/${slug}`}>{tx(page.kicker, locale)}</a>)}</nav><div className="footer-bottom"><span>© 2026 FIHRIST</span><span>{tx(c('الواجهة المعروضة مثال توضيحي لمسار العمل.', 'The interface shown is an illustrative view of the workflow.'), locale)}</span></div></div></footer></div> }
