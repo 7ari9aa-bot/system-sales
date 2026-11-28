@@ -33,7 +33,7 @@ async def test_handoff_enabled_gate_returns_disabled():
             return False
 
     # The function does a function-scope import, so we patch at the source module.
-    import app.modules.settings.service as settings_mod
+    import app.platform.settings.service as settings_mod
 
     saved = settings_mod.SettingsService
     settings_mod.SettingsService = FakeSettingsService  # type: ignore[assignment]
@@ -64,7 +64,7 @@ async def test_analytics_agent_disabled_returns_unsupported():
                 return False
             return None
 
-    import app.modules.settings.service as settings_mod
+    import app.platform.settings.service as settings_mod
 
     saved = settings_mod.SettingsService
     settings_mod.SettingsService = FakeSettingsService  # type: ignore[assignment]

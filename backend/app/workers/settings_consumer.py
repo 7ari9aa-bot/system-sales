@@ -5,7 +5,7 @@ events emitted by :class:`SettingsService._record_change`.
 
 For every event:
 1. **Cache invalidation** — removes the ``(tenant_id, key)`` entry from the
-   in-process settings cache (:mod:`app.modules.settings.cache`), so the next
+   in-process settings cache (:mod:`app.platform.settings.cache`), so the next
    read picks up the new value from the database instead of a stale cached one.
 
 2. **Security audit** — when the changed key starts with ``security.``, the
@@ -30,7 +30,7 @@ from app.core.errors import ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import deserialize_event
 from app.core.events.writer import add_outbox_event
-from app.modules.settings.cache import invalidate
+from app.platform.settings.cache import invalidate
 from app.workers.base import StreamWorker
 
 logger = logging.getLogger(__name__)

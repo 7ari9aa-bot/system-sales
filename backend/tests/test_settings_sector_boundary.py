@@ -13,7 +13,7 @@ import pytest
 from app.applications.registry import register_all
 from app.core import sector_registry
 from app.core.errors import PermissionDeniedError
-from app.modules.settings.sector_boundary import (
+from app.platform.settings.sector_boundary import (
     PLATFORM_DOMAINS,
     assert_application_may_read,
     assert_platform_may_read,

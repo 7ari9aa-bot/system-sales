@@ -21,7 +21,7 @@ from app.applications.apparel.modules.conversations.gateway.meta_page_events imp
 )
 from app.applications.apparel.modules.conversations.gateway.registry import get_adapter as default_get_adapter
 from app.applications.apparel.modules.conversations.routers._deps import DbSession
-from app.modules.platform.models import Integration, WebhookEvent
+from app.platform.platform.models import Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
 

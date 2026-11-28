@@ -53,14 +53,14 @@ from app.core.routing import CommitBeforeResponseMiddleware, CommitBeforeRespons
 from app.core.season_markdown import router as season_markdown_router
 from app.core.sell_through_report import router as sell_through_router
 from app.core.shop_type import router as shop_type_router
-from app.modules.activity.router import router as activity_router
+from app.platform.activity.router import router as activity_router
 from app.applications.apparel.modules.ai.router import router as ai_router
 from app.applications.apparel.modules.analytics.router import router as analytics_module_router
-from app.modules.applications.router import router as applications_router
-from app.modules.authority.router import router as authority_router
-from app.modules.automation.router import router as automation_router
-from app.modules.billing.markets import router as public_markets_router
-from app.modules.billing.router import (
+from app.platform.applications.router import router as applications_router
+from app.platform.authority.router import router as authority_router
+from app.platform.automation.router import router as automation_router
+from app.platform.billing.markets import router as public_markets_router
+from app.platform.billing.router import (
     billing_router,
     webhooks_router,
 )
@@ -81,22 +81,22 @@ from app.applications.apparel.modules.conversations.router import (
 from app.applications.apparel.modules.customer_accounts.router import router as customer_accounts_router
 from app.applications.apparel.modules.customers.router import platform_router as platform_router
 from app.applications.apparel.modules.customers.router import router as customers_router
-from app.modules.decisions.router import router as decisions_router
-from app.modules.effects.router import router as effects_router
+from app.platform.decisions.router import router as decisions_router
+from app.platform.effects.router import router as effects_router
 from app.applications.apparel.modules.einvoice.router import router as einvoice_router
 from app.applications.apparel.modules.einvoice.router import router_merchant as einvoice_merchant_router
-from app.modules.evidence.router import router as evidence_router
+from app.platform.evidence.router import router as evidence_router
 from app.applications.apparel.modules.expenses.router import router as expenses_router
 from app.applications.apparel.modules.financial.router import router as financial_router
-from app.modules.identity.router import hierarchy_router as identity_hierarchy_router
-from app.modules.identity.router import roles_router as identity_roles_router
-from app.modules.identity.router import router as identity_router
-from app.modules.identity.router import teams_router as identity_teams_router
-from app.modules.identity.router import tenants_router as identity_tenants_router
-from app.modules.identity.router import users_router as identity_users_router
-from app.modules.identity.router import workspaces_router as identity_workspaces_router
-from app.modules.identity.routers.google import router as google_auth_router
-from app.modules.imports.router import router as imports_router
+from app.platform.identity.router import hierarchy_router as identity_hierarchy_router
+from app.platform.identity.router import roles_router as identity_roles_router
+from app.platform.identity.router import router as identity_router
+from app.platform.identity.router import teams_router as identity_teams_router
+from app.platform.identity.router import tenants_router as identity_tenants_router
+from app.platform.identity.router import users_router as identity_users_router
+from app.platform.identity.router import workspaces_router as identity_workspaces_router
+from app.platform.identity.routers.google import router as google_auth_router
+from app.platform.imports.router import router as imports_router
 from app.applications.apparel.modules.inventory.router import router as inventory_router
 from app.applications.apparel.modules.marketing.router import (
     analytics_router,
@@ -104,35 +104,35 @@ from app.applications.apparel.modules.marketing.router import (
 from app.applications.apparel.modules.marketing.router import (
     router as marketing_router,
 )
-from app.modules.notifications.router import me_router as notifications_me_router
-from app.modules.notifications.router import router as notifications_router
-from app.modules.operations.router import (
+from app.platform.notifications.router import me_router as notifications_me_router
+from app.platform.notifications.router import router as notifications_router
+from app.platform.operations.router import (
     router as operations_router,
 )
-from app.modules.operations.router import (
+from app.platform.operations.router import (
     search_router as operations_search_router,
 )
-from app.modules.operations.router import (
+from app.platform.operations.router import (
     sla_router as operations_sla_router,
 )
 from app.applications.apparel.modules.orders.router import router as orders_router
 from app.applications.apparel.modules.orders.website_orders import router as website_orders_router
-from app.modules.platform.impersonation import router as platform_impersonation_router
-from app.modules.platform.router import router as platform_module_router
-from app.modules.platform.routers.channels import router as channel_status_router
-from app.modules.platform.routers.owner import router as owner_console_router
-from app.modules.platform.routers.sites_platform import router as sites_platform_router
-from app.modules.platform.routers.telemetry import router as public_telemetry_router
+from app.platform.platform.impersonation import router as platform_impersonation_router
+from app.platform.platform.router import router as platform_module_router
+from app.platform.platform.routers.channels import router as channel_status_router
+from app.platform.platform.routers.owner import router as owner_console_router
+from app.platform.platform.routers.sites_platform import router as sites_platform_router
+from app.platform.platform.routers.telemetry import router as public_telemetry_router
 from app.applications.apparel.modules.pos.router import router as pos_router
 from app.applications.apparel.modules.pricing.router import router as pricing_router
-from app.modules.privacy.router import public_router as privacy_public_router
-from app.modules.privacy.router import router as privacy_router
+from app.platform.privacy.router import public_router as privacy_public_router
+from app.platform.privacy.router import router as privacy_router
 from app.applications.apparel.modules.purchasing.router import router as purchasing_router
-from app.modules.realtime.router import router as realtime_router
+from app.platform.realtime.router import router as realtime_router
 from app.applications.apparel.modules.segments.router import router as segments_router
-from app.modules.settings.router import router as settings_router
+from app.platform.settings.router import router as settings_router
 from app.applications.apparel.modules.taxation.router import router as taxation_router
-from app.modules.voice.routers.sessions import router as voice_sessions_router
+from app.platform.voice.routers.sessions import router as voice_sessions_router
 
 
 @asynccontextmanager

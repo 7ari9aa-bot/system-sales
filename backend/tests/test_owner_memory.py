@@ -23,7 +23,7 @@ from app.applications.apparel.modules.ai.owner_memory import (
     OwnerMemoryService,
     render_memory_block,
 )
-from app.modules.identity.models import Tenant, User
+from app.platform.identity.models import Tenant, User
 
 pytestmark = pytest.mark.usefixtures("db")
 

@@ -15,9 +15,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator
 
-from app.modules.applications.dependencies import workspace_gate
+from app.platform.applications.dependencies import workspace_gate
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     TenantContext,
     get_tenant_ctx,
     require_permission,
@@ -170,7 +170,7 @@ async def grant_profile_user(profile_id: UUID, body: GrantUserRequest, ctx: PosC
 @router.get("/profiles/{profile_id}/users")
 async def list_profile_users(profile_id: UUID, ctx: PosReadCtx):
     rows = await PosProfileService.list_users(ctx.session, ctx.tenant_id, profile_id)
-    from app.modules.identity.service import UserService
+    from app.platform.identity.service import UserService
 
     out = []
     for r in rows:

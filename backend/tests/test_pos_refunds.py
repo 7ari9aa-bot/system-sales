@@ -102,7 +102,7 @@ async def _paid_till(db, tenant_ctx, *, methods=("cash",), opening="0.00"):
     """A till that takes payments, an open day, and a sellable 100.00 variant."""
     from app.applications.apparel.modules.pos.profiles import PosProfileService
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
     from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", True)
@@ -415,7 +415,7 @@ async def test_confirming_a_refund_needs_a_reference_and_happens_once(db, tenant
 async def test_a_cash_only_shop_reports_the_card_reversal_instead_of_recording_it(db, tenant_ctx):
     """A shop that starts cash-only cannot reverse a card, so the till must not pretend it did."""
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
@@ -676,7 +676,7 @@ async def test_the_close_route_carries_the_method_counts(db, tenant_ctx):
 async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it(db, tenant_ctx):
     from app.modules.errors import ValidationError
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.settle_payment_methods", True)
@@ -753,7 +753,7 @@ async def test_handover_refuses_to_move_a_drawer_nobody_counted(db, tenant_ctx):
 async def _apparel_shop_that_skipped_setup(db, tenant_ctx):
     """An apparel shop whose owner tapped 'skip' on the setup: no preset, so no payments."""
     from app.core.activity_setup import mark_not_started, skip_setup
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     await mark_not_started(db, tenant_ctx.tenant_id)
     await SettingsService(db, tenant_ctx.tenant_id).set("business.vertical", "apparel")
@@ -769,7 +769,7 @@ async def test_an_apparel_shop_that_skipped_setup_cannot_sell_without_collecting
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     # The till above turned payments on for its own profile; turn the shop switch back off so this
     # is the skipped-setup state the report describes.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.take_payments", False)
 
@@ -782,7 +782,7 @@ async def test_an_apparel_shop_that_skipped_setup_cannot_sell_without_collecting
 
 
 async def test_record_only_selling_is_allowed_once_the_owner_says_so(db, tenant_ctx):
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     await _apparel_shop_that_skipped_setup(db, tenant_ctx)
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -796,7 +796,7 @@ async def test_record_only_selling_is_allowed_once_the_owner_says_so(db, tenant_
 async def test_a_shop_on_another_vertical_is_not_blocked(db, tenant_ctx):
     """The guard is for the apparel shop that never chose record-only, not a blanket rule."""
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     await SettingsService(db, tenant_ctx.tenant_id).set("business.vertical", "general")
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -1584,7 +1584,7 @@ async def test_cash_only_shop_is_told_this_refunds_card_part_not_the_whole_card(
     100 on card, a 30 return: the cashier has to reverse 30 on the machine, not 100.
     """
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
@@ -1735,7 +1735,7 @@ async def test_cash_only_records_the_manual_reversal_as_a_pending_row(db, tenant
     """The report's blocker 3: terminal_only was described in the answer and recorded nowhere."""
     from app.applications.apparel.modules.orders.service import OrderService
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
@@ -1990,7 +1990,7 @@ async def test_cash_only_on_two_card_payments_records_the_amount_once(db, tenant
     """Blocker 2: the method total was repeated per payment, so 30 was recorded twice as 60."""
     from app.applications.apparel.modules.orders.service import OrderService
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.refund_cash_only", True)
@@ -2062,7 +2062,7 @@ async def test_a_fully_unpaid_sale_stops_being_owed_when_the_goods_come_back(
 ) -> None:
     from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.allow_sale_on_account", True)
@@ -2097,7 +2097,7 @@ async def test_the_credit_cancels_only_the_invoice_that_came_back(db, tenant_ctx
     """Two credit invoices for one customer: returning the first must not pay off the second."""
     from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
     from app.applications.apparel.modules.pos.service import PosService
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.allow_sale_on_account", True)
@@ -2143,7 +2143,7 @@ def _app(ctx):
     from app.core.idempotency import IdempotencyMiddleware
     from app.core.middleware import RateLimitMiddleware
     from app.main import create_app
-    from app.modules.identity.deps import get_db, get_tenant_ctx
+    from app.platform.identity.deps import get_db, get_tenant_ctx
 
     app = create_app()
     app.user_middleware = [
@@ -2166,8 +2166,8 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
     from httpx import ASGITransport, AsyncClient
 
     from app.core.security import hash_password
-    from app.modules.identity.deps import AuthedUser, TenantContext
-    from app.modules.identity.models import Role, TenantUser, User
+    from app.platform.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.models import Role, TenantUser, User
     from app.applications.apparel.modules.pos.service import PosService
     from tests._pos_helpers import ctx_for
 

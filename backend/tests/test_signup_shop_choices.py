@@ -15,10 +15,10 @@ from pydantic import ValidationError as PydanticError
 from sqlalchemy import select
 
 from app.core.activity_setup import DONE, NOT_STARTED, read_state
-from app.modules.identity.models import Tenant
-from app.modules.identity.schemas import RegisterRequest
-from app.modules.identity.service import AuthService
-from app.modules.settings.service import SettingsService
+from app.platform.identity.models import Tenant
+from app.platform.identity.schemas import RegisterRequest
+from app.platform.identity.service import AuthService
+from app.platform.settings.service import SettingsService
 
 
 @pytest.fixture(autouse=True)
@@ -251,7 +251,7 @@ def test_google_signup_never_offers_the_setup() -> None:
     # Only the form route passes offer_activity_setup=True; the Google caller must not.
     import pathlib
 
-    src = pathlib.Path("app/modules/identity/services/auth.py").read_text(encoding="utf-8")
+    src = pathlib.Path("app/platform/identity/services/auth.py").read_text(encoding="utf-8")
     google_call = src[src.index("user, tenant = await AuthService.register(") :][:600]
     assert "offer_activity_setup" not in google_call
 
@@ -274,7 +274,7 @@ def test_identity_does_not_import_the_settings_module() -> None:
     import pathlib
 
     tree = ast.parse(
-        pathlib.Path("app/modules/identity/services/auth.py").read_text(encoding="utf-8")
+        pathlib.Path("app/platform/identity/services/auth.py").read_text(encoding="utf-8")
     )
     imported = set()
     for node in ast.walk(tree):
@@ -283,7 +283,7 @@ def test_identity_does_not_import_the_settings_module() -> None:
         elif isinstance(node, ast.Import):
             imported.update(a.name for a in node.names)
     bad = {
-        m for m in imported if m.startswith("app.modules.settings") or m.endswith("activity_setup")
+        m for m in imported if m.startswith("app.platform.settings") or m.endswith("activity_setup")
     }
     assert not bad, bad
 

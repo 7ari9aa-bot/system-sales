@@ -1,8 +1,8 @@
-"""Import-safety guard for ``app.modules.notifications.digest`` (Wave 0, W0.3).
+"""Import-safety guard for ``app.platform.notifications.digest`` (Wave 0, W0.3).
 
 ``digest.py`` re-declared ``__tablename__ = "notification_preferences"`` while
 the canonical ``NotificationPreference`` already lives in
-``app.modules.platform.models``. The module is dead code today (nothing imports
+``app.platform.platform.models``. The module is dead code today (nothing imports
 it), so the SQLAlchemy table-redefinition error was latent: the first import of
 ``digest`` alongside the canonical model would raise
 ``sqlalchemy.exc.InvalidRequestError`` ("Table 'notification_preferences' is
@@ -11,7 +11,7 @@ already defined for this MetaData instance") and could break app startup.
 The fix deleted the duplicate class and binds the canonical model instead.
 This test pins both halves of that contract:
 
-1. importing ``app.modules.notifications.digest`` next to the canonical model
+1. importing ``app.platform.notifications.digest`` next to the canonical model
    does not raise, and
 2. ``digest.NotificationPreference`` IS the canonical class (identity), while
    ``NotificationDigest`` / ``NotificationAggregator`` stay in place for the
@@ -25,8 +25,8 @@ from __future__ import annotations
 # The table collision is symmetric: whichever module declares
 # "notification_preferences" second raises, so import order here does not
 # matter — conftest already pulls the platform model graph in regardless.
-from app.modules.notifications import digest
-from app.modules.platform import models as platform_models
+from app.platform.notifications import digest
+from app.platform.platform import models as platform_models
 
 
 def test_digest_module_exposes_the_canonical_notification_preference() -> None:

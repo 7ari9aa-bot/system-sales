@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.modules.applications.access import describe
-from app.modules.applications.manifests import REGISTRY
+from app.platform.applications.access import describe
+from app.platform.applications.manifests import REGISTRY
 
 
 def test_every_application_gets_exactly_one_row() -> None:

@@ -22,8 +22,9 @@ from app.applications.apparel.settings_ownership import (
 from app.core.ownership import layer_of
 
 BACKEND = Path(__file__).resolve().parents[1]
-MODULES_ROOT = BACKEND / "app" / "modules"
-SETTINGS_REGISTRY = MODULES_ROOT / "settings" / "registry.py"
+#: The application's own packages, after the restructuring.
+MODULES_ROOT = BACKEND / "app" / "applications" / "apparel" / "modules"
+SETTINGS_REGISTRY = BACKEND / "app" / "platform" / "settings" / "registry.py"
 APP_JSX = BACKEND.parent / "frontend" / "src" / "App.jsx"
 
 
@@ -60,10 +61,10 @@ def test_every_module_names_backend_packages_that_exist() -> None:
         assert module.backend_modules, f"{module.key} names no backend package"
         for package in module.backend_modules:
             if not (MODULES_ROOT / package / "__init__.py").exists():
-                missing.append(f"{module.key} -> app.modules.{package}")
+                missing.append(f"{module.key} -> app/applications/apparel/modules/{package}")
             elif layer_of(package) != "apparel":
                 missing.append(
-                    f"{module.key} -> app.modules.{package} is classified {layer_of(package)}"
+                    f"{module.key} -> {package} is classified {layer_of(package)}"
                 )
     assert missing == [], f"modules claim packages that do not exist as apparel code: {missing}"
 

@@ -11,8 +11,8 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings import scope_graph
-from app.modules.settings.registry import Scope
+from app.platform.settings import scope_graph
+from app.platform.settings.registry import Scope
 
 SOURCE = pathlib.Path(inspect.getfile(scope_graph)).read_text(encoding="utf-8")
 

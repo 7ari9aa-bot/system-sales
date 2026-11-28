@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

@@ -1,8 +1,8 @@
 """Reachability guard for ``app/modules/**`` — the mirror of the core guard.
 
 ``tests/test_no_dead_core_modules.py`` watches ``app.core.*`` only. The v10
-external review found that ``app/modules/platform/dr.py``,
-``app/modules/notifications/digest.py`` and ``app/applications/apparel/modules/catalog/external/*``
+external review found that ``app/platform/platform/dr.py``,
+``app/platform/notifications/digest.py`` and ``app/applications/apparel/modules/catalog/external/*``
 had ZERO callers outside their own tests and CI could not see it, because none
 of them lives under ``app.core``. That is the repo's dominant failure mode —
 "complete, unit-tested, imported by nothing" — recurring a fourth time in two
@@ -91,29 +91,29 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # says so ("Nothing gates on this yet — the tables that record installations do not
     # exist"). It is recorded rather than wired because wiring it would mean enforcing a
     # product gate that no plan row can currently satisfy.
-    "app.modules.applications.routing": "route-to-application map, no gate yet",
+    "app.platform.applications.routing": "route-to-application map, no gate yet",
     # --- voice: unwired until the assistant turn service owns the call ---
     # transcript_sync is NOT here any more: the live spoken turn writes its question and its
     # voice_turns row through it (assistant_turn.run_voice_turn), so it has a real caller.
-    "app.modules.voice.application.customer_context": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.hardening": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.inbound_calls": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.merchant_intelligence": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.omnichannel": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.turn_orchestrator": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.calls": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.channels": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.contracts": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.metrics": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.recording": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.resilience": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.domain.routing": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.runtime.livekit_sip": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.runtime.providers": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.runtime.recovery": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.security.channel_identity": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.security.data_egress": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.security.identity_verification": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.customer_context": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.hardening": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.inbound_calls": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.merchant_intelligence": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.omnichannel": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.application.turn_orchestrator": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.calls": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.channels": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.contracts": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.metrics": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.recording": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.resilience": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.domain.routing": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.runtime.livekit_sip": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.runtime.providers": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.runtime.recovery": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.security.channel_identity": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.security.data_egress": _VOICE_UNWIRED_WHY,
+    "app.platform.voice.security.identity_verification": _VOICE_UNWIRED_WHY,
     # E-invoicing (ZATCA SA, ETA EG, Peppol AE; commit 33b5364f). The provider engines, the
     # registry and the orchestrating service are built and unit-tested, but no route or worker
     # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,
@@ -325,10 +325,10 @@ def test_detector_distinguishes_wired_from_dead() -> None:
     predicate.
     """
     reachable = reachable_modules()
-    assert "app.modules.identity.router" in reachable, (
+    assert "app.platform.identity.router" in reachable, (
         "detector found no path to a router main.py wires — the closure is broken"
     )
-    assert "app.modules.identity.deps" in reachable, (
+    assert "app.platform.identity.deps" in reachable, (
         "detector found no path to a service-layer dependency of a live router"
     )
     # A file that only its own tests import cannot be reached from a root. The

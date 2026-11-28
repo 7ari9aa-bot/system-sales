@@ -11,7 +11,7 @@ import pytest
 
 from app.applications.apparel.modules.pos.receipt_settings import receipt_settings
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import till
 
 pytestmark = pytest.mark.asyncio

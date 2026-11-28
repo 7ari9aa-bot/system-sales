@@ -72,7 +72,7 @@ class DeadStockReportService:
     ) -> dict[str, Any]:
         """``days`` overrides the shop's own setting for this one look; ``now`` is for tests."""
         # Imported here, like expiry_report: a module-level import would add one more edge.
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         if days is None:
             days = int(

@@ -78,7 +78,7 @@ def __getattr__(name: str):
     billing import stays function-scoped (module-scope cross-module service
     imports are boundary-counted) while the attribute remains addressable."""
     if name == "EntitlementService":
-        from app.modules.billing.service import EntitlementService
+        from app.platform.billing.service import EntitlementService
 
         return EntitlementService
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

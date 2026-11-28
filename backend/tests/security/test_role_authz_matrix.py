@@ -51,7 +51,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     AuthedUser,
     TenantContext,
     get_db,
@@ -378,7 +378,7 @@ async def test_permission_gate_allows_its_roles(role, permission) -> None:  # no
     a route missing the primitive (rotate_secret) is the failure, not the gate.
     """
     from app.core.errors import PermissionDeniedError
-    from app.modules.identity.deps import require_permission
+    from app.platform.identity.deps import require_permission
 
     gate = require_permission(permission)
     ctx = _ctx_for(role)

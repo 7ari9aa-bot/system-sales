@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 from app.applications.apparel.modules.pricing.service import PricingService
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])

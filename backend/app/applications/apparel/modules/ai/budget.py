@@ -232,7 +232,7 @@ def _notification_service():
     (test_module_scope_service_imports_do_not_grow) — the alert helpers share
     ONE call-scoped import instead of each carrying its own.
     """
-    from app.modules.notifications.service import NotificationService
+    from app.platform.notifications.service import NotificationService
 
     return NotificationService
 

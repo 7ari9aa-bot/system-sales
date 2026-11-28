@@ -26,8 +26,8 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
-from app.modules.platform.models import Job
-from app.modules.platform.service import JobService
+from app.platform.platform.models import Job
+from app.platform.platform.service import JobService
 from app.workers.job_runner import (
     _JOB_HANDLERS,
     JobRunner,
@@ -246,7 +246,7 @@ async def test_a_database_error_is_recorded_and_still_counts_as_an_attempt(db, t
 
 
 async def test_a_suspended_tenant_job_is_deferred_not_run(db, tenant_ctx):
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     @register_job_handler("test.suspended")
     async def _handler(session, job):  # pragma: no cover - must not run

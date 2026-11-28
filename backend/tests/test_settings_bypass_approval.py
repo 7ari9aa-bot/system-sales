@@ -17,8 +17,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import PermissionDeniedError
-from app.modules.settings.models import SettingChangeRequest
-from app.modules.settings.service import SettingsService
+from app.platform.settings.models import SettingChangeRequest
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -81,7 +81,7 @@ async def test_rollback_of_non_approval_setting_applies_directly(db: AsyncSessio
         user_id=tenant_ctx.user.id,
         permissions=MANAGER_PERMS,
     )
-    from app.modules.settings.models import TenantSetting
+    from app.platform.settings.models import TenantSetting
 
     assert isinstance(result, TenantSetting)
     assert result.value.get("v") == 14
@@ -134,7 +134,7 @@ async def test_rollback_emergency_bypass_with_permission_applies_and_audits(
         permissions=OWNER_PERMS,
         bypass_approval=True,
     )
-    from app.modules.settings.models import TenantSetting
+    from app.platform.settings.models import TenantSetting
 
     assert isinstance(result, TenantSetting)
 
@@ -191,7 +191,7 @@ async def test_apply_change_request_keeps_internal_bypass(db: AsyncSession, tena
 
     # Approve with a different user (self-approval guard).
     # The FK on reviewed_by requires a real user, so create one via ORM.
-    from app.modules.identity.models import TenantUser, User
+    from app.platform.identity.models import TenantUser, User
 
     other_user_id = uuid.uuid4()
     db.add(
@@ -204,7 +204,7 @@ async def test_apply_change_request_keeps_internal_bypass(db: AsyncSession, tena
         )
     )
     # Look up the owner role id
-    from app.modules.identity.models import Role
+    from app.platform.identity.models import Role
 
     role_row = (await db.execute(select(Role).where(Role.code == "owner"))).scalar_one()
     db.add(

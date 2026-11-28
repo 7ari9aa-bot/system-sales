@@ -45,8 +45,8 @@ from sqlalchemy.ext.asyncio import (
 from app.core.db import bind_tenant
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.models import Tenant
-from app.modules.platform.tenant_restore import (
+from app.platform.identity.models import Tenant
+from app.platform.platform.tenant_restore import (
     TenantRestoreService,
     TenantRestoreStatus,
 )

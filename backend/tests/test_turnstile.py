@@ -189,7 +189,7 @@ async def test_the_gate_runs_before_any_account_lookup(secret_on, monkeypatch, p
     exactly the enumeration oracle these routes are built to avoid. The service
     methods are replaced with tripwires: refusing the token has to happen first.
     """
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     touched: list[str] = []
 
@@ -207,7 +207,7 @@ async def test_the_gate_runs_before_any_account_lookup(secret_on, monkeypatch, p
 
 
 async def test_register_gate_runs_before_any_account_work(secret_on, monkeypatch):
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     touched: list[str] = []
 
@@ -250,7 +250,7 @@ async def test_off_the_routes_behave_exactly_as_before(secret_off, monkeypatch):
 def lockout_redis(monkeypatch):
     """One FakeRedis shared by the lockout counter for the whole test."""
     client = FakeRedis(decode_responses=True)
-    import app.modules.identity.service as svc
+    import app.platform.identity.service as svc
 
     monkeypatch.setattr(svc, "get_redis_or_none", lambda: client)
     return client
@@ -314,7 +314,7 @@ async def test_login_is_never_gated_while_the_feature_is_off(secret_off, lockout
 
 
 async def test_a_redis_outage_does_not_gate_login(secret_on, monkeypatch):
-    import app.modules.identity.service as svc
+    import app.platform.identity.service as svc
 
     monkeypatch.setattr(svc, "get_redis_or_none", lambda: None)
     calls = _cloudflare(monkeypatch, _refuse)

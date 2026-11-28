@@ -19,7 +19,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.identity.dialects import CHOICES
+from app.platform.identity.dialects import CHOICES
 
 PATH = (
     Path(__file__).resolve().parents[1]
@@ -50,7 +50,7 @@ def test_the_check_lists_exactly_the_dialects_the_code_knows() -> None:
 
 
 def test_the_model_declares_the_column_as_nullable_text() -> None:
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     column = Tenant.__table__.c.dialect
     assert column.nullable is True

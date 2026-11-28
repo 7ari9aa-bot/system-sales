@@ -23,10 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db import bind_tenant
 from app.core.errors import PermissionDeniedError
-from app.modules.identity import service
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import TenantLifecycleService
-from app.modules.platform.models import SecurityEvent
+from app.platform.identity import service
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import TenantLifecycleService
+from app.platform.platform.models import SecurityEvent
 
 
 class _Result:
@@ -239,7 +239,7 @@ async def test_tenant_scoped_event_lands_without_a_bound_context(
     writer binds the tenant GUC itself. Clearing the GUC first means the row can
     only land if the writer binds it — which is the login-path case, where no
     tenant context exists at all."""
-    from app.modules.platform.security_events import record_security_event
+    from app.platform.platform.security_events import record_security_event
 
     await db.execute(sa.text("SELECT set_config('app.tenant_id', '', true)"))
 

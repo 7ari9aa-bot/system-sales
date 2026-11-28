@@ -20,7 +20,7 @@ from app.applications.apparel.modules.inventory.service import (
     InventoryService,
     WarehouseLocationService,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:

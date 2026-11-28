@@ -26,7 +26,7 @@ from sqlalchemy import select
 from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 from app.applications.apparel.modules.conversations.models import Message
-from app.modules.platform.models import OutboxEvent, WebhookEvent
+from app.platform.platform.models import OutboxEvent, WebhookEvent
 from app.workers.platform_workers import ingest_queued_webhook_event
 from tests.test_webhook_retry import _wa_payload
 

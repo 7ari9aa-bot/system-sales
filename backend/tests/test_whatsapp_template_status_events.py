@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
-from app.modules.platform.models import WebhookEvent
+from app.platform.platform.models import WebhookEvent
 
 FIELD = "message_template_status_update"
 
@@ -192,7 +192,7 @@ async def _event(db, tenant_id, payload) -> WebhookEvent:
 
 def _patch_sync(monkeypatch, *, creds, calls, raises=None):
     import app.applications.apparel.modules.conversations.templates as templates
-    import app.modules.platform.services.channel_access as access
+    import app.platform.platform.services.channel_access as access
 
     async def _creds(_session, tenant_id, provider):
         calls.setdefault("creds_for", []).append((tenant_id, provider))

@@ -16,8 +16,8 @@ import pytest
 
 from app.applications.apparel.modules.pos.receipt_settings import _KEYS as RECEIPT_KEYS
 from app.applications.apparel.modules.pos.receipt_settings import receipt_settings
-from app.modules.settings.registry import ENFORCED_KEYS, REGISTRY, Scope
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import ENFORCED_KEYS, REGISTRY, Scope
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import till
 
 SCREENS = Path(__file__).resolve().parents[2] / "frontend/src/cashier/components/settings"

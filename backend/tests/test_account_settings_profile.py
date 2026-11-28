@@ -28,9 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ValidationError
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Role, TenantUser
-from app.modules.identity.service import AccountClosureService, UserService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Role, TenantUser
+from app.platform.identity.service import AccountClosureService, UserService
 
 PROFILE_URL = "/api/v1/users/me"
 CLOSURE_URL = "/api/v1/users/me/closure-request"

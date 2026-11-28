@@ -43,7 +43,7 @@ from app.applications.apparel.modules.ai.approvals import ApprovalService
 from app.applications.apparel.modules.ai.models import ApprovalRequest
 from app.applications.apparel.modules.conversations.models import Conversation
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 
 pytestmark = [pytest.mark.gate]
 

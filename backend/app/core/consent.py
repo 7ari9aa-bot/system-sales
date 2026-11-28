@@ -1,7 +1,7 @@
 """Outbound marketing-consent gate (spec §32).
 
 Consent is NOT a boolean: it is scoped by (customer, channel, purpose) and kept
-as an append-only ledger (``app.modules.privacy.models.Consent``). This module
+as an append-only ledger (``app.platform.privacy.models.Consent``). This module
 answers one question for a promotional send — *may we send this to this customer
 on this channel?*
 
@@ -10,7 +10,7 @@ that can produce a ``purpose="marketing"`` message. There is deliberately no
 ``purpose`` argument anywhere on the generic outbound path: a caller cannot
 forget to declare marketing, because marketing is the only thing the door sends.
 
-Why ``app/core`` and not ``app.modules.privacy``: ``privacy`` imports
+Why ``app/core`` and not ``app.platform.privacy``: ``privacy`` imports
 ``customers``, and ``customers`` <-> ``conversations`` is already an import
 cycle, so a ``conversations -> privacy`` import closes a NEW cycle
 (``conversations -> customers -> privacy``). The boundary ratchet in

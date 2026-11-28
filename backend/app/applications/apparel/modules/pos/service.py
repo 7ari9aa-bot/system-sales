@@ -350,7 +350,7 @@ class PosService(PosReceiptReads):
     @staticmethod
     async def _shop_timezone(session: AsyncSession, tenant_id: UUID) -> str | None:
         """The zone this merchant counts its days in (``tenants.timezone``), or None."""
-        from app.modules.identity.models import Tenant
+        from app.platform.identity.models import Tenant
 
         return (
             await session.execute(select(Tenant.timezone).where(Tenant.id == tenant_id))
@@ -399,7 +399,7 @@ class PosService(PosReceiptReads):
         if takes:
             return {"mode": "record", "reason": None, "apparel_setup_incomplete": False}
         from app.core.activity_setup import NOT_STARTED, SKIPPED, read_state
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         setup_state = await read_state(session, tenant_id)
         vertical = str(await SettingsService(session, tenant_id).value("business.vertical") or "")
@@ -955,7 +955,7 @@ class PosService(PosReceiptReads):
         Resolved down the shop's hierarchy from the shift's profile, so a branch or a single till
         can differ from the shop. A shift with no profile reads the shop-wide value.
         """
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         svc = SettingsService(session, tenant_id)
         if pos_session.profile_id is None:
@@ -1108,7 +1108,7 @@ class PosService(PosReceiptReads):
             return None
         if profile.max_discount_pct is not None:
             return Decimal(profile.max_discount_pct)
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         resolved = await SettingsService(session, tenant_id).value(
             "pos.max_discount_pct", scope="pos_profile", scope_id=profile.id
@@ -1369,7 +1369,7 @@ class PosService(PosReceiptReads):
         """
         from app.applications.apparel.modules.catalog.service import CatalogService
         from app.applications.apparel.modules.pos.prescription import ensure_prescription_given
-        from app.modules.settings.capabilities import shop_capabilities
+        from app.platform.settings.capabilities import shop_capabilities
 
         wanted: set[UUID] = set()
         for item in items:
@@ -1674,7 +1674,7 @@ class PosService(PosReceiptReads):
         # flag was stored and shown but never enforced, and a sale with no customer went through.
         # A till's own switch wins when it is on; otherwise the shop-wide setting decides, so a
         # merchant who wants a named customer on every sale sets it once, not on each till.
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         shop_requires = bool(
             await SettingsService(session, tenant_id).value("pos.require_customer")
@@ -1929,7 +1929,7 @@ class PosService(PosReceiptReads):
                     session, tenant_id, "branch.notify_manager_on_variance", pos_session
                 )
                 if notify_manager:
-                    from app.modules.notifications.service import NotificationService
+                    from app.platform.notifications.service import NotificationService
 
                     owner_ids = (
                         (

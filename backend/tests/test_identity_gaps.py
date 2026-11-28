@@ -32,9 +32,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.db import bind_tenant
 from app.core.errors import PermissionDeniedError
 from app.core.security import hash_password
-from app.modules.identity import service
-from app.modules.identity.models import RefreshToken
-from app.modules.identity.service import _REFRESH_REUSE_GRACE_SECONDS, AuthService
+from app.platform.identity import service
+from app.platform.identity.models import RefreshToken
+from app.platform.identity.service import _REFRESH_REUSE_GRACE_SECONDS, AuthService
 
 
 class _Result:
@@ -344,7 +344,7 @@ async def test_get_current_user_db_failure_is_not_an_auth_verdict() -> None:
     """
     from app.core.errors import PermissionDeniedError
     from app.core.security import create_access_token
-    from app.modules.identity.deps import get_current_user
+    from app.platform.identity.deps import get_current_user
 
     token = create_access_token(str(uuid.uuid4()), {"tenant_id": str(uuid.uuid4())})
 

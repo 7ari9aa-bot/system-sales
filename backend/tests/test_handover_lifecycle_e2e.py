@@ -174,7 +174,7 @@ async def test_no_customer_agent_still_hands_over(db, tenant_ctx, monkeypatch) -
     async def entitled(session, tenant_id_, capability):
         return True
 
-    monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", entitled)
+    monkeypatch.setattr("app.platform.billing.service.EntitlementService.can", entitled)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -208,7 +208,7 @@ async def test_a_plan_without_ai_hands_over_instead_of_going_quiet(
     async def not_entitled(session, tenant_id_, capability):
         return False
 
-    monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", not_entitled)
+    monkeypatch.setattr("app.platform.billing.service.EntitlementService.can", not_entitled)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -258,7 +258,7 @@ async def test_the_agent_that_exists_is_used(db, tenant_ctx, monkeypatch) -> Non
     async def entitled(session, tenant_id_, capability):
         return True
 
-    monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", entitled)
+    monkeypatch.setattr("app.platform.billing.service.EntitlementService.can", entitled)
 
     calls = {"count": 0}
 
@@ -448,7 +448,7 @@ async def _stubbed_turn(db, tenant_id, monkeypatch, fake_turn) -> Conversation:
     async def entitled(session, tenant_id_, capability):
         return True
 
-    monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", entitled)
+    monkeypatch.setattr("app.platform.billing.service.EntitlementService.can", entitled)
     monkeypatch.setattr("app.applications.apparel.modules.ai.hooks.run_customer_turn", fake_turn)
 
     conversation = await _conversation(db, tenant_id)

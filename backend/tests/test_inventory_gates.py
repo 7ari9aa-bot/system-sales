@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     AuthedUser,
     TenantContext,
     get_tenant_ctx,

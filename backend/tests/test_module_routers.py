@@ -15,8 +15,8 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.automation.service import WorkflowService
-from app.modules.privacy.service import DataRequestService
+from app.platform.automation.service import WorkflowService
+from app.platform.privacy.service import DataRequestService
 from app.applications.apparel.modules.segments.router import SegmentPreviewRequest, preview_segment
 from app.applications.apparel.modules.segments.service import validate_dsl
 

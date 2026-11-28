@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings import capabilities as caps
-from app.modules.settings.capabilities import (
+from app.platform.settings import capabilities as caps
+from app.platform.settings.capabilities import (
     CAPABILITIES,
     Capability,
     capability_enabled,
     is_mandatory,
     shop_capabilities,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 NAME = "test_only_legal_rule"
 
@@ -28,8 +28,8 @@ def legal_rule(monkeypatch: pytest.MonkeyPatch) -> str:
 
     It gets the same owner switch every real capability has, so a stored "off" can be tried.
     """
-    from app.modules.settings import registry
-    from app.modules.settings.registry import Scope, SettingDef, SettingType
+    from app.platform.settings import registry
+    from app.platform.settings.registry import Scope, SettingDef, SettingType
 
     cap = Capability(NAME, (), "قاعدة", "Rule", "وصف", "Description", mandatory_in=("apparel",))
     monkeypatch.setitem(caps.CAPABILITIES, NAME, cap)
@@ -129,8 +129,8 @@ async def test_a_shop_with_nothing_mandatory_reports_an_empty_list(db, tenant_ct
 async def test_the_mandatory_list_is_sorted_so_the_reply_is_stable(
     db, tenant_ctx, legal_rule, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.modules.settings import registry
-    from app.modules.settings.registry import Scope, SettingDef, SettingType
+    from app.platform.settings import registry
+    from app.platform.settings.registry import Scope, SettingDef, SettingType
 
     first = "a_test_only_rule"
     cap = Capability(first, (), "أ", "A", "وصف", "Description", mandatory_in=("apparel",))

@@ -13,10 +13,10 @@ import uuid
 import pytest
 
 from app.core.tenancy import reset_current_scope, set_current_scope
-from app.modules.identity.models import Location, Workspace
-from app.modules.settings.capabilities import shop_capabilities
-from app.modules.settings.scope_graph import UnknownScopeError
-from app.modules.settings.service import SettingsService
+from app.platform.identity.models import Location, Workspace
+from app.platform.settings.capabilities import shop_capabilities
+from app.platform.settings.scope_graph import UnknownScopeError
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

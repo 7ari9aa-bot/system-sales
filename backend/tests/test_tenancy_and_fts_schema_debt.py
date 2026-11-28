@@ -244,7 +244,7 @@ def test_no_new_migration_leaves_an_unnamed_constraint_behind() -> None:
 # ------------------------------------------------------- (a) workflow_versions
 def test_workflow_version_model_declares_a_cascading_tenant_id() -> None:
     """The column must exist on the ORM side or no INSERT can ever set it."""
-    from app.modules.automation.models import WorkflowVersion
+    from app.platform.automation.models import WorkflowVersion
 
     column = WorkflowVersion.__table__.c.get("tenant_id")
     assert column is not None, "workflow_versions model has no tenant_id"
@@ -263,7 +263,7 @@ def test_workflow_version_uniqueness_is_a_named_constraint() -> None:
     pg_constraint, can be a FK target, and is what `downgrade()` can drop by a
     name that actually resolves.
     """
-    from app.modules.automation.models import WorkflowVersion
+    from app.platform.automation.models import WorkflowVersion
 
     constraints = [
         c
@@ -844,8 +844,8 @@ async def test_workflow_versions_isolates_across_tenants(db) -> None:
     from sqlalchemy import text
 
     from app.core.db import bind_tenant
-    from app.modules.automation.models import Workflow, WorkflowVersion
-    from app.modules.identity.models import Tenant
+    from app.platform.automation.models import Workflow, WorkflowVersion
+    from app.platform.identity.models import Tenant
 
     stranger = Tenant(slug=f"wf-{uuid.uuid4().hex[:8]}", name="Workflow Stranger")
     reader = Tenant(slug=f"wf-read-{uuid.uuid4().hex[:8]}", name="Workflow Reader")

@@ -285,7 +285,7 @@ async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
 
 
 async def test_exchange_event_is_staged(db, tenant_ctx):
-    from app.modules.platform.models import OutboxEvent
+    from app.platform.platform.models import OutboxEvent
     from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)

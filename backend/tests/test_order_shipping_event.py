@@ -38,7 +38,7 @@ from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders import service as orders_service
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.orders.service import _SHIPPING_EDITABLE_STATUSES, OrderService
-from app.modules.platform.models import AuditLog, OutboxEvent
+from app.platform.platform.models import AuditLog, OutboxEvent
 from tests.test_order_idempotency import SessionStore, _build_app
 
 EVENT_TYPE = "order.shipping_updated"

@@ -304,7 +304,7 @@ class ConversationService:
         # when no SLA is running, and only for real replies — a system message
         # must not stop the clock.
         if direction == "outbound" and sender_type in ("agent", "ai"):
-            from app.modules.operations.sla import SlaService
+            from app.platform.operations.sla import SlaService
 
             await SlaService.mark_met(session, tenant_id, conversation_id=conversation_id)
         await session.flush()

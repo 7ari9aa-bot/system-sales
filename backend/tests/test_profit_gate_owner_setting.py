@@ -13,7 +13,7 @@ import pathlib
 
 import pytest
 
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 KEY = "reports.managers_see_profit"
@@ -61,7 +61,7 @@ def test_the_real_roles_are_what_this_test_assumes() -> None:
 
 
 def test_the_setting_is_on_by_default_and_the_owner_can_turn_it_off() -> None:
-    from app.modules.settings.registry import REGISTRY
+    from app.platform.settings.registry import REGISTRY
 
     d = REGISTRY[KEY]
     assert d.default is True

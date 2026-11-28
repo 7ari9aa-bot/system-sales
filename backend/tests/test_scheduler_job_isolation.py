@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.platform.models import ScheduledJob
+from app.platform.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 
 

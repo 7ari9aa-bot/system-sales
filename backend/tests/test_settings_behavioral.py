@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings.registry import (
+from app.platform.settings.registry import (
     REGISTRY,
     SettingType,
     get_definition,

@@ -13,8 +13,8 @@ import uuid
 import pytest
 
 from app.core.errors import PermissionDeniedError
-from app.modules.applications import dependencies
-from app.modules.applications.access import AccessFacts
+from app.platform.applications import dependencies
+from app.platform.applications.access import AccessFacts
 
 KEY = "apparel.purchasing"
 
@@ -106,7 +106,7 @@ def test_the_bypass_is_logged_because_it_is_temporary(facts_from_ctx, caplog) ->
     """A workspace outside the gate must leave a trace, not pass in silence."""
     ctx = _Ctx(states={}, entitled=set())
     facts_from_ctx(ctx)
-    with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
+    with caplog.at_level("WARNING", logger="app.platform.applications.dependencies"):
         _gate(ctx)
     assert any("bypassed" in record.getMessage() for record in caplog.records), (
         "the transition bypass went unlogged"
@@ -116,14 +116,14 @@ def test_the_bypass_is_logged_because_it_is_temporary(facts_from_ctx, caplog) ->
 def test_a_real_decision_is_not_logged_as_a_bypass(facts_from_ctx, caplog) -> None:
     ctx = _Ctx(states={KEY: "active", "apparel": "active"}, entitled={KEY, "apparel"})
     facts_from_ctx(ctx)
-    with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
+    with caplog.at_level("WARNING", logger="app.platform.applications.dependencies"):
         _gate(ctx)
     assert not any("bypassed" in record.message for record in caplog.records)
 
 
 async def test_install_route_only_touches_the_workspace_in_the_context(monkeypatch) -> None:
     """The workspace id must come from the resolved context, never the request."""
-    from app.modules.applications import router as router_module
+    from app.platform.applications import router as router_module
 
     seen: dict[str, object] = {}
 
@@ -143,7 +143,7 @@ async def test_install_route_only_touches_the_workspace_in_the_context(monkeypat
 async def test_install_route_refuses_a_context_without_a_workspace() -> None:
     from fastapi import HTTPException
 
-    from app.modules.applications import router as router_module
+    from app.platform.applications import router as router_module
 
     ctx = _Ctx(states={}, entitled=set())
     ctx.workspace_id = None

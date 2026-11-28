@@ -94,7 +94,7 @@ def test_gross_and_net_read_one_payment_status_vocabulary() -> None:
     """
     from app.applications.apparel.modules.analytics import service as analytics
     from app.applications.apparel.modules.orders import money as orders_money
-    from app.modules.platform.metrics import MetricRegistry
+    from app.platform.platform.metrics import MetricRegistry
 
     revenue_status = MetricRegistry.get("revenue").filters["status"]
     # analytics holds no copy of the list: the fragment IS the registry, rendered
@@ -113,7 +113,7 @@ def test_the_order_existence_filter_is_rendered_from_the_registry_too() -> None:
     the money story: a cancelled order excluded there must not be excluded
     differently by hand somewhere else."""
     from app.applications.apparel.modules.analytics import service as analytics
-    from app.modules.platform.metrics import MetricRegistry
+    from app.platform.platform.metrics import MetricRegistry
 
     excluded = MetricRegistry.get("orders_count").filters["status_excluded"]
     assert analytics._UNPLACED_ORDER_STATUSES == analytics._status_sql(excluded)

@@ -101,7 +101,7 @@ from app.core.errors import (
 )
 from app.core.observability import get_logger
 from app.core.security import decode_token
-from app.modules.platform.models import IdempotencyKey
+from app.platform.platform.models import IdempotencyKey
 
 # ---------------------------------------------------------------------------
 # Idempotency — policy

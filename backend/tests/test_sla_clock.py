@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.operations.sla import BusinessClock, validate_calendar
+from app.platform.operations.sla import BusinessClock, validate_calendar
 
 
 @dataclass

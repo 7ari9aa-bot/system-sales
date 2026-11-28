@@ -190,7 +190,7 @@ async def test_a_hostile_email_cannot_escape_the_key_namespace(redis_client: Fak
 @pytest.fixture
 async def service_redis(monkeypatch) -> AsyncIterator[FakeRedis]:
     """Point identity.service at a fakeredis the way get_redis_or_none would."""
-    from app.modules.identity import service as identity_service
+    from app.platform.identity import service as identity_service
 
     client = FakeRedis(decode_responses=True)
     monkeypatch.setattr(identity_service, "get_redis_or_none", lambda: client)
@@ -202,7 +202,7 @@ async def test_service_lockout_ops_flow_through_a_present_redis(
     service_redis: FakeRedis,
 ) -> None:
     """With Redis reachable, check/record_failure/reset execute for real."""
-    from app.modules.identity import service as identity_service
+    from app.platform.identity import service as identity_service
 
     status = await identity_service._lockout_op(check, ip="9.9.9.9", email="flow@x.com")
     assert status is not None
@@ -219,7 +219,7 @@ async def test_service_lockout_ops_fail_open_when_redis_is_missing(
     monkeypatch,
 ) -> None:
     """No Redis at all ⇒ every op degrades to None and sign-in proceeds."""
-    from app.modules.identity import service as identity_service
+    from app.platform.identity import service as identity_service
 
     monkeypatch.setattr(identity_service, "get_redis_or_none", lambda: None)
     for op in (check, record_failure, reset):
@@ -235,7 +235,7 @@ async def test_service_lockout_ops_fail_open_when_redis_raises(
     failed dial the raw client raises instead. The ops must still degrade to
     None rather than turn a login into a 500.
     """
-    from app.modules.identity import service as identity_service
+    from app.platform.identity import service as identity_service
 
     class _DeadRedis:
         async def hmget(self, *args, **kwargs):

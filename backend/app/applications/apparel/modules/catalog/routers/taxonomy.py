@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.core.errors import StorageUnavailableError, ValidationError
 from app.core.storage import FetchedMedia, get_storage
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 
 from ._deps import (
     AddImageRequest,

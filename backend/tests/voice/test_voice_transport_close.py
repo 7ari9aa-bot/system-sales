@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-from app.modules.voice.runtime import gpt_live_transport
-from app.modules.voice.runtime.gpt_live_transport import WebsocketTransport
+from app.platform.voice.runtime import gpt_live_transport
+from app.platform.voice.runtime.gpt_live_transport import WebsocketTransport
 
 
 class HangingConnection:

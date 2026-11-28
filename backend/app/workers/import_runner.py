@@ -24,11 +24,11 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, DomainError, ValidationError
-from app.modules.imports.apply import BATCH_LIMIT, REFERENCE_TYPE, ApplyError, Ports, apply_batch
-from app.modules.imports.fields import SHEET_VARIANTS
-from app.modules.imports.models import ImportSession
-from app.modules.imports.verdicts import values_of
-from app.modules.platform.models import Job
+from app.platform.imports.apply import BATCH_LIMIT, REFERENCE_TYPE, ApplyError, Ports, apply_batch
+from app.platform.imports.fields import SHEET_VARIANTS
+from app.platform.imports.models import ImportSession
+from app.platform.imports.verdicts import values_of
+from app.platform.platform.models import Job
 from app.workers.job_runner import register_job_handler
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ async def _prepare_batch(session: AsyncSession, tenant_id: uuid.UUID, rows: list
 
     # The per-product variant cap, read once instead of per row: the limit is the shop's setting
     # and the count only moves by the rows this batch writes.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shop = SettingsService(session, tenant_id)
     maps["max_variants"] = await shop.value("catalog.max_variants_per_product")
@@ -565,7 +565,7 @@ async def enqueue_import(
     session: AsyncSession, tenant_id: uuid.UUID, session_id: uuid.UUID, user_id: uuid.UUID | None
 ) -> Job:
     """Queue the first ``import.run`` job for a session (the route hands this to ``start``)."""
-    from app.modules.platform.services.jobs import JobService
+    from app.platform.platform.services.jobs import JobService
 
     return await JobService.create(
         session,
@@ -578,7 +578,7 @@ async def enqueue_import(
 
 async def run_batch(session: AsyncSession, job: Job, *, limit: int = BATCH_LIMIT) -> dict:
     """One batch for the session this job points at; queue the next job if rows remain."""
-    from app.modules.platform.services.jobs import JobService
+    from app.platform.platform.services.jobs import JobService
 
     try:
         session_id = uuid.UUID(str(job.correlation_id))

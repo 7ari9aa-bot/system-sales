@@ -23,8 +23,8 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import (
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import (
     ALLOWED_TRANSITIONS,
     STATE_POLICIES,
     TENANT_INITIAL_STATE,
@@ -204,8 +204,8 @@ def test_a_non_string_reason_fails_closed(reason: object) -> None:
 # AuthedUser.is_platform_admin the require_platform_admin dependency reads.
 
 from app.core.errors import PermissionDeniedError  # noqa: E402
-from app.modules.identity.deps import AuthedUser, TenantContext  # noqa: E402
-from app.modules.identity.router import (  # noqa: E402
+from app.platform.identity.deps import AuthedUser, TenantContext  # noqa: E402
+from app.platform.identity.router import (  # noqa: E402
     LifecycleTransitionRequest,
     transition_tenant_lifecycle,
 )
@@ -318,7 +318,7 @@ async def test_platform_admin_member_may_move_the_state(
 import httpx  # noqa: E402
 
 from app.main import create_app  # noqa: E402
-from app.modules.identity.deps import get_db, get_tenant_ctx  # noqa: E402
+from app.platform.identity.deps import get_db, get_tenant_ctx  # noqa: E402
 
 _LIFECYCLE_TARGETS = (
     "provisioning",

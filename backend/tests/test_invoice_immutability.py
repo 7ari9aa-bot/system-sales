@@ -48,8 +48,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError
-from app.modules.billing.models import Invoice, UsageRecord
-from app.modules.billing.service import BillingSnapshotService
+from app.platform.billing.models import Invoice, UsageRecord
+from app.platform.billing.service import BillingSnapshotService
 
 MIGRATION_PATH = (
     Path(__file__).resolve().parent.parent

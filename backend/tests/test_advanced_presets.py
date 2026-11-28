@@ -18,13 +18,13 @@ import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401 — complete table registration
 from app.core.db import bind_tenant
-from app.modules.settings.presets import (
+from app.platform.settings.presets import (
     PRESET_DEFS,
     PRESETS,
     preset_chain,
     resolve_preset,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 OWNER = {"settings:write", "settings:read"}
 
@@ -34,7 +34,7 @@ def _uuid_hex() -> str:
 
 
 async def _create_tenant(db):
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"ap-{_uuid_hex()}@test.local"
     user, tenant = await AuthService.register(
@@ -106,7 +106,7 @@ class TestPresetComposition:
         assert PRESET_DEFS["physical_retail"].extends is None
 
     def test_every_preset_key_is_a_real_registry_setting(self) -> None:
-        from app.modules.settings.registry import REGISTRY
+        from app.platform.settings.registry import REGISTRY
 
         for name, values in PRESETS.items():
             for key in values:
@@ -118,7 +118,7 @@ class TestPresetComposition:
 
     def test_cycle_detection_raises(self) -> None:
         """A cycle in extends is a programming error caught at resolution."""
-        from app.modules.settings.presets import _PRESET_DEFS, PresetDef, _resolve_preset_values
+        from app.platform.settings.presets import _PRESET_DEFS, PresetDef, _resolve_preset_values
 
         # Temporarily add a cycle.
         _PRESET_DEFS["__a"] = PresetDef(name="__a", values={}, extends="__b")

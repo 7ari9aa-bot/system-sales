@@ -27,7 +27,7 @@ from app.applications.apparel.modules.conversations.gateway.base import InboundM
 from app.applications.apparel.modules.conversations.models import Conversation, Message
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.platform.models import IdempotencyKey, Integration, WebhookEvent
+from app.platform.platform.models import IdempotencyKey, Integration, WebhookEvent
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _as_moment(value: object) -> datetime | None:
 async def _channel_credentials(session, tenant_id, channel) -> dict | None:
     """A connected channel's decrypted settings. The one place this file reaches the platform
     module for them, so the cross-module import is counted once."""
-    from app.modules.platform.services.channel_access import channel_credentials_config
+    from app.platform.platform.services.channel_access import channel_credentials_config
 
     return await channel_credentials_config(session, tenant_id, channel)
 
@@ -253,7 +253,7 @@ class IngestService:
         # retention lifecycle — it can be pruned independently of the
         # IdempotencyKey (which expires after 7 days). The dedupe record
         # has no response payload — it is a pure existence check.
-        from app.modules.platform.models import InboundMessageDedupe
+        from app.platform.platform.models import InboundMessageDedupe
 
         existing_dedupe = (
             await session.execute(
@@ -276,7 +276,7 @@ class IngestService:
         # when the tenant has no SLA policy, so this costs nothing for tenants
         # that do not use SLAs. Idempotent by conversation, so a replayed
         # inbound event cannot restart (and thereby extend) the clock.
-        from app.modules.operations.sla import SlaService
+        from app.platform.operations.sla import SlaService
 
         await SlaService.start(
             session,
@@ -339,7 +339,7 @@ class IngestService:
         async def _run() -> None:
             from app.core.db import SessionLocal, bind_tenant
             from app.applications.apparel.modules.conversations.customer_profile import CustomerProfileService
-            from app.modules.platform.services.channel_access import channel_credentials_config
+            from app.platform.platform.services.channel_access import channel_credentials_config
 
             try:
                 async with SessionLocal() as bg:

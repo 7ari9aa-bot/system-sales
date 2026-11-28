@@ -25,8 +25,8 @@ from app.core.activity_setup import (
 )
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.catalog.models import Category
-from app.modules.settings.presets import PRESETS
-from app.modules.settings.service import SettingsService
+from app.platform.settings.presets import PRESETS
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -430,7 +430,7 @@ async def test_the_history_names_who_reopened_it_through_the_route(db, tenant_ct
 
 
 async def _seed_workspace(db, tid):
-    from app.modules.identity.models import Workspace
+    from app.platform.identity.models import Workspace
 
     ws = Workspace(tenant_id=tid, name="HQ", slug=uuid.uuid4().hex[:12])
     db.add(ws)
@@ -442,7 +442,7 @@ async def _call_in_workspace(db, ctx, method, path, *, perms, body=None, workspa
     """The same route, but with X-Workspace-Id set — the header resolve_scope reads."""
     from httpx import ASGITransport, AsyncClient
 
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
     from tests.security.test_role_authz_matrix import _authz_app
 
     inner = TenantContext(
@@ -510,7 +510,7 @@ async def test_a_request_with_no_workspace_reads_and_writes_the_same_as_one_with
     # And it is a TENANT row, not a branch row the till would read differently.
     from sqlalchemy import select
 
-    from app.modules.settings.models import TenantSetting
+    from app.platform.settings.models import TenantSetting
 
     rows = list(
         (

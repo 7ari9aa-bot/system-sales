@@ -18,8 +18,8 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.secrets import encrypt_credentials_dict
-from app.modules.identity.models import Tenant
-from app.modules.platform.models import Integration
+from app.platform.identity.models import Tenant
+from app.platform.platform.models import Integration
 
 BACKEND = Path(__file__).resolve().parent.parent
 MIGRATION = BACKEND / "migrations" / "versions" / "fe2026112002_resolve_whatsapp_waba_tenant.py"

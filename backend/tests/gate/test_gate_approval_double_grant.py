@@ -51,7 +51,7 @@ from app.applications.apparel.modules.ai.approvals import ApprovalService, paylo
 from app.applications.apparel.modules.ai.models import ApprovalRequest
 from app.applications.apparel.modules.conversations.models import Conversation
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.models import Tenant, User
+from app.platform.identity.models import Tenant, User
 
 pytestmark = [pytest.mark.gate]
 

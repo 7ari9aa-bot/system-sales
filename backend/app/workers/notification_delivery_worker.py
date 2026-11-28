@@ -30,7 +30,7 @@ from app.core.errors import ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import deserialize_event
 from app.core.settings_read import setting_bool
-from app.modules.notifications.providers import (
+from app.platform.notifications.providers import (
     EmailProvider,
     FCMPushProvider,
     PushProvider,

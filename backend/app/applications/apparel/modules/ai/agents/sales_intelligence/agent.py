@@ -453,7 +453,7 @@ async def run_sales_analysis(
     from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     # §settings: analytics_agent.enabled gates whether the agent runs at all.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     _settings = SettingsService(session, tenant_id)
     agent_enabled = await _settings.value("analytics_agent.enabled")

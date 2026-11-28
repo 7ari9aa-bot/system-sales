@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.platform.services import monitors
+from app.platform.platform.services import monitors
 
 
 class _Result:

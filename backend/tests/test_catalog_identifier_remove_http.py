@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.identity.deps import get_db, get_tenant_ctx
+from app.platform.identity.deps import get_db, get_tenant_ctx
 from tests._pos_helpers import ctx_for, till
 
 pytestmark = pytest.mark.asyncio

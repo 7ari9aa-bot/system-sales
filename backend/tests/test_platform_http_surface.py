@@ -36,10 +36,10 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.ids import uuid7
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.platform.models import FeatureFlag, SavedView, WebhookEvent
-from app.modules.platform.router import router as platform_router
-from app.modules.platform.tenant_restore import TenantRestoreJob
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.platform.models import FeatureFlag, SavedView, WebhookEvent
+from app.platform.platform.router import router as platform_router
+from app.platform.platform.tenant_restore import TenantRestoreJob
 
 API = "/api/v1/platform"
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")

@@ -3,13 +3,13 @@
 Two halves of one promise — recovery decisions are made from EVIDENCE, and
 the evidence machinery itself cannot lie:
 
-1. DR drill (``app/modules/platform/dr.py``): start → execute → result →
+1. DR drill (``app/platform/platform/dr.py``): start → execute → result →
    the policy's last-test stamp on the same row, with ``check_dr_health``
    deriving every answer from that recorded evidence. A drill that never
    ran, a drill that failed, and a drill that went stale must all read as
    UNHEALTHY — a configured RPO/RTO is intent, not capability.
 
-2. Diagnostics (``app/modules/platform/diagnostics.py``): every check runs
+2. Diagnostics (``app/platform/platform/diagnostics.py``): every check runs
    a live probe, carries its evidence, and — the part these tests pin —
    reports a check that CANNOT run as a ``degraded``/``down`` finding with
    the error attached. An anti-silent-failure engine that renders its own
@@ -28,9 +28,9 @@ from typing import Any
 import pytest
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.platform import diagnostics as diag
-from app.modules.platform.diagnostics import SystemDiagnosticsService
-from app.modules.platform.dr import DRService
+from app.platform.platform import diagnostics as diag
+from app.platform.platform.diagnostics import SystemDiagnosticsService
+from app.platform.platform.dr import DRService
 
 # ----------------------------------------------------------------- DR drill
 

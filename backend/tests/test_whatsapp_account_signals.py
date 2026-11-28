@@ -14,7 +14,7 @@ import pytest
 
 from app.applications.apparel.modules.conversations.gateway import ingest as ingest_mod
 from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
-from app.modules.platform.diagnostics import channel_problems
+from app.platform.platform.diagnostics import channel_problems
 
 
 def _envelope(field: str, value: dict, account: str = "WABA-1") -> dict:

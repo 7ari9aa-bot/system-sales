@@ -291,7 +291,7 @@ async def test_facts_carry_the_money_numbers(db, tenant_ctx):
 
 async def test_one_shop_never_sees_another_shops_suppliers(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     s = await _supplier(db, mine)
@@ -328,7 +328,7 @@ async def test_top_suppliers_are_ordered_whatever_order_they_were_created_in(db,
 async def test_a_name_clash_with_another_shops_supplier_cannot_leak_money(db, tenant_ctx):
     """A purchase order points at its own shop's supplier; the join must stay inside the tenant."""
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     s = await _supplier(db, mine, "Shared")

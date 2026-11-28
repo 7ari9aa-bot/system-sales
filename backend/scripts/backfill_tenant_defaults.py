@@ -42,12 +42,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
-from app.modules.identity.bootstrap import seed_tenant_defaults
+from app.platform.identity.bootstrap import seed_tenant_defaults
 
 
 async def _tenant_ids(session: AsyncSession) -> list[tuple[str, str]]:
     """(id, slug) for every tenant. `tenants` carries no RLS, so no GUC needed."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     rows = (await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))).all()
     return [(str(tid), slug) for tid, slug in rows]

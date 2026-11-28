@@ -1,6 +1,6 @@
 """§67 write paths: a security event must LAND, and must not carry PII.
 
-`record_security_event` (``app/modules/platform/security_events.py``) exists
+`record_security_event` (``app/platform/platform/security_events.py``) exists
 because the §67 trail was silently empty: the auth failures raise immediately
 after recording, so a row added to the REQUEST transaction was rolled back with
 the 401. Its module docstring also states the redaction rule — coarse proxy,
@@ -32,10 +32,10 @@ import pytest
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.security import hash_password
-from app.modules.identity import service
-from app.modules.identity.models import User
-from app.modules.identity.service import AuthService, TenantService
-from app.modules.platform.models import SecurityEvent
+from app.platform.identity import service
+from app.platform.identity.models import User
+from app.platform.identity.service import AuthService, TenantService
+from app.platform.platform.models import SecurityEvent
 
 
 class _Result:

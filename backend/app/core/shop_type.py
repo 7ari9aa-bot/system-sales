@@ -18,8 +18,8 @@ from app.core.tenancy import current_scope
 from app.applications.apparel.modules.catalog.models import Category
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.settings.service import SettingsService
+from app.platform.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.platform.settings.service import SettingsService
 
 # Only the verticals that behave differently from a plain shop are offered. Pharmacy and
 # restaurant exist in the capability table, but choosing them today would change nothing, so the

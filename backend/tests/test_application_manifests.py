@@ -12,9 +12,9 @@ from dataclasses import replace
 
 import pytest
 
-from app.modules.applications.access import AccessFacts
-from app.modules.applications.dependencies import GateResult, evaluate, require_application
-from app.modules.applications.manifests import (
+from app.platform.applications.access import AccessFacts
+from app.platform.applications.dependencies import GateResult, evaluate, require_application
+from app.platform.applications.manifests import (
     REGISTRY,
     all_manifests,
     applications_for_industry,
@@ -83,7 +83,7 @@ def test_industry_filter_keeps_every_app_sold_to_every_industry() -> None:
 def test_every_route_group_belongs_to_an_application() -> None:
     """A new commercial group must not appear without deciding what sells it."""
     from app.core.route_map.registry import GROUPS
-    from app.modules.applications.routing import GROUP_APPLICATIONS
+    from app.platform.applications.routing import GROUP_APPLICATIONS
 
     missing = sorted(set(GROUPS) - set(GROUP_APPLICATIONS))
     assert not missing, f"route groups with no application: {missing}"
@@ -92,14 +92,14 @@ def test_every_route_group_belongs_to_an_application() -> None:
 
 
 def test_every_mapped_application_exists_in_the_registry() -> None:
-    from app.modules.applications.routing import GROUP_APPLICATIONS
+    from app.platform.applications.routing import GROUP_APPLICATIONS
 
     unknown = sorted({app for app in GROUP_APPLICATIONS.values() if app not in REGISTRY})
     assert not unknown, f"groups mapped to applications that do not exist: {unknown}"
 
 
 def test_an_undecided_group_raises_instead_of_defaulting_to_open() -> None:
-    from app.modules.applications.routing import application_for_group
+    from app.platform.applications.routing import application_for_group
 
     with pytest.raises(KeyError, match="belongs to no application"):
         application_for_group("not-a-real-group")
@@ -109,7 +109,7 @@ def test_an_undecided_group_raises_instead_of_defaulting_to_open() -> None:
 
 
 def _facts(**overrides):
-    from app.modules.applications.access import AccessFacts
+    from app.platform.applications.access import AccessFacts
 
     base = {
         "application_key": "apparel.purchasing",
@@ -122,13 +122,13 @@ def _facts(**overrides):
 
 
 def test_a_fully_provisioned_application_is_allowed() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     assert decide_access(_facts()).allowed
 
 
 def test_an_unknown_application_is_denied_not_ignored() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     decision = decide_access(_facts(application_key="retail.purchasingg"))
     assert not decision.allowed
@@ -137,7 +137,7 @@ def test_an_unknown_application_is_denied_not_ignored() -> None:
 
 def test_paying_is_not_installing() -> None:
     """Entitled but never installed in this workspace: the screen must not exist."""
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     decision = decide_access(_facts(installation_states={"apparel": "active"}))
     assert not decision.allowed
@@ -145,7 +145,7 @@ def test_paying_is_not_installing() -> None:
 
 
 def test_setup_required_is_not_active() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     decision = decide_access(
         _facts(installation_states={"apparel": "active", "apparel.purchasing": "setup_required"})
@@ -155,7 +155,7 @@ def test_setup_required_is_not_active() -> None:
 
 
 def test_an_inactive_dependency_closes_the_door() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     decision = decide_access(
         _facts(installation_states={"apparel": "suspended", "apparel.purchasing": "active"})
@@ -165,7 +165,7 @@ def test_an_inactive_dependency_closes_the_door() -> None:
 
 
 def test_a_required_capability_that_is_off_blocks_the_application() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     facts = _facts(
         application_key="apparel.inventory_advanced",
@@ -184,7 +184,7 @@ def test_a_required_capability_that_is_off_blocks_the_application() -> None:
 
 
 def test_no_workspace_access_denies_even_a_paid_application() -> None:
-    from app.modules.applications.access import decide_access
+    from app.platform.applications.access import decide_access
 
     decision = decide_access(_facts(user_has_workspace_access=False))
     assert not decision.allowed

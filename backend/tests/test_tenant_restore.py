@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 import app.core.model_registry  # noqa: F401 — complete table registration
-import app.modules.platform.models  # noqa: F401 — ensure tables registered
+import app.platform.platform.models  # noqa: F401 — ensure tables registered
 from app.core.db import bind_tenant
 
 
@@ -26,7 +26,7 @@ def _uuid_hex() -> str:
 
 
 async def _create_tenant(db, slug_prefix="restore"):
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"{slug_prefix}-{_uuid_hex()}@test.local"
     user, tenant = await AuthService.register(
@@ -47,8 +47,8 @@ class TestTenantScopedRestore:
     @pytest.mark.asyncio
     async def test_restore_brings_settings_back(self, db) -> None:
 
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         user, tenant = await _create_tenant(db, "restore1")
         await db.flush()
@@ -86,8 +86,8 @@ class TestTenantScopedRestore:
 
     @pytest.mark.asyncio
     async def test_restore_removes_settings_added_after_snapshot(self, db) -> None:
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         user, tenant = await _create_tenant(db, "restore2")
         await db.flush()
@@ -128,8 +128,8 @@ class TestTenantScopedRestore:
     @pytest.mark.asyncio
     async def test_restore_is_tenant_scoped(self, db) -> None:
         """Restore on tenant A must not affect tenant B's settings."""
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         user_a, tenant_a = await _create_tenant(db, "isoA")
         user_b, tenant_b = await _create_tenant(db, "isoB")
@@ -174,7 +174,7 @@ class TestTenantScopedRestore:
 
     @pytest.mark.asyncio
     async def test_restore_with_no_history_is_noop(self, db) -> None:
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         user, tenant = await _create_tenant(db, "restore3")
         await db.flush()

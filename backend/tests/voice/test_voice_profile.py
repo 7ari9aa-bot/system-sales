@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.voice.application.voice_profile import (
+from app.platform.voice.application.voice_profile import (
     BASE_CONTRACT,
     VOICE_CATALOG,
     VOICES_BY_ID,

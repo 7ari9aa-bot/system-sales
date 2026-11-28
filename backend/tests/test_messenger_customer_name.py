@@ -139,7 +139,7 @@ def wiring(monkeypatch):
 
     monkeypatch.setattr("app.core.redis.get_redis_or_none", lambda: redis)
     monkeypatch.setattr(
-        "app.modules.platform.services.channel_access.channel_credentials_config", credentials
+        "app.platform.platform.services.channel_access.channel_credentials_config", credentials
     )
     return redis
 
@@ -221,7 +221,7 @@ async def test_a_disconnected_channel_means_no_lookup(monkeypatch) -> None:
 
     monkeypatch.setattr("app.core.redis.get_redis_or_none", lambda: _Redis())
     monkeypatch.setattr(
-        "app.modules.platform.services.channel_access.channel_credentials_config", none
+        "app.platform.platform.services.channel_access.channel_credentials_config", none
     )
     adapter = _Adapter({"U1": {"name": "Sara"}})
     messages = [_msg("U1")]
@@ -236,7 +236,7 @@ async def test_no_redis_still_works(monkeypatch) -> None:
 
     monkeypatch.setattr("app.core.redis.get_redis_or_none", lambda: None)
     monkeypatch.setattr(
-        "app.modules.platform.services.channel_access.channel_credentials_config", credentials
+        "app.platform.platform.services.channel_access.channel_credentials_config", credentials
     )
     adapter = _Adapter({"U1": {"name": "Sara"}})
     messages = [_msg("U1")]

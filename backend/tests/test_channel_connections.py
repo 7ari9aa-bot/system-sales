@@ -17,7 +17,7 @@ import pytest
 from app.core.errors import ExternalProviderError, ValidationError
 from app.applications.apparel.modules.conversations.gateway.registry import ADAPTERS, get_adapter
 from app.applications.apparel.modules.conversations.policy import policy_for
-from app.modules.platform.channel_specs.registry import (
+from app.platform.platform.channel_specs.registry import (
     CONNECTION_SPECS,
     get_connection_spec,
     list_connection_specs,
@@ -111,7 +111,7 @@ async def test_graph_outage_is_retryable_not_a_credential_refusal() -> None:
 
 
 async def test_unsupported_provider_fails_the_same_way_as_before() -> None:
-    from app.modules.platform.integration_verifier import verify_channel_credentials
+    from app.platform.platform.integration_verifier import verify_channel_credentials
 
     with pytest.raises(ValidationError, match="not supported"):
         await verify_channel_credentials("pigeon", {}, {})

@@ -27,7 +27,7 @@ from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.models import Order, OrderStatusHistory
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import AuditLog
+from app.platform.platform.models import AuditLog
 
 # ------------------------------------------------------------------ fixtures ----
 
@@ -532,7 +532,7 @@ async def test_the_detail_route_answers_the_address_a_correction_stored(
     from fastapi import Response
 
     from app.core.idempotency import etag_for
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
     from app.applications.apparel.modules.orders.router import get_order
 
     tenant_id = tenant_ctx.tenant_id
@@ -572,7 +572,7 @@ async def test_the_detail_route_hides_the_address_without_pii_read(db: AsyncSess
     """DB-backed (CI-only): the guard is on the route, not only the builder."""
     from fastapi import Response
 
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
     from app.applications.apparel.modules.orders.router import get_order
 
     tenant_id = tenant_ctx.tenant_id
@@ -614,7 +614,7 @@ async def test_the_shipping_write_does_not_echo_back_what_the_read_withholds(
     """
     from fastapi import Response
 
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
     from app.applications.apparel.modules.orders import router as orders_router
     from app.applications.apparel.modules.orders.router import ShippingUpdateRequest
 
@@ -657,7 +657,7 @@ async def test_the_shipping_write_echoes_the_address_to_a_pii_reader(
     dialog that just submitted a corrected address must see it come back."""
     from fastapi import Response
 
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
     from app.applications.apparel.modules.orders import router as orders_router
     from app.applications.apparel.modules.orders.router import ShippingUpdateRequest
 
@@ -691,7 +691,7 @@ async def test_the_shipping_write_requires_the_write_permission(db: AsyncSession
     from httpx import ASGITransport, AsyncClient
 
     from app.main import create_app
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
     ctx = TenantContext(
         session=db,

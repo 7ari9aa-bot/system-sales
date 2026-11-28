@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import bind_tenant
 from app.core.middleware import RATE_LIMIT_BUCKETS, RATE_LIMIT_WINDOW_SECONDS, _bucket_for
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.platform.models import WebhookDelivery, WebhookEndpoint
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.platform.models import WebhookDelivery, WebhookEndpoint
 
 
 def _app_for(db: AsyncSession, tenant_id: uuid.UUID, *, permissions: set[str] | None = None):

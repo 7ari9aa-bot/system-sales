@@ -167,7 +167,7 @@ async def resolve_tenant_currency(session: AsyncSession, tenant_id: UUID) -> str
     """The currency this tenant trades in (``DEFAULT_CURRENCY`` if unset)."""
     from sqlalchemy import select
 
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     code = (
         await session.execute(select(Tenant.currency).where(Tenant.id == tenant_id))

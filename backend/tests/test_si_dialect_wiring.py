@@ -16,9 +16,9 @@ from app.applications.apparel.modules.ai.gateway import AIGateway
 from app.applications.apparel.modules.ai.models import Agent
 from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
 from app.applications.apparel.modules.ai.providers import ChatCompletionResult
-from app.modules.identity.models import Tenant
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.identity.models import Tenant
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

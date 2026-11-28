@@ -23,7 +23,8 @@ class ApparelModule:
         key: Stable identifier, used in permissions, routes and events.
         title_ar: Arabic name shown to the owner.
         title_en: English name, used in code and logs.
-        backend_modules: Packages under ``app.modules`` that implement it.
+        backend_modules: Packages under ``app/applications/apparel/modules`` that
+            implement it.
         settings_domains: Settings registry domains this module owns.
         events: Domain events it publishes (industry-applications §17).
     """

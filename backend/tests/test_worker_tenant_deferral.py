@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.core.events.bus import ATTEMPTS_META_KEY, Event
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from app.workers.base import (
     DeferredError,
     PermanentError,

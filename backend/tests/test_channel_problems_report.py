@@ -5,7 +5,7 @@ looked at `webhook_events`, so a message that arrived and was never turned into 
 dashboard green.
 """
 
-from app.modules.platform.diagnostics import (
+from app.platform.platform.diagnostics import (
     CHANNEL_FAILURE_THRESHOLD,
     UNPROCESSED_EVENT_STATUSES,
     channel_problems,

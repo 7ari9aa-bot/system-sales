@@ -24,7 +24,8 @@ MODULES_ROOT = Path(__file__).resolve().parents[1] / "app" / "modules"
 APPAREL_MODULES_ROOT = (
     Path(__file__).resolve().parents[1] / "app" / "applications" / "apparel" / "modules"
 )
-MODULES_ROOTS = (MODULES_ROOT, APPAREL_MODULES_ROOT)
+PLATFORM_ROOT = Path(__file__).resolve().parents[1] / "app" / "platform"
+MODULES_ROOTS = (MODULES_ROOT, PLATFORM_ROOT, APPAREL_MODULES_ROOT)
 
 #: Platform modules that still reach into an application, one entry per
 #: (source file, application module) pair. This is debt, not permission: the
@@ -46,10 +47,10 @@ KNOWN_PLATFORM_TO_APPAREL_LEAKS: frozenset[tuple[str, str]] = frozenset(
 )
 
 _ABSOLUTE = re.compile(
-    r"^\s*from\s+app\.(?:applications\.apparel\.)?modules\.([A-Za-z_]\w*)"
+    r"^\s*from\s+app\.(?:applications\.apparel\.modules|platform|modules)\.([A-Za-z_]\w*)"
 )
 _ABSOLUTE_IMPORT = re.compile(
-    r"^\s*import\s+app\.(?:applications\.apparel\.)?modules\.([A-Za-z_]\w*)"
+    r"^\s*import\s+app\.(?:applications\.apparel\.modules|platform|modules)\.([A-Za-z_]\w*)"
 )
 _RELATIVE = re.compile(r"^\s*from\s+(\.{2,})([A-Za-z_]\w*)")
 

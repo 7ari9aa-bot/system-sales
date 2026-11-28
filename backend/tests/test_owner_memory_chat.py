@@ -106,7 +106,7 @@ async def test_list_while_off_says_it_is_off_but_still_shows_what_is_kept(db, te
 async def test_list_never_shows_another_users_notes(db, tenant_ctx):
     import uuid
 
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     other = User(email=f"o-{uuid.uuid4().hex[:8]}@t.local", password_hash="x", full_name="Other")
     db.add(other)
@@ -136,7 +136,7 @@ async def test_forget_all_with_nothing_saved_does_not_claim_to_have_erased(db, t
 async def test_forget_all_does_not_touch_a_colleagues_notes(db, tenant_ctx):
     import uuid
 
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     other = User(email=f"o-{uuid.uuid4().hex[:8]}@t.local", password_hash="x", full_name="Other")
     db.add(other)

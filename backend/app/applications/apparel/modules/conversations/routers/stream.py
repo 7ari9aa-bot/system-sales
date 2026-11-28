@@ -33,7 +33,7 @@ async def _stream_auth(request: Request, token: str | None) -> AuthedUser:
     workspace may still use the API. A deactivated user or a removed member kept
     a live feed of message bodies for the whole token lifetime.
 
-    Mirrors `app.modules.realtime.router._sse_auth`. It deliberately opens its
+    Mirrors `app.platform.realtime.router._sse_auth`. It deliberately opens its
     OWN short-lived session rather than taking the request-scoped `DbSession`:
     FastAPI tears dependency generators down only AFTER the response completes,
     so a request-scoped session would pin a pooled connection for the entire
@@ -43,7 +43,7 @@ async def _stream_auth(request: Request, token: str | None) -> AuthedUser:
     from sqlalchemy import select as sa_select
     from sqlalchemy import text as sa_text
 
-    from app.modules.identity.models import Tenant, TenantUser, User
+    from app.platform.identity.models import Tenant, TenantUser, User
 
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):

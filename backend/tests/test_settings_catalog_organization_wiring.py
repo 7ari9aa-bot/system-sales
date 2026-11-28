@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.errors import ValidationError
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -90,7 +90,7 @@ async def test_raising_the_limit_allows_more(db, tenant_ctx):
 
 
 async def _create_workspace(db: AsyncSession, tenant_id: uuid.UUID):
-    from app.modules.identity.services.hierarchy import HierarchyService
+    from app.platform.identity.services.hierarchy import HierarchyService
 
     return await HierarchyService.create_workspace(
         db, tenant_id, name=f"WS-{uuid.uuid4().hex[:6]}", slug=f"ws-{uuid.uuid4().hex[:6]}"

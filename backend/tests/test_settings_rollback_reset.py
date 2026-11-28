@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import inspect
 
-from app.modules.settings import service as service_module
-from app.modules.settings.service import SettingsService, rollback_restore_value
+from app.platform.settings import service as service_module
+from app.platform.settings.service import SettingsService, rollback_restore_value
 
 
 def test_rolling_back_a_reset_restores_the_value_before_it():

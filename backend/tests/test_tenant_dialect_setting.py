@@ -20,10 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.identity.router import tenants_router
-from app.modules.identity.service import TenantSettingsService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.identity.router import tenants_router
+from app.platform.identity.service import TenantSettingsService
 
 PATH = "/tenants/{tenant_id}/dialect"
 
@@ -95,7 +95,7 @@ async def test_a_value_off_the_list_is_refused_and_not_stored(
 async def test_the_change_leaves_an_audit_row_with_before_and_after(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     await TenantSettingsService.set_dialect(
         db, tenant_ctx.tenant_id, "levantine", actor_user_id=tenant_ctx.user.id
@@ -118,7 +118,7 @@ async def test_the_change_leaves_an_audit_row_with_before_and_after(
 async def test_choosing_the_same_dialect_twice_writes_one_audit_row(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     for _ in range(2):
         await TenantSettingsService.set_dialect(

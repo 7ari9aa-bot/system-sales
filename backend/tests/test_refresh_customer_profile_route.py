@@ -121,7 +121,7 @@ def test_the_route_is_gated_on_conversations_read() -> None:
 
 async def test_that_gate_refuses_a_user_without_the_permission(db, tenant_ctx) -> None:
     from app.core.errors import PermissionDeniedError
-    from app.modules.identity.deps import require_permission
+    from app.platform.identity.deps import require_permission
 
     ctx = await ctx_for(db, tenant_ctx, "owner")
     ctx.permission_codes = set()

@@ -15,9 +15,9 @@ from typing import Any
 import pytest
 
 from app.core.errors import ConflictError
-from app.modules.effects.models import EffectLedger
-from app.modules.effects.schemas import compute_effect_idempotency_key
-from app.modules.effects.service import EffectService
+from app.platform.effects.models import EffectLedger
+from app.platform.effects.schemas import compute_effect_idempotency_key
+from app.platform.effects.service import EffectService
 
 TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 OTHER_TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")

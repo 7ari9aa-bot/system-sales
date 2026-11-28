@@ -14,9 +14,9 @@ import pytest
 import app.core.model_registry  # noqa: F401 — complete table registration
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError
-from app.modules.identity.services.auth import AuthService
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.identity.services.auth import AuthService
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 
 
 async def _tenant(db):

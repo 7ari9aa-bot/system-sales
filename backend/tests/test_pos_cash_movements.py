@@ -9,7 +9,7 @@ import pytest
 
 from app.main import create_app
 from app.modules.errors import ConflictError, PermissionDeniedError, ValidationError
-from app.modules.identity.models import Role, TenantUser, User
+from app.platform.identity.models import Role, TenantUser, User
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till
 
@@ -219,7 +219,7 @@ async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> 
 
     from app.applications.apparel.modules.pos.models import PosSessionHandover
     from app.applications.apparel.modules.pos.router import HandoverRequest, handover_session
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, _, _ = await till(db, tenant_ctx)
     # A till that takes payments has a drawer, and a drawer changes hands counted.
@@ -256,7 +256,7 @@ async def test_the_handover_route_carries_the_counted_drawer(db, tenant_ctx) -> 
 @pytest.mark.asyncio
 async def test_the_handover_route_refuses_an_uncounted_drawer(db, tenant_ctx) -> None:
     from app.applications.apparel.modules.pos.router import HandoverRequest, handover_session
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     shift, _, _ = await till(db, tenant_ctx)
     # A till that takes payments has a drawer, and a drawer changes hands counted.

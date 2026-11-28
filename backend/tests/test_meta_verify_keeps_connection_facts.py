@@ -12,9 +12,9 @@ import uuid
 
 from app.applications.apparel.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES
 from app.applications.apparel.modules.customers.routers.integrations import _integration_output
-from app.modules.platform.integration_verifier import VerifiedChannel
-from app.modules.platform.models import Integration
-from app.modules.platform.service import IntegrationCredentialsService
+from app.platform.platform.integration_verifier import VerifiedChannel
+from app.platform.platform.models import Integration
+from app.platform.platform.service import IntegrationCredentialsService
 from tests.test_customers_http_surface import TENANT, _call
 
 GRANTED = list(FACEBOOK_PAGE_SCOPES)

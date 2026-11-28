@@ -25,10 +25,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.dialects import postgresql
 
 from app.main import create_app
-from app.modules.automation import router as automation_router
-from app.modules.automation.models import Workflow, WorkflowExecution, WorkflowVersion
-from app.modules.automation.service import WorkflowService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.automation import router as automation_router
+from app.platform.automation.models import Workflow, WorkflowExecution, WorkflowVersion
+from app.platform.automation.service import WorkflowService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
 OTHER_TENANT = uuid.UUID("99999999-9999-9999-9999-999999999999")

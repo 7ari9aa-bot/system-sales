@@ -24,9 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant, TenantUser, User
-from app.modules.settings.service import SettingsService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant, TenantUser, User
+from app.platform.settings.service import SettingsService
 
 ALL_PERMS = {"settings:read", "settings:write"}
 

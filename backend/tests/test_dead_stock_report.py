@@ -16,8 +16,8 @@ from sqlalchemy import text
 
 from app.core.dead_stock_report import DeadStockReportService
 from app.applications.apparel.modules.inventory.service import InventoryService
-from app.modules.settings.registry import ENFORCED_KEYS, REGISTRY
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import ENFORCED_KEYS, REGISTRY
+from app.platform.settings.service import SettingsService
 from tests.test_profit_report import _return, _sale, _variant, _wh
 
 pytestmark = pytest.mark.asyncio

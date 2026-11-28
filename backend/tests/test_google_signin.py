@@ -20,9 +20,9 @@ from sqlalchemy import select, text
 
 from app.core.errors import PermissionDeniedError
 from app.core.security import create_access_token, create_oauth_state_token
-from app.modules.identity.models import TenantUser, User
-from app.modules.identity.routers import google as google_router
-from app.modules.identity.service import AuthService, GoogleMfaRequired
+from app.platform.identity.models import TenantUser, User
+from app.platform.identity.routers import google as google_router
+from app.platform.identity.service import AuthService, GoogleMfaRequired
 
 # ---------------------------------------------------------------- routes (no DB)
 
@@ -36,7 +36,7 @@ def app_client(monkeypatch):
     async def _no_session():
         yield object()
 
-    from app.modules.identity.deps import get_db
+    from app.platform.identity.deps import get_db
 
     app.dependency_overrides[get_db] = _no_session
     return TestClient(app, follow_redirects=False)
@@ -282,7 +282,7 @@ async def test_a_new_google_address_gets_a_full_workspace_linked_to_the_visitor(
 
 
 async def test_google_session_is_recorded_so_logout_and_refresh_work(db):
-    from app.modules.identity.models import RefreshToken
+    from app.platform.identity.models import RefreshToken
 
     _pair, user, _t = await AuthService.login_with_google(db, email=_addr(), email_verified=True)
     rows = (
@@ -415,7 +415,7 @@ def _client_with(session, monkeypatch):
     async def _session():
         yield session
 
-    from app.modules.identity.deps import get_db
+    from app.platform.identity.deps import get_db
 
     app.dependency_overrides[get_db] = _session
     return TestClient(app, follow_redirects=False)
@@ -508,7 +508,7 @@ async def test_a_signup_that_fails_midway_leaves_no_half_made_workspace(db, monk
             yield db
             await tx.commit() if tx.is_active else None
 
-    from app.modules.identity.deps import get_db
+    from app.platform.identity.deps import get_db
 
     app.dependency_overrides[get_db] = _session
 

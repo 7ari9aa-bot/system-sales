@@ -12,7 +12,7 @@ from app.applications.apparel.modules.ai.secret_backfill import (
     model_config_vault_key,
     set_model_config_secret,
 )
-from app.modules.platform.models import SecretValue
+from app.platform.platform.models import SecretValue
 
 
 async def test_backfill_moves_inline_key_into_secret_values(db, tenant_ctx):

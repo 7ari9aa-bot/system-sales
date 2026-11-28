@@ -15,11 +15,11 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ValidationError
-from app.modules.notifications.digest import NotificationAggregator
-from app.modules.notifications.models import NotificationPreference
-from app.modules.notifications.router import me_router, router
-from app.modules.notifications.schemas import NotificationPreferencesUpdate
-from app.modules.notifications.service import NotificationPreferencesService
+from app.platform.notifications.digest import NotificationAggregator
+from app.platform.notifications.models import NotificationPreference
+from app.platform.notifications.router import me_router, router
+from app.platform.notifications.schemas import NotificationPreferencesUpdate
+from app.platform.notifications.service import NotificationPreferencesService
 
 # --------------------------------------------------------------- the window --
 

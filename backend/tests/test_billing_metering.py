@@ -46,20 +46,20 @@ from sqlalchemy.ext.asyncio import (
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.main import create_app
-from app.modules.billing.models import Invoice, UsageRecord
-from app.modules.billing.router import (
+from app.platform.billing.models import Invoice, UsageRecord
+from app.platform.billing.router import (
     ClosePeriodRequest,
     close_billing_period,
     get_billing_snapshot,
 )
-from app.modules.billing.service import (
+from app.platform.billing.service import (
     BillingSnapshotService,
     PeriodUsage,
     _as_decimal,
     _quantize_money,
 )
-from app.modules.identity.deps import TenantContext
-from app.modules.identity.models import Tenant
+from app.platform.identity.deps import TenantContext
+from app.platform.identity.models import Tenant
 
 PERIOD_START = date(2026, 8, 1)
 PERIOD_END = date(2026, 9, 1)

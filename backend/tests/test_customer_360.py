@@ -23,7 +23,7 @@ from app.applications.apparel.modules.customers.models import CustomerEvent
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.applications.apparel.modules.customers.timeline import Customer360Service
 from app.modules.errors import NotFoundError
-from app.modules.operations.models import Task
+from app.platform.operations.models import Task
 from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
 from app.applications.apparel.modules.orders.service import OrderService
 

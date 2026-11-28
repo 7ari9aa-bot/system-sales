@@ -21,15 +21,15 @@ from sqlalchemy import text as sa_text
 
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.customers.models import Customer, CustomerIdentity
-from app.modules.identity.deps import get_db
-from app.modules.identity.models import Tenant
-from app.modules.privacy.meta_deletion import (
+from app.platform.identity.deps import get_db
+from app.platform.identity.models import Tenant
+from app.platform.privacy.meta_deletion import (
     InvalidSignedRequest,
     deletion_status,
     file_deletion_request,
     parse_signed_request,
 )
-from app.modules.privacy.models import DataSubjectRequest
+from app.platform.privacy.models import DataSubjectRequest
 
 SECRET = "test-app-secret"
 

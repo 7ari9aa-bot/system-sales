@@ -23,7 +23,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.errors import DomainError, build_error_body
 from app.core.idempotency import IDEMPOTENT_PATHS, IdempotencyMiddleware
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.pos.router import router as pos_router
 from app.applications.apparel.modules.pos.service import PosService
 from tests.test_order_idempotency import MemoryStore

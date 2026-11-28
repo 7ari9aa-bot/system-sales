@@ -58,7 +58,7 @@ class ReplenishmentService:
         """Upsert the replenishment policy for a variant at a warehouse."""
         if safety_stock is None:
             # Not stated for this variant: the shop-wide buffer applies.
-            from app.modules.settings.service import SettingsService
+            from app.platform.settings.service import SettingsService
 
             safety_stock = int(
                 await SettingsService(session, tenant_id).value("inventory.safety_stock_default")

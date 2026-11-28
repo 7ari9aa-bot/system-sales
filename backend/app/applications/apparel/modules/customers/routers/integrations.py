@@ -13,20 +13,20 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
-from app.modules.billing.service import EntitlementService
+from app.platform.billing.service import EntitlementService
 from app.applications.apparel.modules.customers import meta_unsubscribe, schemas
 from app.applications.apparel.modules.customers.meta_scopes import missing_facebook_scopes, missing_instagram_scopes
 from app.applications.apparel.modules.customers.schemas import IntegrationBody
-from app.modules.identity.models import Invitation, Role
-from app.modules.platform.integration_verifier import (
+from app.platform.identity.models import Invitation, Role
+from app.platform.platform.integration_verifier import (
     channel_field_allow_lists,
     configure_telegram_webhook,
     signed_webhook_providers,
     telegram_webhook_secret_configured,
     verify_channel_credentials,
 )
-from app.modules.platform.models import Integration, WebhookEvent
-from app.modules.platform.service import AuditService, IntegrationCredentialsService
+from app.platform.platform.models import Integration, WebhookEvent
+from app.platform.platform.service import AuditService, IntegrationCredentialsService
 
 from ._deps import SettingsReadCtx, TenantContext, require_permission
 

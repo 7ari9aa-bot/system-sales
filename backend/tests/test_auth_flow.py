@@ -17,8 +17,8 @@ from sqlalchemy import select, text
 from app.core.errors import ConflictError, PermissionDeniedError, ValidationError
 from app.core.secrets import get_envelope_store
 from app.core.security import decode_token
-from app.modules.identity.deps import _role_permissions
-from app.modules.identity.models import (
+from app.platform.identity.deps import _role_permissions
+from app.platform.identity.models import (
     EmailVerificationToken,
     PasswordResetToken,
     RefreshToken,
@@ -26,7 +26,7 @@ from app.modules.identity.models import (
     TenantUser,
     User,
 )
-from app.modules.identity.service import (
+from app.platform.identity.service import (
     _REFRESH_REUSE_GRACE_SECONDS,
     AuthService,
     EmailAlreadyRegistered,
@@ -617,7 +617,7 @@ async def test_e2e_login_mfa_refresh_grace_replay_then_reuse_revokes_family(
     from fakeredis.aioredis import FakeRedis
 
     from app.core import mfa
-    from app.modules.identity import service as identity_service
+    from app.platform.identity import service as identity_service
 
     # One fakeredis serves BOTH incidental redis deps of the walk: the MFA
     # challenge store (app.core.mfa.get_redis) and the per-(ip,email) lockout
@@ -753,7 +753,7 @@ async def test_register_without_a_visitor_id_still_works_and_stores_null(db):
 )
 def test_register_request_drops_a_malformed_visitor_id_instead_of_refusing_signup(raw):
     """Attribution must never be able to break registration: a bad id is dropped."""
-    from app.modules.identity.schemas import RegisterRequest
+    from app.platform.identity.schemas import RegisterRequest
 
     body = RegisterRequest(email="a@example.com", password="Probe-1234", visitor_id=raw)
     assert body.visitor_id is None
@@ -761,7 +761,7 @@ def test_register_request_drops_a_malformed_visitor_id_instead_of_refusing_signu
 
 @pytest.mark.parametrize("good", ["abcdefgh", "aa72cf42-c1e3-4ad8-9320-48fb28f34804", "a" * 64])
 def test_register_request_keeps_a_wellformed_visitor_id(good):
-    from app.modules.identity.schemas import RegisterRequest
+    from app.platform.identity.schemas import RegisterRequest
 
     assert (
         RegisterRequest(email="a@example.com", password="Probe-1234", visitor_id=good).visitor_id

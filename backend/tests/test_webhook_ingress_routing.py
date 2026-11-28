@@ -36,8 +36,8 @@ from sqlalchemy import func, select
 from app.core.db import bind_tenant
 from app.core.secrets import encrypt_credentials_dict
 from app.main import create_app
-from app.modules.identity.models import Tenant
-from app.modules.platform.models import Integration, WebhookEvent
+from app.platform.identity.models import Tenant
+from app.platform.platform.models import Integration, WebhookEvent
 
 CHANNEL_SECRET = "test-app-secret"
 

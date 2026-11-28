@@ -26,16 +26,16 @@ from starlette.requests import Request
 from app.core.db import bind_tenant
 from app.core.errors import PermissionDeniedError
 from app.core.security import create_access_token, decode_token
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     AuthedUser,
     _policy_for,
     _tenant_recovery_path,
     get_tenant_ctx,
     tenant_may_use_api,
 )
-from app.modules.identity.models import Role, Tenant, TenantUser
-from app.modules.identity.service import STATE_POLICIES, AuthService
-from app.modules.realtime.router import _sse_auth, _tenant_may_stream
+from app.platform.identity.models import Role, Tenant, TenantUser
+from app.platform.identity.service import STATE_POLICIES, AuthService
+from app.platform.realtime.router import _sse_auth, _tenant_may_stream
 
 
 def _request(path: str, *, authorization: str | None = None) -> Request:
@@ -218,7 +218,7 @@ async def test_the_stream_closes_once_the_workspace_may_no_longer_stream(
     refusal forever (d1f93a3 reconnect-storm fix), so silence is no longer the
     expected shape — one explanatory frame, then the stream ends.
     """
-    from app.modules.realtime import router as rt
+    from app.platform.realtime import router as rt
 
     monkeypatch.setattr(rt, "get_redis", lambda: _NoEventsRedis())
     monkeypatch.setattr(rt, "_HEARTBEAT_INTERVAL_S", 0)  # heartbeat due at once
@@ -243,7 +243,7 @@ async def test_the_stream_keeps_heartbeating_while_the_workspace_is_allowed(
     monkeypatch,
 ) -> None:
     """The gate must be consulted, not simply kill every stream."""
-    from app.modules.realtime import router as rt
+    from app.platform.realtime import router as rt
 
     monkeypatch.setattr(rt, "get_redis", lambda: _NoEventsRedis())
     monkeypatch.setattr(rt, "_HEARTBEAT_INTERVAL_S", 0)

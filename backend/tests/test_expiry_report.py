@@ -16,7 +16,7 @@ import app.applications.apparel.modules.purchasing.models  # noqa: F401 - regist
 from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.applications.apparel.modules.inventory.models import InventoryLot
 from app.applications.apparel.modules.inventory.services.expiry import expiry_report
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

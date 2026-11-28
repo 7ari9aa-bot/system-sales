@@ -30,9 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import bind_tenant
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.platform.models import Integration
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.platform.models import Integration
 
 PROVIDER = "whatsapp"
 # This suite pins the generic integration lifecycle independently from the

@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import PermissionDeniedError
 from app.applications.apparel.modules.conversations.routers.inbox import _ensure_channel_send
-from app.modules.platform.models import ChannelUserAccess
-from app.modules.platform.services.channel_access import (
+from app.platform.platform.models import ChannelUserAccess
+from app.platform.platform.services.channel_access import (
     allowed_providers,
     sendable_providers,
 )

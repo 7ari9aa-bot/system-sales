@@ -32,7 +32,7 @@ from app.main import create_app
 from app.applications.apparel.modules.ai.approvals import APPROVALS_PAGE_SIZE, ApprovalService
 from app.applications.apparel.modules.ai.models import ApprovalRequest
 from app.applications.apparel.modules.ai.router import router as ai_router
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 LIST_PATH = "/api/v1/ai/approvals"
 ACTION = "create_order"

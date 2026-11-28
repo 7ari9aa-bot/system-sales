@@ -241,7 +241,7 @@ class _OnePollRequest:
 async def _gateway_frames(
     monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, batch: list[Any]
 ) -> list[bytes]:
-    from app.modules.realtime import router as rt
+    from app.platform.realtime import router as rt
 
     monkeypatch.setattr(rt, "get_redis", lambda: _BatchRedis(batch))
     frames: list[bytes] = []

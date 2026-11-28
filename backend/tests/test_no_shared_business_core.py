@@ -8,7 +8,7 @@ it also pins the bridge that keeps a not-yet-migrated database working.
 
 from __future__ import annotations
 
-from app.modules.applications.manifests import (
+from app.platform.applications.manifests import (
     LEGACY_KEYS,
     REGISTRY,
     all_manifests,
@@ -16,7 +16,7 @@ from app.modules.applications.manifests import (
     normalize_key,
     resolve_installation_order,
 )
-from app.modules.applications.routing import GROUP_APPLICATIONS, application_for_group
+from app.platform.applications.routing import GROUP_APPLICATIONS, application_for_group
 
 
 def test_no_manifest_calls_itself_a_core() -> None:

@@ -20,7 +20,7 @@ from app.applications.apparel.modules.einvoice.providers.eta.calc import q5
 from app.applications.apparel.modules.pos.eta_adapter import NotReady, build_context, eta_settings, split_line
 from app.applications.apparel.modules.pos.models import PosReceipt
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 
@@ -506,7 +506,7 @@ class TestTheFrontendNamesEveryChoice:
         import pathlib
         import re
 
-        from app.modules.settings.registry import list_definitions
+        from app.platform.settings.registry import list_definitions
 
         root = pathlib.Path(__file__).resolve().parents[2]
         src = (root / "frontend/src/cashier/api/shopPolicy.js").read_text(encoding="utf-8")

@@ -6,7 +6,7 @@ What the register said vs. what the code says today
 **P2** filed two defects: (a) a billing-hosted ``POST /api/v1/notifications``
 404'd because its ``platform_router`` was never registered, and (b) "two
 different notification contracts, one dead". Both are now resolved — by
-DELETION, not by mounting. ``app/modules/billing/router.py``'s own header says
+DELETION, not by mounting. ``app/platform/billing/router.py``'s own header says
 the duplicate was never mounted and was "dead code that would have shadowed the
 notifications centre the moment anyone did mount it", and ``app.main`` registers
 the live ``modules/notifications/router.py`` exactly once. What is left is the
@@ -48,16 +48,16 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from sqlalchemy.dialects import postgresql
 
-import app.modules.billing.router as billing_router
+import app.platform.billing.router as billing_router
 from app.core.errors import NotFoundError, ValidationError
 from app.main import create_app
-from app.modules.notifications.router import MarkReadRequest, mark_read
-from app.modules.notifications.service import NotificationService
+from app.platform.notifications.router import MarkReadRequest, mark_read
+from app.platform.notifications.service import NotificationService
 
 #: The page ceiling the service and the route both honour.
 PAGE_MAX = 200
 
-NOTIFICATIONS_MODULE = "app.modules.notifications.router"
+NOTIFICATIONS_MODULE = "app.platform.notifications.router"
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 

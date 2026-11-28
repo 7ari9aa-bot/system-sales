@@ -19,7 +19,7 @@ from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.catalog.services.variants import ConflictError
-from app.modules.identity.deps import get_db, get_tenant_ctx
+from app.platform.identity.deps import get_db, get_tenant_ctx
 from tests._pos_helpers import _warehouse, ctx_for
 
 pytestmark = pytest.mark.asyncio

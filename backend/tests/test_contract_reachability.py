@@ -78,14 +78,14 @@ from app.core.events.writer import add_outbox_event
 from app.core.idempotency import etag_for, parse_if_match
 from app.core.pagination import decode_cursor, encode_cursor
 from app.core.security import create_visitor_token, decode_visitor_token
-from app.modules.billing.models import Invoice
-from app.modules.billing.service import BillingSnapshotService, PeriodUsage
-from app.modules.platform.metrics import (
+from app.platform.billing.models import Invoice
+from app.platform.billing.service import BillingSnapshotService, PeriodUsage
+from app.platform.platform.metrics import (
     METRIC_DEFINITIONS,
     MetricRegistry,
     MetricSpec,
 )
-from app.modules.platform.models import MetricDefinition
+from app.platform.platform.models import MetricDefinition
 
 # ---------------------------------------------------------------------------
 # 1. §19 envelope: the writer's output must be what deserialize() rebuilds
@@ -546,7 +546,7 @@ TABLES_NEVER_READ: dict[str, str] = {
     "AdSet": "marketing — Meta ad ingest that would fill it is unbuilt.",
     "Ad": "marketing — same; no producer, no reader.",
     # platform/models.py — the `automations` table. The automation that shipped
-    # is app/modules/automation/ on the `workflows` tables, so nothing here is
+    # is app/platform/automation/ on the `workflows` tables, so nothing here is
     # ever written or read: two schemas for one feature, one of them abandoned.
     "Automation": "platform — superseded by automation/workflows; no writer, no reader.",
     # Written by a live path, read by nothing: the row is a receipt, not a source.
@@ -744,7 +744,7 @@ class _ServedSession:
 
 
 def _served_ctx(rows: list[Any], *, permissions: set[str]) -> Any:
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
 
     user = AuthedUser(
         id=uuid.uuid4(),
@@ -766,7 +766,7 @@ async def _drive(method: str, path: str, rows: list[Any], *, permissions: set[st
     from fastapi import Depends
 
     from app.main import create_app
-    from app.modules.identity.deps import get_db, get_tenant_ctx
+    from app.platform.identity.deps import get_db, get_tenant_ctx
 
     ctx = _served_ctx(rows, permissions=permissions)
     app = create_app()
@@ -822,7 +822,7 @@ async def test_metric_definitions_table_is_served_by_a_route() -> None:
 
 async def test_feature_flags_table_is_served_by_a_route() -> None:
     """``GET /platform/flags`` carries the row's feature name end to end."""
-    from app.modules.platform.models import FeatureFlag
+    from app.platform.platform.models import FeatureFlag
 
     marker = "row-only.feature.marker"
     row = FeatureFlag(tenant_id=SERVED_TENANT, feature=marker, enabled=True, rollout_percent=100)
@@ -841,7 +841,7 @@ async def test_secret_references_table_is_served_by_a_route(monkeypatch) -> None
     and is read on a live route, so the register's "dead table" claim is stale.
     """
     from app.core.secrets import InMemorySecretStore, set_secret_store
-    from app.modules.platform.models import SecretReference
+    from app.platform.platform.models import SecretReference
 
     monkeypatch.setattr("app.core.secrets._store", InMemorySecretStore())
     set_secret_store(InMemorySecretStore())
@@ -876,7 +876,7 @@ def test_router_definition_fields_are_the_synced_registry_fields() -> None:
     convergence stop describing the same contract — and the route would report
     a tenant as clean while the seed kept rewriting it.
     """
-    from app.modules.platform.metrics import _SYNCED_FIELDS
-    from app.modules.platform.router import _DEFINITION_FIELDS
+    from app.platform.platform.metrics import _SYNCED_FIELDS
+    from app.platform.platform.router import _DEFINITION_FIELDS
 
     assert set(_DEFINITION_FIELDS) == set(_SYNCED_FIELDS)

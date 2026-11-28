@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.identity.models import Location, UserLocationAccess, Workspace
+from app.platform.identity.models import Location, UserLocationAccess, Workspace
 
 
 async def _rebind(session: AsyncSession, tenant_id: uuid.UUID) -> None:
@@ -96,7 +96,7 @@ async def test_location_access_is_self_or_tenant_owner(db: AsyncSession, tenant_
     the tenant's owner (the admin who issues grants) — and to nobody else.
     The owner clause mirrors who holds ``settings:write`` in ROLE_MATRIX."""
     from app.core.security import hash_password
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     ws = Workspace(
         tenant_id=tenant_ctx.tenant_id,

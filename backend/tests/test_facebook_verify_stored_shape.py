@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.platform.channel_specs.facebook import FacebookConnectionSpec
+from app.platform.platform.channel_specs.facebook import FacebookConnectionSpec
 
 PAGE_ID = "1215323418341930"
 

@@ -11,12 +11,12 @@ import pytest
 from app.applications.apparel.modules.conversations.inbox import InboxQuery
 from app.applications.apparel.modules.conversations.models import Conversation
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.deps import AuthedUser, TenantContext
-from app.modules.identity.models import User
-from app.modules.platform.models import Integration
-from app.modules.platform.routers.owner import owner_channel_matrix, owner_visitors
-from app.modules.platform.routers.telemetry import TelemetryEventIn, ingest_telemetry
-from app.modules.platform.services.channel_access import (
+from app.platform.identity.deps import AuthedUser, TenantContext
+from app.platform.identity.models import User
+from app.platform.platform.models import Integration
+from app.platform.platform.routers.owner import owner_channel_matrix, owner_visitors
+from app.platform.platform.routers.telemetry import TelemetryEventIn, ingest_telemetry
+from app.platform.platform.services.channel_access import (
     allowed_providers,
     channel_status,
     set_access,
@@ -151,8 +151,8 @@ async def test_system_endpoint_reports_health_and_backlog(db, tenant_ctx):
     """The operator tab: backlog ages, delivery death, and the alarm light."""
     from datetime import timedelta
 
-    from app.modules.platform.models import OutboxEvent, WebhookDelivery, WebhookEndpoint
-    from app.modules.platform.routers.owner import owner_system
+    from app.platform.platform.models import OutboxEvent, WebhookDelivery, WebhookEndpoint
+    from app.platform.platform.routers.owner import owner_system
 
     ctx = _platform_ctx(db, tenant_ctx)
     healthy = await owner_system(ctx)
@@ -198,7 +198,7 @@ async def test_system_endpoint_reports_health_and_backlog(db, tenant_ctx):
 
 async def test_visitor_summary_aggregates_series_errors_and_perf(db, tenant_ctx):
     """Counts and paths only (no payloads) + the hourly series + percentiles."""
-    from app.modules.platform.routers.owner import owner_visitors_summary
+    from app.platform.platform.routers.owner import owner_visitors_summary
 
     request = SimpleNamespace(
         client=SimpleNamespace(host="127.0.0.1"),
@@ -251,7 +251,7 @@ async def test_visitor_summary_aggregates_series_errors_and_perf(db, tenant_ctx)
 async def test_system_and_summary_are_platform_admin_gated(db, tenant_ctx):
     """A plain tenant owner is NOT the platform admin — both refuse with 403."""
     from app.core.errors import PermissionDeniedError
-    from app.modules.platform.routers.owner import owner_system, owner_visitors_summary
+    from app.platform.platform.routers.owner import owner_system, owner_visitors_summary
 
     with pytest.raises(PermissionDeniedError):
         await owner_system(tenant_ctx)

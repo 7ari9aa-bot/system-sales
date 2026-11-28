@@ -25,9 +25,9 @@ import pytest
 
 from app.core.commands import command_hash as compute_command_hash
 from app.core.errors import ConflictError, NotFoundError
-from app.modules.authority.executor import AtomicExecutionService
-from app.modules.authority.service import AuthorityService
-from app.modules.decisions.service import DecisionService
+from app.platform.authority.executor import AtomicExecutionService
+from app.platform.authority.service import AuthorityService
+from app.platform.decisions.service import DecisionService
 
 # ───────────────────────────────────── helpers ──────────────────────────────
 

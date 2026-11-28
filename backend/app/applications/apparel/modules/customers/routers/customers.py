@@ -14,7 +14,7 @@ from app.core.idempotency import (
     parse_if_match,
 )
 from app.core.pagination import decode_cursor, page_slice
-from app.modules.applications.dependencies import workspace_gate
+from app.platform.applications.dependencies import workspace_gate
 from app.applications.apparel.modules.customers import schemas
 from app.applications.apparel.modules.customers.schemas import (
     ArchiveBody,
@@ -26,7 +26,7 @@ from app.applications.apparel.modules.customers.schemas import (
 )
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.applications.apparel.modules.customers.timeline import Customer360Service
-from app.modules.identity.deps import TenantContext, get_tenant_ctx
+from app.platform.identity.deps import TenantContext, get_tenant_ctx
 
 from ._deps import (
     ReadCtx,

@@ -70,7 +70,7 @@ class PosWorker(StreamWorker):
         )
 
     async def _email_receipt(self, envelope: EventEnvelope) -> None:
-        from app.modules.identity.email_delivery import ResendEmailSender
+        from app.platform.identity.email_delivery import ResendEmailSender
 
         receipt_id = envelope.payload.get("receipt_id")
         recipient = envelope.payload.get("email")

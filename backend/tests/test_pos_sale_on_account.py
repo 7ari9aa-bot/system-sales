@@ -12,7 +12,7 @@ from app.applications.apparel.modules.customer_accounts.service import CustomerA
 from app.applications.apparel.modules.orders.models import Order, OrderPayment
 from app.applications.apparel.modules.pos.models import PosCashMovement
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests.test_pos_take_payments import _shop
 
 pytestmark = pytest.mark.asyncio

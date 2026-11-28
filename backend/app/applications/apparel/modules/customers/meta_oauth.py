@@ -40,9 +40,9 @@ from app.applications.apparel.modules.customers.meta_scopes import (
     missing_facebook_scopes,
 )
 from app.applications.apparel.modules.customers.schemas import MetaOAuthChoosePageOut, MetaOAuthStartOut
-from app.modules.identity.deps import DbSession, TenantContext, require_permission
-from app.modules.platform.integration_verifier import verify_channel_credentials
-from app.modules.platform.models import Integration
+from app.platform.identity.deps import DbSession, TenantContext, require_permission
+from app.platform.platform.integration_verifier import verify_channel_credentials
+from app.platform.platform.models import Integration
 
 meta_oauth_router = APIRouter()
 
@@ -904,7 +904,7 @@ async def _connect_page(
     config_id: str,
 ) -> tuple[str, str]:
     """Store the channel for ONE chosen Page (credentials, webhook subscription, activation)."""
-    from app.modules.billing.service import EntitlementService
+    from app.platform.billing.service import EntitlementService
     from app.applications.apparel.modules.customers.routers.integrations import (
         _activate_verified_channel,
         _verification_metadata,

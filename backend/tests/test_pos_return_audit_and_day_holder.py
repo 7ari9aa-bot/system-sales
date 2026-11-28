@@ -20,8 +20,8 @@ from sqlalchemy import select
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.identity.deps import TenantContext, get_db, get_tenant_ctx
-from app.modules.identity.models import User
+from app.platform.identity.deps import TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.models import User
 from app.applications.apparel.modules.pos.models import PosReceipt, PosSession
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import ctx_for, till

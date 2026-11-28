@@ -17,8 +17,8 @@ from app.core.context import (
     correlation_id_contextvar,
     request_id_contextvar,
 )
-from app.modules.platform.models import AuditLog
-from app.modules.platform.service import AuditService
+from app.platform.platform.models import AuditLog
+from app.platform.platform.service import AuditService
 
 
 async def test_audit_write_carries_request_lineage(db, tenant_ctx) -> None:

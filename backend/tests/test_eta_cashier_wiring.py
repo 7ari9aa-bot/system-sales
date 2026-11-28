@@ -16,7 +16,7 @@ from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
 from app.applications.apparel.modules.pos.models import PosReceipt
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 

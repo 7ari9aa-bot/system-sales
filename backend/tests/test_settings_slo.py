@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from fakeredis.aioredis import FakeRedis
 
-from app.modules.settings.slo import (
+from app.platform.settings.slo import (
     SLO_LATENCY_TARGET_SECONDS,
     SLO_NOTIFICATION_SUCCESS_TARGET,
     SLO_OUTBOX_LAG_TARGET_SECONDS,

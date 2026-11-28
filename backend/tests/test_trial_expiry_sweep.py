@@ -18,11 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import bind_tenant
-from app.modules.billing.models import Plan, Subscription
-from app.modules.billing.services.trial_expiry import lock_expired_trials, parse_lock_start
-from app.modules.identity.deps import get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.identity.services.lifecycle import TenantLifecycleService
+from app.platform.billing.models import Plan, Subscription
+from app.platform.billing.services.trial_expiry import lock_expired_trials, parse_lock_start
+from app.platform.identity.deps import get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.identity.services.lifecycle import TenantLifecycleService
 
 CUTOFF = datetime(2026, 12, 1, tzinfo=UTC)
 NOW = datetime(2026, 12, 20, tzinfo=UTC)
@@ -258,7 +258,7 @@ async def test_a_locked_tenant_is_shut_out_of_the_api_but_can_still_reach_billin
     from starlette.requests import Request
 
     from app.core.errors import PermissionDeniedError
-    from app.modules.identity.deps import AuthedUser
+    from app.platform.identity.deps import AuthedUser
 
     def request(path: str) -> Request:
         return Request(
@@ -308,7 +308,7 @@ async def test_a_tenant_that_changed_state_after_being_listed_is_not_locked(
     re-made under the row lock. Here the state changes at exactly that gap: after the candidate
     list is read, when the sweep binds the tenant for its own transaction.
     """
-    from app.modules.billing.services import trial_expiry
+    from app.platform.billing.services import trial_expiry
 
     tenant_id = await _tenant(db, _expired_trial())
     real_bind = trial_expiry.bind_tenant

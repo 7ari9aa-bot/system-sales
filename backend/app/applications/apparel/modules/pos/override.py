@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.modules.identity.deps import TenantCtxDep
+from app.platform.identity.deps import TenantCtxDep
 
 OVERRIDE_PERMISSION = "pos:override"
 

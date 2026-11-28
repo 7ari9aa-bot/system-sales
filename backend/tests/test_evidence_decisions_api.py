@@ -20,8 +20,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.decisions.models import Decision
-from app.modules.identity.deps import TenantContext, get_db, get_tenant_ctx
+from app.platform.decisions.models import Decision
+from app.platform.identity.deps import TenantContext, get_db, get_tenant_ctx
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()

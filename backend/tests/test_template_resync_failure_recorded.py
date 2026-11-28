@@ -11,7 +11,7 @@ import uuid
 from types import SimpleNamespace
 
 from app.applications.apparel.modules.conversations.gateway.ingest import _record_template_resync
-from app.modules.platform.diagnostics import channel_problems
+from app.platform.platform.diagnostics import channel_problems
 
 TENANT = uuid.uuid4()
 

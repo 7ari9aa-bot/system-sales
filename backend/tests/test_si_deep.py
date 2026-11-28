@@ -17,8 +17,8 @@ from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import 
 from app.applications.apparel.modules.ai.models import Agent
 from app.applications.apparel.modules.analytics.contracts import Outcome
 from app.applications.apparel.modules.analytics.persistence import load_analysis
-from app.modules.platform.models import Job
-from app.modules.platform.service import JobService
+from app.platform.platform.models import Job
+from app.platform.platform.service import JobService
 from app.workers.job_runner import get_job_handler
 
 

@@ -48,7 +48,7 @@ async def test_thread_policy_hides_other_tenant_rows_as_app_role(db, tenant_ctx)
     await db.flush()
 
     # A second REAL tenant (the FK lesson again — no synthetic uuid tenants).
-    from app.modules.identity.models import Tenant  # noqa: PLC0415 — test-local import
+    from app.platform.identity.models import Tenant  # noqa: PLC0415 — test-local import
 
     other = Tenant(slug=f"t-{uuid.uuid4().hex[:10]}", name="Other Tenant")
     db.add(other)

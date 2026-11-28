@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError, ExternalProviderError, ValidationError
 from app.core.secrets import encrypt_credentials_dict
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ async def exchange_and_connect(
     redirect_uri: str,
 ) -> tuple[str, str]:
     """Store the Instagram account as the channel. Returns (provider, display name)."""
-    from app.modules.billing.service import EntitlementService
+    from app.platform.billing.service import EntitlementService
     from app.applications.apparel.modules.customers.routers.integrations import _activate_verified_channel
 
     account = await exchange_code(

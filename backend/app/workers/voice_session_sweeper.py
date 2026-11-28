@@ -1,6 +1,6 @@
 """The voice session sweeper, driven across tenants.
 
-``app.modules.voice.application.session_sweeper`` decides and writes; this module
+``app.platform.voice.application.session_sweeper`` decides and writes; this module
 owns the loop around it: enumerate the active tenants, open ONE transaction per
 tenant with ``bind_tenant``, let the service flush, and commit. That split is the
 module rule in this repo — a service never commits, and ``voice_sessions`` is
@@ -23,7 +23,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
-from app.modules.voice.application.session_sweeper import (
+from app.platform.voice.application.session_sweeper import (
     DEFAULT_LIMIT,
     SweepOutcome,
     sweep_tenant_sessions,
@@ -47,7 +47,7 @@ async def sweep_stale_voice_sessions(
     is live for every read and write the service makes and needs no re-bind.
     """
     from app.core.config import get_settings
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     # The silence budgets are settings, resolved HERE rather than bound at import: the scheduler
     # calls this with no arguments, and a deployment that needs a longer budget for long holds must

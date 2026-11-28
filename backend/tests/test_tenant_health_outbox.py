@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 HEALTH_TENANT = uuid.UUID("5550e40c-1111-2222-3333-444444444444")
 OTHER_TENANT = uuid.UUID("5550e40c-9999-2222-3333-444444444444")
@@ -85,7 +85,7 @@ def _outbox_column_refs(sql: str) -> list[str]:
 
 
 def _tenant_row() -> Any:
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     return Tenant(
         id=HEALTH_TENANT,
@@ -98,7 +98,7 @@ def _tenant_row() -> Any:
 
 
 def _admin_ctx(session: Any) -> Any:
-    from app.modules.identity.deps import AuthedUser, TenantContext
+    from app.platform.identity.deps import AuthedUser, TenantContext
 
     user = AuthedUser(
         id=uuid.uuid4(),
@@ -116,7 +116,7 @@ def _admin_ctx(session: Any) -> Any:
 
 
 async def _health() -> tuple[dict, _RecordingSession]:
-    from app.modules.platform.router import admin_get_tenant
+    from app.platform.platform.router import admin_get_tenant
 
     session = _RecordingSession(_tenant_row())
     payload = await admin_get_tenant(_admin_ctx(session), HEALTH_TENANT)

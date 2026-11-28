@@ -26,11 +26,11 @@ from app.applications.apparel.permissions import get_permission, is_write_code
 from app.core.config import get_settings
 from app.core.context import application_key_contextvar
 from app.core.errors import PermissionDeniedError
-from app.modules.applications.access import decide_access
-from app.modules.applications.repository import gather_facts
+from app.platform.applications.access import decide_access
+from app.platform.applications.repository import gather_facts
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, keeps this module importable alone
-    from app.modules.identity.deps import TenantContext
+    from app.platform.identity.deps import TenantContext
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ def require_apparel(permission_code: str) -> Callable[..., object]:
     # process that has no web stack and no database.
     from fastapi import Depends
 
-    from app.modules.identity.deps import get_tenant_ctx
+    from app.platform.identity.deps import get_tenant_ctx
 
     async def dependency(ctx: TenantContext = Depends(get_tenant_ctx)) -> ApparelAccess | None:
         mode = getattr(get_settings(), "apparel_gate_mode", "shadow")

@@ -17,9 +17,9 @@ import uuid
 
 import pytest
 
-from app.modules.voice.domain.states import IllegalTransition
-from app.modules.voice.routers import sessions as api
-from app.modules.voice.runtime.gpt_live import GptLiveProtocolError, GptLiveUnavailable
+from app.platform.voice.domain.states import IllegalTransition
+from app.platform.voice.routers import sessions as api
+from app.platform.voice.runtime.gpt_live import GptLiveProtocolError, GptLiveUnavailable
 
 TENANT = uuid.uuid4()
 SESSION = uuid.uuid4()

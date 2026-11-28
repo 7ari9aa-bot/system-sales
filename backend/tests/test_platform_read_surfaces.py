@@ -43,9 +43,9 @@ from app.core.context import (
     request_id_contextvar,
 )
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.platform.router import router as platform_router
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.platform.router import router as platform_router
 from tests.test_security_events_read_surface import _permission_codes
 
 LIST_PATHS = {
@@ -264,8 +264,8 @@ async def test_outbox_limit_is_bounded(db, tenant_ctx, limit: int) -> None:
 
 async def test_audit_list_returns_only_this_tenants_rows(db, tenant_ctx) -> None:
     from app.core.db import bind_tenant
-    from app.modules.platform.models import AuditLog
-    from app.modules.platform.service import AuditService
+    from app.platform.platform.models import AuditLog
+    from app.platform.platform.service import AuditService
 
     mine = await AuditService.write(
         db,
@@ -321,7 +321,7 @@ async def test_audit_list_returns_only_this_tenants_rows(db, tenant_ctx) -> None
 
 
 async def test_audit_rows_carry_source_lineage_and_real_nulls(db, tenant_ctx) -> None:
-    from app.modules.platform.service import AuditService
+    from app.platform.platform.service import AuditService
 
     req_token: Token = request_id_contextvar.set("req-22-read")
     cor_token: Token = correlation_id_contextvar.set("cor-22-read")
@@ -370,7 +370,7 @@ async def test_audit_rows_carry_source_lineage_and_real_nulls(db, tenant_ctx) ->
 
 
 async def test_audit_filters_narrow_the_read_and_stay_bounded(db, tenant_ctx) -> None:
-    from app.modules.platform.service import AuditService
+    from app.platform.platform.service import AuditService
 
     kept = await AuditService.write(
         db,
@@ -420,7 +420,7 @@ async def test_audit_period_filter_excludes_rows_before_since(db, tenant_ctx) ->
     """The period filter reads real timestamps: a row stamped before ``since``
     is excluded, a row after it is kept — the filter is a period, not a no-op."""
     from app.core.context import actor_kind_contextvar
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     # Shape created_at at INSERT time: audit_logs is append-only at the
     # database layer (fd2026100409 — no UPDATE policy), so a timestamp can

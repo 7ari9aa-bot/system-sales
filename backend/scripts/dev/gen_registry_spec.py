@@ -23,7 +23,7 @@ _BACKEND = Path(__file__).resolve().parents[2]
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from app.modules.settings.registry import (  # noqa: E402
+from app.platform.settings.registry import (  # noqa: E402
     REGISTRY,
     domains,
     list_definitions,
@@ -131,7 +131,7 @@ def generate() -> str:
     lines.append("# Settings Registry Specification")
     lines.append("")
     lines.append(
-        f"> Source of truth: `backend/app/modules/settings/registry.py` — {total} settings."
+        f"> Source of truth: `backend/app/platform/settings/registry.py` — {total} settings."
     )
     lines.append(
         "> This document is **generated** from the code by "

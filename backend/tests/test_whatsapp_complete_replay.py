@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 from tests.test_whatsapp_connect_ordering_and_retry import _connect, _meta, _rows
 
 pytestmark = pytest.mark.asyncio

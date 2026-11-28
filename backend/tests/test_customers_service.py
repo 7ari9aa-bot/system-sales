@@ -180,7 +180,7 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     from app.applications.apparel.modules.conversations.service import ConversationService
     from app.applications.apparel.modules.customers.models import Customer, IdentityMergeEvent
     from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     # two customers, each with an identity + a conversation each
     cust_a = await CustomerService.get_or_create_by_identity(

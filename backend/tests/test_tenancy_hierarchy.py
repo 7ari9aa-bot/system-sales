@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from app.core.config import get_settings
 from app.core.db import bind_tenant
 from app.core.model_registry import Base
-from app.modules.identity.models import Location, Tenant, UserLocationAccess, Workspace
+from app.platform.identity.models import Location, Tenant, UserLocationAccess, Workspace
 
 HIERARCHY_TABLES = (
     Workspace.__table__,

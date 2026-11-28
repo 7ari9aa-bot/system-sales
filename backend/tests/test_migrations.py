@@ -386,7 +386,7 @@ def test_telegram_bot_identity_migration_preflights_and_indexes_bot_id() -> None
     assert "WHEN provider = 'telegram' THEN config->>'bot_id'" in captured[2]
     assert "provider = 'telegram' AND config->>'bot_id' IS NOT NULL" in captured[2]
 
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     model_index = next(
         index
@@ -865,7 +865,7 @@ def test_a_page_still_belongs_to_one_workspace_only() -> None:
 
 
 def test_the_model_declares_the_page_provider_index_not_the_page_alone_index() -> None:
-    from app.modules.platform.models import Integration
+    from app.platform.platform.models import Integration
 
     by_name = {index.name: index for index in Integration.__table__.indexes}
     assert "uq_integrations_active_page_identity" not in by_name

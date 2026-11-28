@@ -26,7 +26,7 @@ from app.core.db import bind_tenant
 from app.main import create_app
 from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult
 from app.applications.apparel.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
-from app.modules.identity.deps import AuthedUser, get_current_user
+from app.platform.identity.deps import AuthedUser, get_current_user
 from tests._pos_helpers import make_tenant, purge_test_tenant
 
 ANSWER = "الإيراد ارتفع 12 بالمئة."

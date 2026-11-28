@@ -30,7 +30,7 @@ from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
 from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
 from app.applications.apparel.modules.analytics.evaluation.synthetic import Scenario, generate_store
 from app.applications.apparel.modules.customers.models import Customer
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from app.applications.apparel.modules.orders.models import Order, OrderPayment, Shipment
 
 

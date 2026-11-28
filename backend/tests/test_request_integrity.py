@@ -759,7 +759,7 @@ async def test_expired_key_is_reclaimed_on_claim(db, tenant_ctx) -> None:
     """expires_at is READ, not just written: an expired key is free again."""
     from datetime import UTC, datetime, timedelta
 
-    from app.modules.platform.models import IdempotencyKey
+    from app.platform.platform.models import IdempotencyKey
 
     scope = idem_scope(tenant_ctx.tenant_id, "POST", ORDERS_PATH)
     digest = body_hash(ORDERS_BODY)
@@ -782,7 +782,7 @@ async def test_expired_key_is_reclaimed_on_claim(db, tenant_ctx) -> None:
 async def test_purge_expired_removes_only_expired_keys(db, tenant_ctx) -> None:
     from datetime import UTC, datetime, timedelta
 
-    from app.modules.platform.models import IdempotencyKey
+    from app.platform.platform.models import IdempotencyKey
 
     scope = idem_scope(tenant_ctx.tenant_id, "POST", ORDERS_PATH)
     db.add_all(
@@ -836,8 +836,8 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.main import create_app
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-    from app.modules.platform.models import IdempotencyKey, WebhookEndpoint
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+    from app.platform.platform.models import IdempotencyKey, WebhookEndpoint
 
     # The middleware's store opens its own session (SessionLocal read at
     # construction time, i.e. inside create_app) — bind it to the test
@@ -850,7 +850,7 @@ async def test_a_retried_webhook_endpoint_registration_creates_exactly_one_endpo
     # The register route re-validates the target URL at write time (S6); the
     # test URL is deliberately fake, so the guard is bypassed here — it is
     # pinned by test_webhook_dispatcher.py on its own.
-    monkeypatch.setattr("app.modules.platform.service.assert_public_url", lambda url: None)
+    monkeypatch.setattr("app.platform.platform.service.assert_public_url", lambda url: None)
 
     app = create_app()
 

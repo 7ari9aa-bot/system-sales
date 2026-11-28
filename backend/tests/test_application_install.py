@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from app.modules.applications import install as install_module
+from app.platform.applications import install as install_module
 
 
 class _Rows:

@@ -19,12 +19,12 @@ from __future__ import annotations
 import inspect
 import pathlib
 
-from app.modules.settings import service as service_module
-from app.modules.settings.schemas import BulkSetSettingsRequest
-from app.modules.settings.service import SettingsService
+from app.platform.settings import service as service_module
+from app.platform.settings.schemas import BulkSetSettingsRequest
+from app.platform.settings.service import SettingsService
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
-ROUTER = (BACKEND / "app/modules/settings/router.py").read_text(encoding="utf-8")
+ROUTER = (BACKEND / "app/platform/settings/router.py").read_text(encoding="utf-8")
 SOURCE = inspect.getsource(service_module)
 
 
@@ -85,7 +85,7 @@ def test_the_request_schema_accepts_a_null_revision() -> None:
 
 
 def test_change_request_states_include_stale() -> None:
-    from app.modules.settings.models import CHANGE_REQUEST_STATES
+    from app.platform.settings.models import CHANGE_REQUEST_STATES
 
     assert "stale" in CHANGE_REQUEST_STATES
     assert "trusted_apply" in SOURCE

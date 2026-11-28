@@ -51,7 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import create_app
 from app.applications.apparel.modules.analytics import retention
 from app.applications.apparel.modules.analytics import router as analytics_router
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 POSITION_PATH = "/api/v1/analytics/retention"
 CHOOSE_PATH_TPL = "/api/v1/analytics/retention/policies/{data_class}"

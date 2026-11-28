@@ -8,20 +8,20 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.voice.application.omnichannel import (
+from app.platform.voice.application.omnichannel import (
     AsyncVoicePipeline,
     InboundVoiceNote,
 )
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.domain.channels import MediaMode, contract_for
-from app.modules.voice.security.capabilities import (
+from app.platform.voice.domain.channels import MediaMode, contract_for
+from app.platform.voice.security.capabilities import (
     AuthenticationLevel,
     ChannelType,
 )
-from app.modules.voice.security.channel_identity import (
+from app.platform.voice.security.channel_identity import (
     ChannelHandle,
     ChannelIdentityResolver,
     HandleLink,

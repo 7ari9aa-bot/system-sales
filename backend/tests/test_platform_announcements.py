@@ -30,10 +30,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.platform.models import PlatformAnnouncement, PlatformAnnouncementDismissal
-from app.modules.platform.router import router as platform_router
-from app.modules.platform.services.announcements import active_for_user, dismiss
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.platform.models import PlatformAnnouncement, PlatformAnnouncementDismissal
+from app.platform.platform.router import router as platform_router
+from app.platform.platform.services.announcements import active_for_user, dismiss
 
 ROUTE_PATHS = {
     "active": "/platform/announcements/active",

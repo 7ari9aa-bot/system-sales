@@ -32,9 +32,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.automation.models import Workflow
-from app.modules.automation.service import WorkflowService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.automation.models import Workflow
+from app.platform.automation.service import WorkflowService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.orders.service import OrderService
 

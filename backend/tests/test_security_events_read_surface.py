@@ -31,10 +31,10 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.platform.models import SecurityEvent
-from app.modules.platform.router import router as platform_router
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.platform.models import SecurityEvent
+from app.platform.platform.router import router as platform_router
 
 LIST_PATH = "/api/v1/platform/security-events"
 ROUTE_PATH = "/platform/security-events"

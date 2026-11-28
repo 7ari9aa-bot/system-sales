@@ -27,10 +27,10 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.modules.voice.application.client_delegation import ClientDelegationService
-from app.modules.voice.application.live_loop import TranscriptBuffer
-from app.modules.voice.runtime import gpt_live_transport
-from app.modules.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
+from app.platform.voice.application.client_delegation import ClientDelegationService
+from app.platform.voice.application.live_loop import TranscriptBuffer
+from app.platform.voice.runtime import gpt_live_transport
+from app.platform.voice.runtime.gpt_live import GptLiveConfig, GptLiveProvider
 
 QUESTION = "كام مبيعات النهاردة يا عم؟"
 ANSWER = "مبيعات النهاردة اتناشر ألف وأربعمية جنيه."

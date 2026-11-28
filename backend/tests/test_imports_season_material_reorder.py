@@ -11,17 +11,17 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
-from app.modules.imports import apply as apply_mod
-from app.modules.imports.apply import apply_batch
-from app.modules.imports.fields import (
+from app.platform.imports import apply as apply_mod
+from app.platform.imports.apply import apply_batch
+from app.platform.imports.fields import (
     PRODUCT_FIELDS,
     SHEET_PRODUCTS,
     SHEET_VARIANTS,
     VARIANT_FIELDS,
 )
-from app.modules.imports.models import ImportRow, ImportSession
-from app.modules.imports.normalize import CellError, parse_reorder_level
-from app.modules.imports.verdicts import encode_values, values_of
+from app.platform.imports.models import ImportRow, ImportSession
+from app.platform.imports.normalize import CellError, parse_reorder_level
+from app.platform.imports.verdicts import encode_values, values_of
 from app.applications.apparel.modules.inventory.stock_view import StockLevelService
 from app.workers.import_runner import PORTS
 

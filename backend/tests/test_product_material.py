@@ -14,7 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     AuthedUser,
     TenantContext,
     get_db,

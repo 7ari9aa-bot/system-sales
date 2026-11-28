@@ -17,7 +17,7 @@ from app.applications.apparel.modules.financial.models import (
     FinancialTransaction,
 )
 from app.applications.apparel.modules.financial.service import FinancialService
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 
 router = APIRouter(prefix="/financial", tags=["financial"])
 

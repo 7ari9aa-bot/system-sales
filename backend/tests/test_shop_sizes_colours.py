@@ -201,7 +201,7 @@ def test_the_rack_order_is_unchanged_for_the_built_in_letter_sizes() -> None:
 async def _call(db, tenant_ctx, method, path, *, perms, body=None):
     from httpx import ASGITransport, AsyncClient
 
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
     from tests.security.test_role_authz_matrix import _authz_app
 
     ctx = TenantContext(

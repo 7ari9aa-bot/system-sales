@@ -102,7 +102,7 @@ class TestPrivilegeHygiene:
 
 class TestLocationGrantTenancy:
     async def test_self_grant_to_a_foreign_tenant_location_is_refused(self, db, tenant_ctx):
-        from app.modules.identity.models import Location
+        from app.platform.identity.models import Location
 
         other_tenant = uuid.uuid4()
         await db.execute(
@@ -113,7 +113,7 @@ class TestLocationGrantTenancy:
         # while creating its workspace + location, then bind back to the
         # caller's tenant.
         await bind_tenant(db, other_tenant)
-        from app.modules.identity.models import Workspace
+        from app.platform.identity.models import Workspace
 
         foreign_ws = Workspace(
             tenant_id=other_tenant,

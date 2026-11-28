@@ -24,7 +24,7 @@ from sqlalchemy import select, text
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.conversations import whatsapp_sync
 from app.applications.apparel.modules.conversations.models import WhatsAppSyncRun
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 NUMBER = "456"
 EPOCH = "2026-11-24T00:00:00+00:00"

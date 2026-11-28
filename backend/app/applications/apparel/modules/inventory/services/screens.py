@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 #: screen name -> the owner's switch for it. One table: a fourth screen is a row, not a branch.
 SCREEN_SWITCHES: dict[str, str] = {
@@ -40,7 +40,7 @@ async def get_setting_value(session: AsyncSession, tenant_id: UUID, key: str) ->
     """Read one setting's effective value.
 
     A thin wrapper so other inventory services read a setting without each
-    adding its own ``from app.modules.settings.service import SettingsService``
+    adding its own ``from app.platform.settings.service import SettingsService``
     — that import already lives at module scope here, and the module-boundary
     ratchet counts every import statement.
     """

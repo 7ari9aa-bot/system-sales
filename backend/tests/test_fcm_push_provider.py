@@ -56,7 +56,7 @@ class TestFCMPushProvider:
 
     @pytest.mark.asyncio
     async def test_send_when_configured(self, monkeypatch) -> None:
-        from app.modules.notifications.providers import FCMPushProvider
+        from app.platform.notifications.providers import FCMPushProvider
 
         monkeypatch.setenv("FCM_SERVER_KEY", "test-fcm-key-123")
 
@@ -79,7 +79,7 @@ class TestFCMPushProvider:
 
     @pytest.mark.asyncio
     async def test_noop_when_not_configured(self, monkeypatch) -> None:
-        from app.modules.notifications.providers import FCMPushProvider
+        from app.platform.notifications.providers import FCMPushProvider
 
         monkeypatch.delenv("FCM_SERVER_KEY", raising=False)
 
@@ -96,7 +96,7 @@ class TestFCMPushProvider:
 
     @pytest.mark.asyncio
     async def test_raises_on_http_error(self, monkeypatch) -> None:
-        from app.modules.notifications.providers import FCMPushProvider
+        from app.platform.notifications.providers import FCMPushProvider
 
         monkeypatch.setenv("FCM_SERVER_KEY", "test-fcm-key-123")
 
@@ -112,7 +112,7 @@ class TestFCMPushProvider:
 
     @pytest.mark.asyncio
     async def test_raises_on_network_error(self, monkeypatch) -> None:
-        from app.modules.notifications.providers import FCMPushProvider
+        from app.platform.notifications.providers import FCMPushProvider
 
         monkeypatch.setenv("FCM_SERVER_KEY", "test-fcm-key-123")
 

@@ -10,9 +10,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.modules.applications.dependencies import workspace_gate
+from app.platform.applications.dependencies import workspace_gate
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import (
+from app.platform.identity.deps import (
     TenantContext,
     TenantCtxDep,
     get_tenant_ctx,
@@ -98,7 +98,7 @@ async def list_movements(
         reservation_id=reservation_id,
         limit=limit,
     )
-    from app.modules.identity.service import UserService
+    from app.platform.identity.service import UserService
 
     actor_names = await UserService.names(ctx.session, {m.actor_user_id for m in rows} - {None})
     return [

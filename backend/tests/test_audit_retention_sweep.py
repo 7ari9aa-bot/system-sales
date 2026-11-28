@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 import app.core.model_registry  # noqa: F401 — complete table registration (FK chains)
-import app.modules.platform.models  # noqa: F401 — ensure tables registered
+import app.platform.platform.models  # noqa: F401 — ensure tables registered
 from app.core.db import bind_tenant
 
 
@@ -61,7 +61,7 @@ async def _row_exists(db, row_id: uuid.UUID) -> bool:
     """Check whether a specific audit row still exists (by id)."""
     from sqlalchemy import select
 
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     result = await db.execute(select(AuditLog.id).where(AuditLog.id == row_id))
     return result.scalar() is not None
@@ -72,9 +72,9 @@ class TestAuditRetentionSweep:
 
     @pytest.mark.asyncio
     async def test_deletes_old_rows_and_keeps_recent(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         email = f"ret-{_uuid_hex()}@test.local"
         _user, tenant = await AuthService.register(
@@ -125,9 +125,9 @@ class TestAuditRetentionSweep:
 
     @pytest.mark.asyncio
     async def test_noop_when_retention_disabled(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         email = f"ret-{_uuid_hex()}@test.local"
         _user, tenant = await AuthService.register(
@@ -165,9 +165,9 @@ class TestAuditRetentionSweep:
 
     @pytest.mark.asyncio
     async def test_tenant_scoped_only_deletes_own_rows(self, db) -> None:
-        from app.modules.identity.service import AuthService
-        from app.modules.settings.registry import Scope
-        from app.modules.settings.service import SettingsService
+        from app.platform.identity.service import AuthService
+        from app.platform.settings.registry import Scope
+        from app.platform.settings.service import SettingsService
 
         # Tenant A — retention 30 days, has an old row.
         email_a = f"ret-a-{_uuid_hex()}@test.local"

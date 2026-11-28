@@ -44,7 +44,7 @@ from app.applications.apparel.modules.inventory.models import (
 )
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import ScheduledJob
+from app.platform.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 
 # ------------------------------------------------------------------ sources --

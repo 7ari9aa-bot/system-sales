@@ -33,7 +33,7 @@ from app.applications.apparel.modules.catalog.apparel.matrix import color_column
 from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import ValidationError
 from app.applications.apparel.modules.expenses.models import Expense
-from app.modules.identity.deps import TenantContext, require_permission
+from app.platform.identity.deps import TenantContext, require_permission
 from app.applications.apparel.modules.inventory.models import InventoryCostLayer, InventoryMovement
 from app.applications.apparel.modules.orders.models import Order, OrderItem
 from app.applications.apparel.modules.pos.models import PosReturnLine
@@ -447,7 +447,7 @@ class _ProfitGate:
         if "settings:write" in ctx.permission_codes:
             return ctx
         # Imported here, like dead_stock_report: a module-level import would add one more edge.
-        from app.modules.settings.service import SettingsService
+        from app.platform.settings.service import SettingsService
 
         allowed = (await SettingsService(ctx.session, ctx.tenant_id).resolve(PROFIT_SETTING)).value
         if allowed is not True:

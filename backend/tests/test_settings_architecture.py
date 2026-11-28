@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings.events import SettingsChangedEvent
-from app.modules.settings.registry import (
+from app.platform.settings.events import SettingsChangedEvent
+from app.platform.settings.registry import (
     REGISTRY,
     ApplyMode,
     Sensitivity,
@@ -80,7 +80,7 @@ class TestRegistryExtensions:
         assert defn.max_value == 1.0
 
     def test_domains_list_includes_new_agents(self):
-        from app.modules.settings.registry import domains
+        from app.platform.settings.registry import domains
 
         all_domains = domains()
         assert "customer_agent" in all_domains

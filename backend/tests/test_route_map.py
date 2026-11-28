@@ -18,7 +18,7 @@ from app.core.route_map.registry import (
 )
 from app.core.route_map.scan import ACCESS_KINDS, scan
 from app.main import create_app
-from app.modules.settings.capabilities import CAPABILITIES
+from app.platform.settings.capabilities import CAPABILITIES
 
 
 @pytest.fixture(scope="module")

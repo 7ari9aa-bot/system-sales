@@ -20,7 +20,7 @@ from app.core.shop_type import (
     choose_vertical,
 )
 from app.applications.apparel.modules.catalog.models import Category
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -169,7 +169,7 @@ async def test_the_has_categories_check_names_the_shop_in_its_own_statement(
 async def _call(db, tenant_ctx, method: str, path: str, *, perms: set[str]):
     from httpx import ASGITransport, AsyncClient
 
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
     from tests.security.test_role_authz_matrix import _authz_app
 
     ctx = TenantContext(

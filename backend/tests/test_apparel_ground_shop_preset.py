@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings.presets import PRESETS
-from app.modules.settings.registry import REGISTRY
-from app.modules.settings.service import SettingsService
+from app.platform.settings.presets import PRESETS
+from app.platform.settings.registry import REGISTRY
+from app.platform.settings.service import SettingsService
 
 NAME = "apparel_ground_shop"
 OWNER = {"settings:write", "settings:read"}

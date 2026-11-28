@@ -36,9 +36,9 @@ from app.core.events.schemas import deserialize
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import TenantSettingsService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import TenantSettingsService
 from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders import money as order_money
@@ -540,7 +540,7 @@ async def test_a_three_decimal_currency_is_refused_because_the_columns_hold_two(
 
 
 async def test_the_currency_change_leaves_an_audit_row(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     await TenantSettingsService.set_currency(
         db, tenant_ctx.tenant_id, "SAR", actor_user_id=tenant_ctx.user.id

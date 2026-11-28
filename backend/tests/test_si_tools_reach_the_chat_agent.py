@@ -19,7 +19,7 @@ from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import 
 from app.applications.apparel.modules.ai.gateway import AIGateway
 from app.applications.apparel.modules.ai.models import Agent, AgentTool
 from app.applications.apparel.modules.ai.providers import ChatCompletionResult
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 
 @pytest.fixture(autouse=True)

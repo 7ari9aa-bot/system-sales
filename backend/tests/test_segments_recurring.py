@@ -26,7 +26,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.modules.platform.models import Job
+from app.platform.platform.models import Job
 from app.workers.job_runner import registered_job_kinds
 from app.workers.scheduler_worker import _HANDLERS, RECURRING_JOBS
 

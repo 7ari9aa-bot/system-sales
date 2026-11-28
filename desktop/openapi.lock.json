@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 725,
-    "sha256": "4aa83a65acefcf2dfe68e3939de19e9c0eeadcf165ffb9b11e2a1bbfbe3cef0b",
+    "sha256": "70b4f08ed4f74b13cad51a3291227ace15aafcc14a8bb508b2b25d22a85f2cf6",
     "typed_operations": 408
   },
   "spec": {
@@ -12932,7 +12932,7 @@
           "properties": {
             "items": {
               "items": {
-                "$ref": "#/components/schemas/app__modules__identity__schemas__LocationOut"
+                "$ref": "#/components/schemas/app__platform__identity__schemas__LocationOut"
               },
               "title": "Items",
               "type": "array"
@@ -29290,7 +29290,7 @@
           "title": "ReturnRequest",
           "type": "object"
         },
-        "app__modules__activity__router__SummaryOut": {
+        "app__platform__activity__router__SummaryOut": {
           "properties": {
             "counts": {
               "additionalProperties": {
@@ -29306,7 +29306,7 @@
           "title": "SummaryOut",
           "type": "object"
         },
-        "app__modules__identity__schemas__LocationOut": {
+        "app__platform__identity__schemas__LocationOut": {
           "properties": {
             "code": {
               "anyOf": [
@@ -29366,7 +29366,7 @@
           "title": "LocationOut",
           "type": "object"
         },
-        "app__modules__voice__routers__sessions__CloseSessionRequest": {
+        "app__platform__voice__routers__sessions__CloseSessionRequest": {
           "additionalProperties": false,
           "properties": {
             "reason": {
@@ -30105,7 +30105,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__activity__router__SummaryOut"
+                    "$ref": "#/components/schemas/app__platform__activity__router__SummaryOut"
                   }
                 }
               },
@@ -54504,7 +54504,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__identity__schemas__LocationOut"
+                    "$ref": "#/components/schemas/app__platform__identity__schemas__LocationOut"
                   }
                 }
               },
@@ -55492,7 +55492,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__identity__schemas__LocationOut"
+                    "$ref": "#/components/schemas/app__platform__identity__schemas__LocationOut"
                   }
                 }
               },
@@ -104666,7 +104666,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__voice__routers__sessions__CloseSessionRequest"
+                  "$ref": "#/components/schemas/app__platform__voice__routers__sessions__CloseSessionRequest"
                 }
               }
             },
@@ -106051,7 +106051,7 @@
       },
       "/api/v1/webhooks/meta/data-deletion": {
         "post": {
-          "description": "Meta's data-deletion callback: verify `signed_request`, open a deletion request.\n\nMeta needs `{url, confirmation_code}` back. The merchant executes the request from the\nprivacy screen; see `app.modules.privacy.meta_deletion` for why it is not automatic.",
+          "description": "Meta's data-deletion callback: verify `signed_request`, open a deletion request.\n\nMeta needs `{url, confirmation_code}` back. The merchant executes the request from the\nprivacy screen; see `app.platform.privacy.meta_deletion` for why it is not automatic.",
           "operationId": "meta_data_deletion_api_v1_webhooks_meta_data_deletion_post",
           "responses": {
             "200": {

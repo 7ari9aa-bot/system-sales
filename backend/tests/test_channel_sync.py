@@ -181,13 +181,13 @@ from sqlalchemy import text as sa_text  # noqa: E402
 from app.core.errors import ValidationError as DomainValidationError  # noqa: E402
 from app.core.secrets import decrypt_credentials_dict, encrypt_credentials_dict  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.modules.identity.deps import (  # noqa: E402
+from app.platform.identity.deps import (  # noqa: E402
     AuthedUser,
     TenantContext,
     get_tenant_ctx,
 )
-from app.modules.platform.integration_verifier import VerifiedChannel  # noqa: E402
-from app.modules.platform.models import AuditLog, Integration  # noqa: E402
+from app.platform.platform.integration_verifier import VerifiedChannel  # noqa: E402
+from app.platform.platform.models import AuditLog, Integration  # noqa: E402
 
 
 def _sync_app(db: AsyncSession, tenant_ctx) -> object:

@@ -201,7 +201,7 @@ async def test_one_shop_never_sees_another_shops_money_through_the_merged_tool(d
     import uuid
 
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     mine = tenant_ctx.tenant_id
     v = await _variant(db, mine, "Mine", cost=10)

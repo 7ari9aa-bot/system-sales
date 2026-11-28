@@ -23,11 +23,11 @@ from app.core.db import bind_tenant
 from app.applications.apparel.modules.ai.assistant.contracts import AssistantTurnResult
 from app.applications.apparel.modules.ai.assistant.service import AssistantTurnService
 from app.applications.apparel.modules.ai.models import Agent, AIChatMessage
-from app.modules.voice.application import assistant_turn
-from app.modules.voice.application.session_manager import VoiceSessionManager
-from app.modules.voice.domain.models import VoiceSessionRow, VoiceTurnRow
-from app.modules.voice.domain.personas import PrincipalType
-from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.platform.voice.application import assistant_turn
+from app.platform.voice.application.session_manager import VoiceSessionManager
+from app.platform.voice.domain.models import VoiceSessionRow, VoiceTurnRow
+from app.platform.voice.domain.personas import PrincipalType
+from app.platform.voice.infrastructure.sql_store import SqlSessionStore
 
 SCOPES = frozenset({"assistant:use"})
 ANSWER = "الأوردر اتشحن امبارح الساعة ستة"

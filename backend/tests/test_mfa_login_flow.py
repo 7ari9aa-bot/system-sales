@@ -117,7 +117,7 @@ class TestMfaLoginFlow:
     async def test_login_challenges_then_verify_issues_tokens(
         self, tenant_ctx, redis_client, monkeypatch, app_sessions_on_test_connection
     ):
-        from app.modules.identity.service import AuthService
+        from app.platform.identity.service import AuthService
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -141,7 +141,7 @@ class TestMfaLoginFlow:
     async def test_login_without_mfa_still_issues_tokens_directly(
         self, tenant_ctx, redis_client, monkeypatch
     ):
-        from app.modules.identity.service import AuthService
+        from app.platform.identity.service import AuthService
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         pair, user, _ = await AuthService.login(
@@ -154,8 +154,8 @@ class TestMfaLoginFlow:
     ):
         import sqlalchemy as sa
 
-        from app.modules.identity.service import AuthService
-        from app.modules.platform.models import SecurityEvent
+        from app.platform.identity.service import AuthService
+        from app.platform.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -201,7 +201,7 @@ class TestMfaLoginFlow:
         right → login challenges → 5 wrong codes lock → a sixth attempt is
         refused even with the CORRECT code → after the lock a full login
         succeeds again."""
-        from app.modules.identity.service import AuthService
+        from app.platform.identity.service import AuthService
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -258,8 +258,8 @@ class TestMfaLoginFlow:
 
         import sqlalchemy as sa
 
-        from app.modules.identity.service import AuthService
-        from app.modules.platform.models import SecurityEvent
+        from app.platform.identity.service import AuthService
+        from app.platform.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session
@@ -329,8 +329,8 @@ class TestMfaLoginFlow:
 
         import sqlalchemy as sa
 
-        from app.modules.identity.service import AuthService
-        from app.modules.platform.models import SecurityEvent
+        from app.platform.identity.service import AuthService
+        from app.platform.platform.models import SecurityEvent
 
         monkeypatch.setattr("app.core.mfa.get_redis", lambda: redis_client)
         db = tenant_ctx.session

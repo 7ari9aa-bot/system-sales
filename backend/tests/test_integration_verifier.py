@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.platform.integration_verifier import (
+from app.platform.platform.integration_verifier import (
     configure_telegram_webhook,
     verify_channel_credentials,
 )
@@ -283,7 +283,7 @@ def test_the_verifier_client_is_timeout_bounded(monkeypatch) -> None:  # noqa: A
                 **kwargs,
             )
 
-    monkeypatch.setattr("app.modules.platform.integration_verifier.httpx.AsyncClient", _SpyClient)
+    monkeypatch.setattr("app.platform.platform.integration_verifier.httpx.AsyncClient", _SpyClient)
 
     import anyio
 

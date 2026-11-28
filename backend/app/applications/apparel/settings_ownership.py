@@ -11,7 +11,7 @@ appear without somebody deciding who owns it (industry-applications §12).
 from __future__ import annotations
 
 from app.applications.apparel.manifest import MODULES
-from app.modules.settings.sector_boundary import PLATFORM_DOMAINS
+from app.platform.settings.sector_boundary import PLATFORM_DOMAINS
 
 #: Domains the platform owns: the account, its people, its security, its bill.
 #: None of these describe how a shop trades, so no sector application may claim

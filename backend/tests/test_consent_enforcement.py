@@ -248,7 +248,7 @@ async def _grant(
     purpose="marketing",
     status="granted",
 ) -> object:
-    from app.modules.privacy.models import Consent
+    from app.platform.privacy.models import Consent
 
     consent = Consent(
         tenant_id=tenant_id,
@@ -339,7 +339,7 @@ async def test_a_transactional_send_is_not_blocked_by_missing_marketing_consent(
 
 async def test_consent_for_one_tenant_does_not_authorise_another(db, tenant_ctx):
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     # Tenant A: consent granted, promotional send allowed.
     customer_a, conversation_a = await _customer_and_conversation(db, tenant_ctx.tenant_id)

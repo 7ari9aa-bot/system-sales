@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.modules.billing.models import Invoice, TaxRate
-from app.modules.billing.services.tax import (
+from app.platform.billing.models import Invoice, TaxRate
+from app.platform.billing.services.tax import (
     calculate_tax_amount,
     get_effective_tax_rate,
     resolve_applicable_tax_rate,

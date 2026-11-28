@@ -17,11 +17,11 @@ from pathlib import Path
 # provision.py itself does — this is the faithful set of tables, not a convenience import.
 import app.core.model_registry  # noqa: E402,F401
 from app.core.db import Base
-from app.modules.voice.domain.models import VoiceSessionRow, VoiceTurnRow
-from app.modules.voice.domain.personas import PersonaType, PrincipalType
-from app.modules.voice.domain.states import VoiceSessionState
-from app.modules.voice.infrastructure.sql_store import _to_record
-from app.modules.voice.security.capabilities import AuthenticationLevel, ChannelType
+from app.platform.voice.domain.models import VoiceSessionRow, VoiceTurnRow
+from app.platform.voice.domain.personas import PersonaType, PrincipalType
+from app.platform.voice.domain.states import VoiceSessionState
+from app.platform.voice.infrastructure.sql_store import _to_record
+from app.platform.voice.security.capabilities import AuthenticationLevel, ChannelType
 
 MIGRATION = (
     Path(__file__).resolve().parents[2]

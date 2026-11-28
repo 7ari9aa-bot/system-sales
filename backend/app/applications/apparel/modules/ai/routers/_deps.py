@@ -10,7 +10,7 @@ from fastapi import Depends
 
 from app.core.ai_entitlement import require_ai_entitlement
 from app.core.errors import PermissionDeniedError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.platform.identity.deps import TenantContext, TenantCtxDep, require_permission
 
 SettingsCtx = Annotated[TenantContext, Depends(require_permission("settings:write"))]
 SettingsReadCtx = Annotated[TenantContext, Depends(require_permission("settings:read"))]
@@ -49,7 +49,7 @@ ApproveCtx = Annotated[TenantContext, Depends(require_ai_approve())]
 
 
 # The plan gate lives in ``app/core`` because the voice module declares the SAME dependency
-# (``VoiceAICtx`` in app/modules/voice/routers/sessions.py): a tenant without ``CanUseAI`` must be
+# (``VoiceAICtx`` in app/platform/voice/routers/sessions.py): a tenant without ``CanUseAI`` must be
 # refused the spoken assistant exactly as the typed one, at the same status with the same body.
 # Importing it from here would have added a counted voice -> ai edge; core is the shared home.
 # Re-exported so every existing import of ``require_ai_entitlement`` keeps working.

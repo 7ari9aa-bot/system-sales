@@ -2,7 +2,7 @@
 
 What this lane covers
 --------------------
-``app/modules/automation/`` had NO test of its own: the only assertions ever
+``app/platform/automation/`` had NO test of its own: the only assertions ever
 made against it were two ``WorkflowService.create`` validation calls buried in
 ``tests/test_module_routers.py`` and an If-Match router sweep in
 ``tests/test_if_match_wave2.py``. Nothing drove the lifecycle rules, the
@@ -39,13 +39,13 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.automation.models import (
+from app.platform.automation.models import (
     Workflow,
     WorkflowExecution,
     WorkflowFailure,
     WorkflowVersion,
 )
-from app.modules.automation.service import _MAX_STEPS, WorkflowService
+from app.platform.automation.service import _MAX_STEPS, WorkflowService
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
 OTHER = uuid.UUID("99999999-9999-9999-9999-999999999999")
@@ -533,7 +533,7 @@ async def test_the_engine_delegates_side_effects_and_bounds_the_steps(
     """§134-style execution bound, and no inline I/O: the notify/webhook steps go
     through the owning module's queueing service (which stages outbox rows), so
     the engine never publishes anything itself."""
-    from app.modules.platform.service import NotificationService, WebhookService
+    from app.platform.platform.service import NotificationService, WebhookService
 
     notify, webhook = _Recorder(), _Recorder()
     monkeypatch.setattr(NotificationService, "queue", staticmethod(notify))

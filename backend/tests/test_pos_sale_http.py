@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.identity.deps import get_db, get_tenant_ctx
+from app.platform.identity.deps import get_db, get_tenant_ctx
 from app.applications.apparel.modules.inventory.models import InventoryBalance
 from app.applications.apparel.modules.orders.models import OrderPayment
 from app.applications.apparel.modules.pos.models import PosCashMovement

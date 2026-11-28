@@ -321,7 +321,7 @@ async def record_voice_turn_usage(
     )
     # Call-scoped: billing.services imports this package's models, so a module
     # scope import here would be a cycle (the same reason budget.py does it).
-    from app.modules.billing.services.subscriptions import BillingService
+    from app.platform.billing.services.subscriptions import BillingService
 
     await BillingService.record_usage(
         session,

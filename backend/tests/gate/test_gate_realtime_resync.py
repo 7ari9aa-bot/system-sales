@@ -33,7 +33,7 @@ import pytest
 
 from app.core.events.bus import RedisStreamsBus
 from app.core.events.schemas import build_envelope, serialize
-from app.modules.realtime import router as rt
+from app.platform.realtime import router as rt
 
 pytestmark = [pytest.mark.gate]
 

@@ -317,7 +317,7 @@ async def test_process_webhook_event_persists_comments_without_fanout(db, tenant
     """The webhook sync block stores the comment and marks the ingress row
     processed — comments never become messages, so no AI run can trigger."""
     from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
-    from app.modules.platform.models import WebhookEvent
+    from app.platform.platform.models import WebhookEvent
 
     tenant_id = tenant_ctx.tenant_id
 

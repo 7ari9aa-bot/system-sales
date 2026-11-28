@@ -13,8 +13,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.applications.apparel.modules.conversations.read_signal_service import ReadSignalService
-from app.modules.platform.models import Integration
-from app.modules.platform.services import channel_access
+from app.platform.platform.models import Integration
+from app.platform.platform.services import channel_access
 from tests.test_whatsapp_read_signal import _chat, _conversation, _Spy
 
 pytestmark = pytest.mark.asyncio
@@ -38,7 +38,7 @@ def decrypts(monkeypatch):
         return {"access_token": "secret-token", "phone_number_id": "from-secret"}
 
     monkeypatch.setattr(
-        "app.modules.platform.services.secrets.IntegrationCredentialsService.decrypt", _decrypt
+        "app.platform.platform.services.secrets.IntegrationCredentialsService.decrypt", _decrypt
     )
     return seen
 

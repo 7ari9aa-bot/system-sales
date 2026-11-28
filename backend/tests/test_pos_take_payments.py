@@ -17,7 +17,7 @@ from app.applications.apparel.modules.orders.models import OrderPayment
 from app.applications.apparel.modules.pos.models import PosCashMovement, PosReceipt
 from app.applications.apparel.modules.pos.profiles import PosProfileService
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import start_day, till
 
 pytestmark = pytest.mark.asyncio

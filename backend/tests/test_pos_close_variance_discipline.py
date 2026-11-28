@@ -17,7 +17,7 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import start_day, till
 
 pytestmark = pytest.mark.asyncio
@@ -238,7 +238,7 @@ async def test_another_shops_session_cannot_be_closed_with_a_reason(db, tenant_c
 async def _call(db, tenant_ctx, method, path, *, perms, body=None):
     from httpx import ASGITransport, AsyncClient
 
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
     from tests.security.test_role_authz_matrix import _authz_app
 
     ctx = TenantContext(

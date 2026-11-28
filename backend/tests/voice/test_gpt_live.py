@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from app.modules.voice.runtime.gpt_live import (
+from app.platform.voice.runtime.gpt_live import (
     PCM_RATE,
     GptLiveConfig,
     GptLiveProtocolError,

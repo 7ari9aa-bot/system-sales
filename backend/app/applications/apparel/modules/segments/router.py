@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError
-from app.modules.applications.dependencies import workspace_gate
-from app.modules.identity.deps import (
+from app.platform.applications.dependencies import workspace_gate
+from app.platform.identity.deps import (
     TenantContext,
     TenantCtxDep,
     get_tenant_ctx,

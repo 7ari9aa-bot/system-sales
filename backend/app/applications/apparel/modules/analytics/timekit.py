@@ -1,6 +1,6 @@
 """Merchant-day bucketing for analytics (gap M10, §47/M10 remainder).
 
-Spec §55's read models and the metric registry (``app/modules/platform/metrics.py``)
+Spec §55's read models and the metric registry (``app/platform/platform/metrics.py``)
 pin the rule: a calendar-day bucket is the MERCHANT's day, never UTC midnight.
 Bucketing a UTC+4 market by UTC shifts every sale before 04:00 local into the
 previous day, so a "daily" series is wrong by a few hours at both ends.

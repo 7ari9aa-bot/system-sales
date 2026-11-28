@@ -17,7 +17,7 @@ from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.pos.eta_adapter import build_context, eta_settings, payment_method_for
 from app.applications.apparel.modules.pos.models import PosReceipt
 from app.applications.apparel.modules.pos.service import PosService
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 from tests.test_pos_take_payments import _sell, _shop
 
 pytestmark = pytest.mark.asyncio

@@ -511,7 +511,7 @@ async def test_the_report_reads_only_what_the_caller_may_see(db, tenant_ctx):
     import uuid
 
     from app.applications.apparel.modules.ai.chat import service
-    from app.modules.identity.models import User
+    from app.platform.identity.models import User
 
     agent = await _seed(db, tenant_ctx.tenant_id)
     staff = User(email=f"staff-{uuid.uuid4().hex[:8]}@test.local", password_hash="x", full_name="S")

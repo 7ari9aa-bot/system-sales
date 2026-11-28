@@ -9,24 +9,24 @@ import uuid
 import pytest
 
 from app.core.errors import NotFoundError, PermissionDeniedError
-from app.modules.voice.application.inbound_calls import (
+from app.platform.voice.application.inbound_calls import (
     InboundCallHandler,
     InMemoryCallStore,
     SignatureRejected,
     SignatureVerifier,
 )
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.domain.calls import (
+from app.platform.voice.domain.calls import (
     CallStatus,
     IllegalCallTransition,
     LegStatus,
     next_call_status,
 )
-from app.modules.voice.domain.recording import decide_recording
-from app.modules.voice.domain.routing import (
+from app.platform.voice.domain.recording import decide_recording
+from app.platform.voice.domain.routing import (
     BusinessHours,
     DIDRouter,
     PersonaRoute,
@@ -34,7 +34,7 @@ from app.modules.voice.domain.routing import (
     RecordingMode,
     RouteType,
 )
-from app.modules.voice.domain.states import VoiceSessionState
+from app.platform.voice.domain.states import VoiceSessionState
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 SECRET = "provider-signing-secret"

@@ -12,10 +12,10 @@ from starlette.requests import Request
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.security import hash_password, verify_password
-from app.modules.identity import email_delivery
-from app.modules.identity.deps import get_current_user
-from app.modules.identity.models import PasswordResetToken, RefreshToken, User
-from app.modules.identity.service import AuthService
+from app.platform.identity import email_delivery
+from app.platform.identity.deps import get_current_user
+from app.platform.identity.models import PasswordResetToken, RefreshToken, User
+from app.platform.identity.service import AuthService
 
 
 def _request() -> Request:

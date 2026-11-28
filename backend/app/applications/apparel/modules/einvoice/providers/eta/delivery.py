@@ -88,7 +88,7 @@ async def warn_hours_for(session: AsyncSession, tenant_id: uuid.UUID) -> int:
     The merchant's own choice (Settings > e-receipt). One reader, so the sender's warning and the
     tracking screen can never use different numbers.
     """
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     return int(
         await SettingsService(session, tenant_id).value("einvoice.warn_hours_before_deadline")
@@ -488,7 +488,7 @@ async def notify_owners(
     The job runs every minute, so a problem that stays is reminded once per till, per kind, per
     day (the dedup key carries the date), never once a minute.
     """
-    from app.modules.notifications.service import NotificationService
+    from app.platform.notifications.service import NotificationService
 
     messages = owner_messages(attention)
     if not messages or not owner_ids:

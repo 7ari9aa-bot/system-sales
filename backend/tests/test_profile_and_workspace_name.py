@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.identity.models import Tenant, User
-from app.modules.identity.router import tenants_router, users_router
-from app.modules.identity.service import TenantSettingsService, UserService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.models import Tenant, User
+from app.platform.identity.router import tenants_router, users_router
+from app.platform.identity.service import TenantSettingsService, UserService
 
 NAME_PATH = "/tenants/{tenant_id}/name"
 PROFILE_PATH = "/users/me"  # as the router declares it, for the permission check
@@ -128,7 +128,7 @@ async def test_a_name_longer_than_the_column_is_refused(db: AsyncSession, tenant
 async def test_the_rename_leaves_an_audit_row_with_before_and_after(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     before = tenant_ctx.tenant.name
     await TenantSettingsService.set_name(
@@ -149,7 +149,7 @@ async def test_the_rename_leaves_an_audit_row_with_before_and_after(
 
 
 async def test_renaming_to_the_same_name_is_not_a_change(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.platform.models import AuditLog
+    from app.platform.platform.models import AuditLog
 
     # the stored name with stray whitespace is the same name, so it writes nothing
     for _ in range(2):
@@ -313,7 +313,7 @@ async def test_the_account_says_two_step_is_off_until_it_is_confirmed(
     db: AsyncSession, tenant_ctx
 ) -> None:
     """The security screen used to apologise that it could not read this state."""
-    from app.modules.identity.models import UserMfaSecret
+    from app.platform.identity.models import UserMfaSecret
 
     async def _me(client: AsyncClient) -> bool:
         response = await client.get("/api/v1/users/me")

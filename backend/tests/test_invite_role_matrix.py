@@ -41,9 +41,9 @@ from sqlalchemy import select
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.identity.models import Permission, Role, TenantUser, User, role_permissions
-from app.modules.identity.service import TenantService
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.models import Permission, Role, TenantUser, User, role_permissions
+from app.platform.identity.service import TenantService
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 PROVISION_PATH = BACKEND / "scripts" / "provision.py"

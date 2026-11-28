@@ -18,7 +18,7 @@ from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.errors import InsufficientStockError
 from app.applications.apparel.modules.orders.models import OrderItem, OrderPayment, OrderStatusHistory
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:

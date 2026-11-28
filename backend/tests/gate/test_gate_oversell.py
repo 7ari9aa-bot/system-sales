@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.db import bind_tenant
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.models import Tenant
+from app.platform.identity.models import Tenant
 from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.errors import InsufficientStockError

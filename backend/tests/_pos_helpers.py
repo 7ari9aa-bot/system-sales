@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
 from app.core.security import hash_password
-from app.modules.identity.models import Role, Tenant, TenantUser, User
+from app.platform.identity.models import Role, Tenant, TenantUser, User
 from app.applications.apparel.modules.pos.profiles import PosProfileService
 from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell  # noqa: F401  (re-exported)
@@ -49,7 +49,7 @@ async def ctx_for(db, tenant_ctx, role_code):
     """A TenantContext carrying the permissions the DB really grants that role."""
     import sqlalchemy as sa
 
-    from app.modules.identity.deps import TenantContext
+    from app.platform.identity.deps import TenantContext
 
     codes = set(
         (

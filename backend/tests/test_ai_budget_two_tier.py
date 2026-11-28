@@ -28,7 +28,7 @@ import app.applications.apparel.modules.ai.budget as budget_module
 from app.core.tenancy import dispatch_tenant_reactivated_hooks, tenant_reactivated_hooks
 from app.applications.apparel.modules.ai.budget import AIBudgetExhaustedError, lift_hard_stop, reserve_budget
 from app.applications.apparel.modules.ai.models import BudgetPolicy
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 
 
 def _spend(value: Decimal):

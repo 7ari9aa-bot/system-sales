@@ -22,7 +22,7 @@ from app.core.context import (
     correlation_id_contextvar,
     request_id_contextvar,
 )
-from app.modules.platform.models import AuditLog
+from app.platform.platform.models import AuditLog
 
 
 def _row_query(resource_id: str):

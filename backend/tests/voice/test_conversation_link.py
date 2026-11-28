@@ -13,9 +13,9 @@ from datetime import UTC, datetime
 import pytest
 
 from app.applications.apparel.modules.ai.models import AIChatMessage
-from app.modules.voice.domain.models import VoiceSessionRow, VoiceTurnRow
-from app.modules.voice.infrastructure.sql_store import _to_record
-from app.modules.voice.security.data_egress import (
+from app.platform.voice.domain.models import VoiceSessionRow, VoiceTurnRow
+from app.platform.voice.infrastructure.sql_store import _to_record
+from app.platform.voice.security.data_egress import (
     PROVIDER_POLICIES,
     DataClass,
     EgressDecision,

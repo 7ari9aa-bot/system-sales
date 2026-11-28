@@ -21,11 +21,11 @@ from app.core.db import bind_tenant
 from app.core.errors import NotFoundError
 from app.applications.apparel.modules.ai.chat import service as chat_service
 from app.applications.apparel.modules.ai.models import Agent
-from app.modules.voice.application.session_manager import VoiceSessionManager
-from app.modules.voice.application.session_thread import ensure_session_thread
-from app.modules.voice.domain.models import VoiceSessionRow
-from app.modules.voice.domain.personas import PrincipalType
-from app.modules.voice.infrastructure.sql_store import SqlSessionStore
+from app.platform.voice.application.session_manager import VoiceSessionManager
+from app.platform.voice.application.session_thread import ensure_session_thread
+from app.platform.voice.domain.models import VoiceSessionRow
+from app.platform.voice.domain.personas import PrincipalType
+from app.platform.voice.infrastructure.sql_store import SqlSessionStore
 
 SCOPES = frozenset({"assistant:use"})
 
@@ -94,7 +94,7 @@ async def test_a_session_without_a_thread_still_opens_its_own(db, tenant_ctx) ->
 
 
 async def test_another_shops_thread_is_never_adopted(db, tenant_ctx) -> None:
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     await _agent(db, tenant_ctx.tenant_id)
     mine = await chat_service.create_thread(db, tenant_ctx, title="محادثة")

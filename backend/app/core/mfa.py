@@ -50,7 +50,7 @@ from app.core.errors import (
     ValidationError,
 )
 from app.core.redis import get_redis
-from app.modules.identity.models import User, UserMfaSecret
+from app.platform.identity.models import User, UserMfaSecret
 
 # Login challenge: 5 minutes is enough for a human to open their authenticator;
 # a leaked challenge id is useless after the window.
@@ -215,7 +215,7 @@ async def _emit_security_event(
     module-scope to the platform writer. ``details`` carries coarse outcome
     strings and ids only — never the presented code, the seed, or any secret.
     """
-    from app.modules.platform.security_events import record_security_event
+    from app.platform.platform.security_events import record_security_event
 
     await record_security_event(
         event_type,
@@ -770,7 +770,7 @@ async def sso_login(
 
     Returns the same shape as AuthService.login: (TokenPair, User, tenant_id).
     """
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     client = redis if redis is not None else get_redis()
     key = f"{_SSO_PREFIX}{assertion.provider}:{assertion.subject}"

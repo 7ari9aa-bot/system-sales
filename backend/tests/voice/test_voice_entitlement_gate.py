@@ -28,11 +28,11 @@ from app.core.ai_entitlement import require_ai_entitlement
 from app.core.errors import PermissionDeniedError
 from app.applications.apparel.modules.ai.chat import service as chat_service
 from app.applications.apparel.modules.ai.routers import _deps as ai_deps
-from app.modules.voice.application.session_manager import (
+from app.platform.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,
 )
-from app.modules.voice.routers import sessions as api
+from app.platform.voice.routers import sessions as api
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
@@ -125,7 +125,7 @@ def _entitlement(monkeypatch: pytest.MonkeyPatch, *, allowed: bool) -> None:
         return allowed
 
     monkeypatch.setattr(
-        "app.modules.billing.services.entitlements.EntitlementService.can",
+        "app.platform.billing.services.entitlements.EntitlementService.can",
         _can,
     )
 

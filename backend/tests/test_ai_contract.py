@@ -92,7 +92,7 @@ def _app(session: Any = None) -> FastAPI:
     read the RAW body, so the response model under test is the real one —
     FastAPI builds it here exactly as it does in production.
     """
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
     ctx = TenantContext(
         session=session,
@@ -831,7 +831,7 @@ async def test_a_real_numeric_cost_row_leaves_the_api_as_an_exact_string(
     )
     await db.flush()
 
-    from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+    from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
     ctx = TenantContext(
         session=db,

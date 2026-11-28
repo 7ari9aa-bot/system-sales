@@ -9,9 +9,9 @@ import pytest
 from openpyxl import Workbook
 
 from app.core.errors import ValidationError
-from app.modules.imports import reader
-from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
-from app.modules.imports.mapping import missing_required, normalize_header, suggest_mapping
+from app.platform.imports import reader
+from app.platform.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
+from app.platform.imports.mapping import missing_required, normalize_header, suggest_mapping
 
 
 def _xlsx(sheets: dict[str, list[list[object]]]) -> bytes:

@@ -1,6 +1,6 @@
 """O10: ``/metrics`` — a Prometheus exposition of what this codebase already knows.
 
-Verified against the tree before writing anything: ``app/modules/platform``
+Verified against the tree before writing anything: ``app/platform/platform``
 answers ``GET /platform/metrics`` from the *business* metric registry (revenue,
 ROAS…), and there is no operational exposition anywhere — ``prometheus`` appears
 in zero files in the repo, and ``prometheus_client`` is not a dependency. So

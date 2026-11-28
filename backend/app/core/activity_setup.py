@@ -34,9 +34,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.shop_type import CHOOSABLE_VERTICALS, choose_vertical
 from app.core.tenancy import register_signup_choices_hook
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
-from app.modules.settings.presets import PRESETS
-from app.modules.settings.service import SettingsService
+from app.platform.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.platform.settings.presets import PRESETS
+from app.platform.settings.service import SettingsService
 
 STATE_KEY = "business.setup_state"
 TERMS_KEY = "business.terms_accepted_at"

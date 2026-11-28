@@ -23,7 +23,7 @@ import pytest
 
 from app.applications.apparel.modules.conversations.gateway.facebook import facebook_adapter
 from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 BODY = b'{"object":"page","entry":[]}'
 ADAPTERS = [

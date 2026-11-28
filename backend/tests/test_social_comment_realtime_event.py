@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.events.schemas import EVENT_TYPES, build_envelope
-from app.modules.realtime.router import _ALL_STREAMS
+from app.platform.realtime.router import _ALL_STREAMS
 
 
 def test_the_event_type_is_registered() -> None:

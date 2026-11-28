@@ -71,7 +71,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionLocal, bind_tenant
 from app.core.events.bus import Event
-from app.modules.platform.models import Job
+from app.platform.platform.models import Job
 from app.workers.base import (
     DeferredError,
     StreamWorker,
@@ -209,7 +209,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
         raise ValueError(f"deep analysis shell missing: {job.correlation_id}")
     question = shell["question"]
 
-    from app.modules.billing.services.entitlements import EntitlementService
+    from app.platform.billing.services.entitlements import EntitlementService
 
     if not await EntitlementService.can(session, job.tenant_id, "CanUseAI"):
         from sqlalchemy import update as _update
@@ -427,7 +427,7 @@ class JobRunner(StreamWorker):
         from; enumerating tenants is the §125 pattern the retention worker uses.
         The fine-grained lifecycle gate is re-applied per tenant below.
         """
-        from app.modules.identity.models import Tenant
+        from app.platform.identity.models import Tenant
 
         async with SessionLocal() as session:
             rows = await session.execute(select(Tenant.id).where(Tenant.is_active))

@@ -7,8 +7,8 @@ from typing import Annotated, NoReturn
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.pagination import decode_cursor, encode_cursor, page_slice, paginate
-from app.modules.billing.service import EntitlementService
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.platform.billing.service import EntitlementService
+from app.platform.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.applications.apparel.modules.marketing import analytics
 
 router = APIRouter(tags=["marketing"])

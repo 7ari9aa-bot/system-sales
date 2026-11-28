@@ -40,7 +40,7 @@ from app.applications.apparel.modules.customers.service import CustomerService
 from app.applications.apparel.modules.marketing import analytics
 from app.applications.apparel.modules.marketing import router as marketing_router
 from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
-from app.modules.platform.metrics import MetricRegistry
+from app.platform.platform.metrics import MetricRegistry
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 

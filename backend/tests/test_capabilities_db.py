@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.settings.capabilities import shop_capabilities
-from app.modules.settings.service import SettingsService
+from app.platform.settings.capabilities import shop_capabilities
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 

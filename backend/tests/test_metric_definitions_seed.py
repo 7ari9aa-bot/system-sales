@@ -1,6 +1,6 @@
 """The `metric_definitions` TABLE must mirror the in-code registry (spec §167).
 
-§167 made ``app/modules/platform/metrics.py`` the single source of truth for
+§167 made ``app/platform/platform/metrics.py`` the single source of truth for
 canonical metric definitions, and ``GET /api/v1/platform/metrics`` answers from
 the in-process ``MetricRegistry``. The ``metric_definitions`` TABLE is that
 registry's tenant-visible AUDIT COPY, not a second source of truth: the rule is
@@ -31,11 +31,11 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
-from app.modules.identity.bootstrap import seed_tenant_defaults
-from app.modules.identity.models import Tenant
-from app.modules.identity.service import AuthService
-from app.modules.platform import metrics as metrics_mod
-from app.modules.platform.metrics import (
+from app.platform.identity.bootstrap import seed_tenant_defaults
+from app.platform.identity.models import Tenant
+from app.platform.identity.service import AuthService
+from app.platform.platform import metrics as metrics_mod
+from app.platform.platform.metrics import (
     METRIC_DEFINITIONS,
     MetricRegistry,
     MetricSpec,
@@ -43,7 +43,7 @@ from app.modules.platform.metrics import (
     missing_or_drifted,
     seed_definitions,
 )
-from app.modules.platform.models import MetricDefinition
+from app.platform.platform.models import MetricDefinition
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
 

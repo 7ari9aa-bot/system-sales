@@ -198,7 +198,7 @@ async def _ctx(db, tenant_ctx, role_code):
 async def test_any_staff_member_can_read_the_stock_but_not_change_a_level(db, tenant_ctx):
     """The gate lives in Depends(), so calling the route function skips it. Run it explicitly."""
     from app.core.errors import PermissionDeniedError
-    from app.modules.identity.deps import require_permission
+    from app.platform.identity.deps import require_permission
     from app.applications.apparel.modules.pos.router import list_stock, stock_summary
 
     _p, variant, _w = await _variant(db, tenant_ctx, stock=2)
@@ -272,7 +272,7 @@ async def test_an_authority_item_code_is_never_shown_as_the_items_barcode(db, te
 
 def _gate_codes(path: str, method: str) -> set[str]:
     """The permission codes a LIVE route is wired to (the gate sits in Depends, not in the body)."""
-    from app.modules.identity.deps import require_permission
+    from app.platform.identity.deps import require_permission
     from app.applications.apparel.modules.pos.router import router
 
     found: set[str] = set()

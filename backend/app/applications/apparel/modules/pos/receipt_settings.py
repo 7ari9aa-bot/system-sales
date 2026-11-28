@@ -67,7 +67,7 @@ async def receipt_settings(
     # Function scope on purpose: a module-scope import of another module's service is what the
     # boundary guard counts (test_module_scope_service_imports_do_not_grow), and the cashier
     # modules are not allowed to add to it.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     svc = SettingsService(session, tenant_id)
     if register_id is None:

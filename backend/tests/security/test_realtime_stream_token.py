@@ -28,8 +28,8 @@ from starlette.requests import Request
 
 from app.core.errors import PermissionDeniedError
 from app.core.security import create_access_token, create_stream_token
-from app.modules.identity.deps import AuthedUser, get_current_user
-from app.modules.realtime.router import _sse_auth
+from app.platform.identity.deps import AuthedUser, get_current_user
+from app.platform.realtime.router import _sse_auth
 
 USER_ID = uuid.uuid4()
 TENANT_ID = uuid.uuid4()
@@ -149,7 +149,7 @@ async def test_an_expired_stream_token_is_refused(monkeypatch) -> None:
 
 async def test_the_mint_route_binds_the_callers_own_tenant() -> None:
     from app.core.security import decode_token
-    from app.modules.realtime.router import router as realtime_router
+    from app.platform.realtime.router import router as realtime_router
 
     app = FastAPI()
     app.include_router(realtime_router, prefix="/api/v1")

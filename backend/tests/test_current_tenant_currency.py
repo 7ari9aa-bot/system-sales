@@ -10,8 +10,8 @@ import inspect
 import uuid
 from types import SimpleNamespace
 
-from app.modules.identity import schemas
-from app.modules.identity.routers import auth, users
+from app.platform.identity import schemas
+from app.platform.identity.routers import auth, users
 
 
 def _tenant(currency: str | None) -> SimpleNamespace:

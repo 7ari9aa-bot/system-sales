@@ -7,14 +7,14 @@ import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.imports import normalize as n
-from app.modules.imports import service
-from app.modules.imports.apply import SHEET_ORDER
-from app.modules.imports.fields import SHEET_CUSTOMERS, SHEET_FIELDS, SHEET_PRODUCTS
-from app.modules.imports.mapping import suggest_mapping
-from app.modules.imports.models import ImportRow
-from app.modules.imports.validation import validate_customers
-from app.modules.platform.models import Job
+from app.platform.imports import normalize as n
+from app.platform.imports import service
+from app.platform.imports.apply import SHEET_ORDER
+from app.platform.imports.fields import SHEET_CUSTOMERS, SHEET_FIELDS, SHEET_PRODUCTS
+from app.platform.imports.mapping import suggest_mapping
+from app.platform.imports.models import ImportRow
+from app.platform.imports.validation import validate_customers
+from app.platform.platform.models import Job
 from app.workers.import_runner import run_batch
 from tests.test_imports_http import BOTH, api  # noqa: F401, F811  (api: fixture)
 from tests.test_imports_run import _job, _session

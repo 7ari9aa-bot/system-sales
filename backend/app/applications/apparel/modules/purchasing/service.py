@@ -44,7 +44,7 @@ from app.applications.apparel.modules.purchasing.models import (
     VariantCost,
     VariantCostHistory,
 )
-from app.modules.settings.service import SettingsService
+from app.platform.settings.service import SettingsService
 
 
 def exact_money(value: object, field: str = "amount") -> Decimal:

@@ -12,7 +12,7 @@ from app.applications.apparel.modules.conversations.gateway.ingest import Ingest
 from app.applications.apparel.modules.conversations.gateway.webchat import webchat_adapter
 from app.applications.apparel.modules.conversations.models import Conversation, Message
 from app.applications.apparel.modules.conversations.service import ConversationService
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 
 async def _make_webchat_integration(db, tenant_id: uuid.UUID, public_key: str) -> None:

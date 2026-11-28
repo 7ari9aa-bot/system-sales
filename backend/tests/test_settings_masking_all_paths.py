@@ -12,8 +12,8 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 
-from app.modules.settings.registry import REGISTRY, Sensitivity, get_definition
-from app.modules.settings.router import (
+from app.platform.settings.registry import REGISTRY, Sensitivity, get_definition
+from app.platform.settings.router import (
     MASKED_VALUE,
     _change_request_to_out,
     _mask_if_sensitive,

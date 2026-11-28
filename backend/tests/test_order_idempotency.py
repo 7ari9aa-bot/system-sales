@@ -42,13 +42,13 @@ from app.core.idempotency import (
 )
 from app.applications.apparel.modules.catalog.service import CatalogService
 from app.applications.apparel.modules.customers.service import CustomerService
-from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.orders.router import router as orders_router
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import OutboxEvent
+from app.platform.platform.models import OutboxEvent
 
 ORDERS_PATH = "/api/v1/orders"
 KEY_HEADER = "Idempotency-Key"

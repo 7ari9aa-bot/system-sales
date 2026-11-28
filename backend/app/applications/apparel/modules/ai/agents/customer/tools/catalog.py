@@ -324,7 +324,7 @@ async def _search_catalog(
     # §settings: customer_agent.show_prices / show_stock gate whether the
     # agent may quote prices or stock to customers. Function-scope import
     # keeps the module-boundary ratchet intact (settings is cross-cutting).
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     show_prices = await SettingsService(session, tenant_id).value("customer_agent.show_prices")
     show_stock = await SettingsService(session, tenant_id).value("customer_agent.show_stock")
@@ -406,7 +406,7 @@ async def _get_product_details(
     ).scalars()
     variant_rows = list(variants.all())
     # §settings: same show_prices / show_stock gating as search_catalog.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     show_prices = await SettingsService(session, tenant_id).value("customer_agent.show_prices")
     show_stock = await SettingsService(session, tenant_id).value("customer_agent.show_stock")

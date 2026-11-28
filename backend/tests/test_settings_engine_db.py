@@ -18,11 +18,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
-from app.modules.identity.models import Location, Workspace
+from app.platform.identity.models import Location, Workspace
 from app.applications.apparel.modules.pos.profiles import PosProfileService
-from app.modules.settings.models import TenantSetting
-from app.modules.settings.registry import Scope
-from app.modules.settings.service import SettingsService
+from app.platform.settings.models import TenantSetting
+from app.platform.settings.registry import Scope
+from app.platform.settings.service import SettingsService
 from tests._pos_helpers import ctx_for
 from tests.test_pos_returns import _register, _warehouse
 from tests.test_pos_sale_http import _app
@@ -346,7 +346,7 @@ async def test_an_unaudited_key_stays_out_of_audit_logs(db, tenant_ctx) -> None:
 
 async def test_one_tenant_never_sees_another_tenants_settings(db, tenant_ctx) -> None:
     from app.core.db import bind_tenant
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     svc = SettingsService(db, tenant_ctx.tenant_id)
     await svc.set("pos.max_discount_pct", 33)

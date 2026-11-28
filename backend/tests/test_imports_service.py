@@ -14,8 +14,8 @@ import app.core.model_registry  # noqa: F401  (loads every table so foreign keys
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.applications.apparel.modules.catalog.service import CatalogService
-from app.modules.identity.models import Tenant
-from app.modules.imports import service
+from app.platform.identity.models import Tenant
+from app.platform.imports import service
 from app.applications.apparel.modules.inventory.models import Warehouse
 
 

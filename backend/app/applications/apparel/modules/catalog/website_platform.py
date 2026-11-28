@@ -38,7 +38,7 @@ from app.core.config import get_settings
 from app.core.db import bind_tenant
 from app.core.storage import get_storage
 from app.applications.apparel.modules.catalog.models import Category, Product, ProductImage, ProductVariant
-from app.modules.identity.deps import get_db
+from app.platform.identity.deps import get_db
 
 router = APIRouter()
 

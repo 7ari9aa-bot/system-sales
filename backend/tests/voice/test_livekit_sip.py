@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.voice.runtime.livekit_sip import (
+from app.platform.voice.runtime.livekit_sip import (
     SipNotConfigured,
     SipRoutingSettings,
     plan_inbound_sip,

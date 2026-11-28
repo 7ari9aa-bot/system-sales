@@ -607,8 +607,8 @@ async def inbox_seed(db):
     from app.core.db import bind_tenant
     from app.applications.apparel.modules.conversations.models import Conversation, Message
     from app.applications.apparel.modules.customers.models import Customer
-    from app.modules.identity.models import Tenant
-    from app.modules.operations.models import SLAEvent
+    from app.platform.identity.models import Tenant
+    from app.platform.operations.models import SLAEvent
 
     db.add(
         Tenant(
@@ -789,7 +789,7 @@ async def test_page_is_tenant_isolated(db, inbox_seed) -> None:
     from app.core.db import bind_tenant
     from app.applications.apparel.modules.conversations.models import Conversation
     from app.applications.apparel.modules.customers.models import Customer
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     db.add(
         Tenant(

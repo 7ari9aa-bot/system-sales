@@ -22,8 +22,8 @@ from app.applications.apparel.modules.inventory.models import Warehouse
 from app.applications.apparel.modules.inventory.service import InventoryService
 from app.applications.apparel.modules.orders.models import Order
 from app.applications.apparel.modules.orders.service import OrderService
-from app.modules.platform.models import OutboxEvent
-from app.modules.privacy.service import DeletionService
+from app.platform.platform.models import OutboxEvent
+from app.platform.privacy.service import DeletionService
 
 
 async def _customer_variant_stock(db: AsyncSession, tenant_id: uuid.UUID, stock: int = 10):

@@ -182,7 +182,7 @@ async def test_the_owner_can_set_change_and_clear_it(db, tenant_ctx):
 
 
 async def _set_ceiling(db, tenant_ctx, value, *, scope="tenant", scope_id=None):
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     await SettingsService(db, tenant_ctx.tenant_id).set(
         "pos.max_discount_pct", value, scope=scope, scope_id=scope_id

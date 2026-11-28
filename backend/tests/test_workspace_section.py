@@ -9,8 +9,8 @@ pin the routes, the mount, and the role set that counts as "administers the work
 
 from __future__ import annotations
 
-from app.modules.identity.routers.workspaces import workspaces_router
-from app.modules.identity.services.workspace import ADMIN_ROLES, WorkspaceService
+from app.platform.identity.routers.workspaces import workspaces_router
+from app.platform.identity.services.workspace import ADMIN_ROLES, WorkspaceService
 
 
 def _paths(router) -> set[tuple[str, str]]:
@@ -36,7 +36,7 @@ def test_nothing_on_this_router_writes() -> None:
 
 def test_the_account_workspace_is_not_the_hierarchy_workspace() -> None:
     """The hierarchy level lives under /hierarchy, so the two can never shadow each other."""
-    from app.modules.identity.routers.hierarchy import hierarchy_router
+    from app.platform.identity.routers.hierarchy import hierarchy_router
 
     assert all(route.path.startswith("/hierarchy") for route in hierarchy_router.routes)
     assert all(not route.path.startswith("/hierarchy") for route in workspaces_router.routes)

@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from app.applications.apparel.modules.conversations.models import Message
 from app.applications.apparel.modules.conversations.service import ConversationService
 from app.applications.apparel.modules.customers.models import Customer, CustomerIdentity
-from app.modules.platform.models import DeliveryAttempt
+from app.platform.platform.models import DeliveryAttempt
 from app.workers import message_worker as mw
 from app.workers.base import DeferredError
 from app.workers.message_worker import MessageWorker
@@ -180,7 +180,7 @@ async def test_the_retry_writes_no_processed_event_so_the_inbox_cannot_swallow_i
 ):
     """`ProcessedEvent` means the effect happened. The redelivered event keeps its outbox id, so
     a row written for a deferred attempt would make the retry exit silently, message queued."""
-    from app.modules.platform.models import ProcessedEvent
+    from app.platform.platform.models import ProcessedEvent
 
     tenant_id = tenant_ctx.tenant_id
     message = await _sending_message(db, tenant_id)
@@ -245,7 +245,7 @@ async def _queued_message(db, tenant_id) -> Message:
 async def test_a_rate_limited_send_is_deferred_not_failed_and_the_next_attempt_sends_it(
     db, tenant_ctx, worker, monkeypatch
 ):
-    from app.modules.platform.models import ProcessedEvent
+    from app.platform.platform.models import ProcessedEvent
 
     tenant_id = tenant_ctx.tenant_id
     message = await _queued_message(db, tenant_id)
@@ -315,7 +315,7 @@ async def test_a_refusal_that_waiting_cannot_fix_fails_at_once(db, tenant_ctx, w
 async def test_after_the_last_retry_the_message_fails_and_the_owner_is_told(
     db, tenant_ctx, worker, monkeypatch
 ):
-    from app.modules.notifications.models import Notification
+    from app.platform.notifications.models import Notification
     from app.workers.base import PermanentError
 
     tenant_id = tenant_ctx.tenant_id

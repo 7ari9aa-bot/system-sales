@@ -56,7 +56,7 @@ from app.core.db import bind_tenant
 
 async def _tenant_ids(session: AsyncSession) -> list[tuple[str, str]]:
     """(id, slug) for every tenant. `tenants` carries no RLS, so no GUC needed."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     rows = (await session.execute(select(Tenant.id, Tenant.slug).order_by(Tenant.created_at))).all()
     return [(str(tid), slug) for tid, slug in rows]
@@ -69,7 +69,7 @@ async def _converge(session: AsyncSession, tenant_id: str) -> int:
     the registry). Imported lazily so this ops script never forces the web-app
     config at module import time.
     """
-    from app.modules.platform.metrics import seed_definitions
+    from app.platform.platform.metrics import seed_definitions
 
     await bind_tenant(session, _uuid.UUID(tenant_id))
     return await seed_definitions(session, _uuid.UUID(tenant_id))

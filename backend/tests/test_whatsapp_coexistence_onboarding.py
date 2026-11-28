@@ -22,7 +22,7 @@ import pytest
 from app.core.errors import ExternalProviderError, ValidationError
 from app.applications.apparel.modules.customers import meta_whatsapp_signup as signup
 from app.applications.apparel.modules.customers.meta_whatsapp_signup import WhatsAppSignupCompleteBody
-from app.modules.platform.channel_specs import whatsapp as whatsapp_spec
+from app.platform.platform.channel_specs import whatsapp as whatsapp_spec
 
 _ON_APP = {"is_on_biz_app": True, "platform_type": "CLOUD_API"}
 _API_ONLY = {"is_on_biz_app": False, "platform_type": "CLOUD_API"}

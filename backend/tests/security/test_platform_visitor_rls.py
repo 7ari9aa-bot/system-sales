@@ -17,9 +17,9 @@ import pytest
 from sqlalchemy import insert, select, text
 
 from app.core.db import bind_tenant
-from app.modules.billing.models import PlanPrice, TaxRate
-from app.modules.identity.models import Role, Tenant, TenantUser, User
-from app.modules.platform.models import (
+from app.platform.billing.models import PlanPrice, TaxRate
+from app.platform.identity.models import Role, Tenant, TenantUser, User
+from app.platform.platform.models import (
     PlatformAnnouncement,
     PlatformAnnouncementDismissal,
     VisitorEvent,

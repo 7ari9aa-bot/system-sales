@@ -14,9 +14,9 @@ import uuid
 import pytest
 
 import app.core.model_registry  # noqa: F401 — complete table registration
-import app.modules.platform.models  # noqa: F401 — ensure tables registered
+import app.platform.platform.models  # noqa: F401 — ensure tables registered
 from app.core.db import bind_tenant
-from app.modules.settings.config_migrations import (
+from app.platform.settings.config_migrations import (
     MIGRATIONS,
     ConfigMigration,
     _rename_key,
@@ -24,7 +24,7 @@ from app.modules.settings.config_migrations import (
     latest_version,
     run_pending,
 )
-from app.modules.settings.models import SettingMigrationLog, TenantSetting
+from app.platform.settings.models import SettingMigrationLog, TenantSetting
 
 
 def _uuid_hex() -> str:
@@ -33,7 +33,7 @@ def _uuid_hex() -> str:
 
 async def _create_tenant(db) -> tuple:
     """Register a fresh tenant and return (user, tenant)."""
-    from app.modules.identity.service import AuthService
+    from app.platform.identity.service import AuthService
 
     email = f"cmig-{_uuid_hex()}@test.local"
     user, tenant = await AuthService.register(

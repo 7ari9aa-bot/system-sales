@@ -17,9 +17,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
-from app.modules.identity.models import User
-from app.modules.identity.routers.users import users_router
-from app.modules.identity.services.user import (
+from app.platform.identity.models import User
+from app.platform.identity.routers.users import users_router
+from app.platform.identity.services.user import (
     DATE_FORMATS,
     DEFAULT_PAGES,
     LOCALES,

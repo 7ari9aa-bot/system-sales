@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.settings.registry import Sensitivity, get_definition
-from app.modules.settings.service import SettingsService
+from app.platform.settings.registry import Sensitivity, get_definition
+from app.platform.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,7 +33,7 @@ async def test_manager_sees_sensitive_value_masked_in_resolve(db: AsyncSession, 
     await db.flush()
 
     resolved = await svc.resolve("team.require_2fa")
-    from app.modules.settings.router import _mask_if_sensitive
+    from app.platform.settings.router import _mask_if_sensitive
 
     masked = _mask_if_sensitive(defn, resolved.value, can_read_sensitive=False)
     assert masked == "******"
@@ -57,7 +57,7 @@ async def test_manager_sees_sensitive_value_masked_in_history(db: AsyncSession, 
     rows = await svc.history(key="team.require_2fa")
     assert len(rows) >= 1
     defn = get_definition("team.require_2fa")
-    from app.modules.settings.router import _mask_if_sensitive
+    from app.platform.settings.router import _mask_if_sensitive
 
     for r in rows:
         if r.new_value:
@@ -84,7 +84,7 @@ async def test_manager_sees_sensitive_value_masked_in_overrides(db: AsyncSession
     sensitive_rows = [r for r in rows if r.key == "team.require_2fa"]
     assert len(sensitive_rows) == 1
     defn = get_definition("team.require_2fa")
-    from app.modules.settings.router import _mask_if_sensitive
+    from app.platform.settings.router import _mask_if_sensitive
 
     raw = sensitive_rows[0].value.get("v")
     masked = _mask_if_sensitive(defn, raw, can_read_sensitive=False)
@@ -107,7 +107,7 @@ async def test_non_sensitive_settings_are_not_masked(db: AsyncSession, tenant_ct
     resolved = await svc.resolve("pos.return_max_days")
     defn = get_definition("pos.return_max_days")
     assert defn.sensitivity is Sensitivity.NORMAL
-    from app.modules.settings.router import _mask_if_sensitive
+    from app.platform.settings.router import _mask_if_sensitive
 
     val = _mask_if_sensitive(defn, resolved.value, can_read_sensitive=False)
     assert val == 14

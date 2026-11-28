@@ -143,7 +143,7 @@ async def test_a_refused_entitlement_never_touches_meta(monkeypatch):
         calls.append("subscribe")
 
     monkeypatch.setattr(
-        "app.modules.billing.service.EntitlementService.ensure_channel_allowed",
+        "app.platform.billing.service.EntitlementService.ensure_channel_allowed",
         staticmethod(ensure_channel_allowed),
     )
     monkeypatch.setattr(meta_oauth, "_subscribe_page_to_app", subscribe)

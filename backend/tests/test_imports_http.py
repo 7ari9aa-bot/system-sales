@@ -13,7 +13,7 @@ from openpyxl import Workbook
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.middleware import MAX_IMPORT_UPLOAD_BYTES
 from app.main import create_app
-from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
+from app.platform.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from app.applications.apparel.modules.inventory.models import Warehouse
 
 BOTH = {"products:write", "inventory:write"}
@@ -225,14 +225,14 @@ async def test_the_error_report_is_a_csv_that_excel_reads_in_arabic_and_cannot_r
 @pytest.mark.parametrize("value", ["=1+1", "+cmd", "-2", "@SUM(A1)", "\tx", "\rx"])
 def test_a_report_cell_that_could_run_as_a_formula_is_written_as_text(value):
     """Today no report column starts with the merchant's text, so this guards a future change."""
-    from app.modules.imports.router import _csv_cell
+    from app.platform.imports.router import _csv_cell
 
     assert _csv_cell(value) == "'" + value
 
 
 @pytest.mark.parametrize("value", ["قميص", "TEE-1", "99.50", "", None, "a=b"])
 def test_an_ordinary_report_cell_is_left_alone(value):
-    from app.modules.imports.router import _csv_cell
+    from app.platform.imports.router import _csv_cell
 
     assert _csv_cell(value) == ("" if value is None else value)
 
@@ -319,7 +319,7 @@ async def test_the_middleware_alone_allows_the_upload_route_20mb_and_nothing_els
 
 async def test_the_route_stops_reading_a_body_that_lies_about_its_size(api, monkeypatch):
     """No Content-Length and an oversize stream: the route's own cap refuses it."""
-    from app.modules.imports import router as imports_router
+    from app.platform.imports import router as imports_router
 
     monkeypatch.setattr(imports_router, "MAX_FILE_BYTES", 1000)
     async with api(BOTH) as client:

@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
 from app.core.meta_tokens import token_expiry
-from app.modules.platform.models import Integration
+from app.platform.platform.models import Integration
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ async def refresh_integration(session, integration: Integration, http: httpx.Asy
     """Refresh a due channel credential; caller owns the transaction and tenant binding."""
     from app.core.config import get_settings
     from app.core.secrets import encrypt_credentials_dict
-    from app.modules.platform.services.secrets import IntegrationCredentialsService
+    from app.platform.platform.services.secrets import IntegrationCredentialsService
 
     credentials = await IntegrationCredentialsService.decrypt(session, integration)
     metadata = credentials.get("_meta")
@@ -202,7 +202,7 @@ async def refresh_integration(session, integration: Integration, http: httpx.Asy
         if integration.status == "active":
             Integration.validate_transition("active", "reauth_required")
             integration.status = "reauth_required"
-        from app.modules.platform.services.audit import AuditService
+        from app.platform.platform.services.audit import AuditService
 
         await AuditService.write(
             session,
@@ -238,7 +238,7 @@ async def refresh_integration(session, integration: Integration, http: httpx.Asy
 
 async def sweep_expiring_tokens() -> int:
     """Cross-tenant scheduled sweep, with one RLS-bound transaction per tenant."""
-    from app.modules.identity.models import Tenant
+    from app.platform.identity.models import Tenant
 
     async with SessionLocal() as session:
         tenant_ids = (

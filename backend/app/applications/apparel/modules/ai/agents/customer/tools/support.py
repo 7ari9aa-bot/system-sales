@@ -245,7 +245,7 @@ async def _handover_to_human(
     # §settings: customer_agent.handoff_enabled gates the MODEL's decision to
     # hand over. Failure-path handovers (run limit, budget, delivery) are NOT
     # gated — they protect the customer from silence and must always fire.
-    from app.modules.settings.service import SettingsService
+    from app.platform.settings.service import SettingsService
 
     handoff_enabled = await SettingsService(session, tenant_id).value(
         "customer_agent.handoff_enabled"
