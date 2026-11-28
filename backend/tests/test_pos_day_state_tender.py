@@ -122,7 +122,7 @@ async def _sell_http(ctx, register_id, variant, body_extra, customer_id=None):
 async def test_the_payloads_the_cashier_screen_builds_are_what_the_server_accepts(
     db, tenant_ctx
 ) -> None:
-    """Same shapes ``buildTender`` (frontend/src/cashier/api/tenderPlan.js) produces: a split card +
+    """Same shapes ``buildTender`` (frontend/src/applications/apparel/api/tenderPlan.js) produces: a split card +
     cash sale with a reference and change, a part-paid sale on account, and a refusal the screen
     would have caught first."""
     from decimal import Decimal

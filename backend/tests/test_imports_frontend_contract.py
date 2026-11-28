@@ -1,6 +1,6 @@
 """What the import screen reads, checked against the real routes and a real run.
 
-The screen (frontend/src/cashier/api/importCenter.js) reads fixed keys from every answer. If one is
+The screen (frontend/src/applications/apparel/api/importCenter.js) reads fixed keys from every answer. If one is
 renamed or moved here, the screen breaks without any Python test failing: this file is that alarm.
 """
 

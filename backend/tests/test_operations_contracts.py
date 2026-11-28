@@ -421,7 +421,7 @@ def test_no_operations_code_raises_a_bare_python_error() -> None:
     crash — and as ``retryable``, which is worse.
     """
     offenders: list[str] = []
-    for path in sorted((BACKEND_ROOT / "app" / "modules" / "operations").rglob("*.py")):
+    for path in sorted((BACKEND_ROOT / "app" / "platform" / "operations").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         exempt = _validator_line_ranges(tree)
         for node in ast.walk(tree):
@@ -556,7 +556,7 @@ def test_the_status_route_goes_through_the_service_layer() -> None:
     is exactly how the assignee and the priority bound went missing — the
     service held the rules and the route never asked it.
     """
-    src = (BACKEND_ROOT / "app" / "modules" / "operations" / "router.py").read_text(
+    src = (BACKEND_ROOT / "app" / "platform" / "operations" / "router.py").read_text(
         encoding="utf-8"
     )
     tree = ast.parse(src)
