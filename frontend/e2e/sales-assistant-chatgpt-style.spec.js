@@ -93,8 +93,8 @@ test("the send button is disabled until there is text", async ({ page }) => {
 
 test("the empty state shows the starter prompts and a prompt sends", async ({ page }) => {
   const api = await open(page, { thread: false });
-  await expect(page.getByTestId("assistant-chat").getByRole("button", { name: "قارن مبيعات الشهر ده باللي فات." })).toBeVisible();
-  await page.getByRole("button", { name: "قارن مبيعات الشهر ده باللي فات." }).click();
+  await expect(page.getByTestId("assistant-chat").getByRole("button", { name: "قارن مبيعات هذا الشهر بالشهر الماضي." })).toBeVisible();
+  await page.getByRole("button", { name: "قارن مبيعات هذا الشهر بالشهر الماضي." }).click();
   await expect.poll(() => api.sent.length).toBe(1);
 });
 

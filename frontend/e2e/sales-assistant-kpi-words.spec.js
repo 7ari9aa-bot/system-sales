@@ -58,5 +58,5 @@ test("the answer from production: till cards and the held-back line read in plai
   for (const leak of ["pos.", "pos_", "sales total", "invoice count", "safe response", "si_response_invalid"]) {
     expect(text, `leaked "${leak}"`).not.toContain(leak);
   }
-  expect(text).toContain("مقدرتش أتأكد من أرقام الرد");
+  expect(text).toContain("لم أتمكن من التحقق من أرقام هذا الرد");
 });

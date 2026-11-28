@@ -131,7 +131,7 @@ function memoryApi(
       ) {
         if (!state.enabled)
           return r.fulfill(
-            refusal("disabled", "الذاكرة مقفولة. شغّلها الأول.", 409),
+            refusal("disabled", "الذاكرة مغلقة. شغّلها الأول.", 409),
           );
         if (!state.habit || body(r).period !== state.habit.period)
           return r.fulfill({
@@ -258,7 +258,7 @@ test("the owner adds a note and sees it, newest first", async ({ page }) => {
   await memoryApi(page);
   const panel = await open(page);
   await expect(
-    panel.getByText("مفيش ملاحظات لسه", { exact: false }),
+    panel.getByText("لا توجد ملاحظات بعد", { exact: false }),
   ).toBeVisible();
   const box = panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…");
   await box.fill("بحب أشوف الأرقام بالجنيه");
@@ -354,7 +354,7 @@ test("delete-all asks first, and cancelling deletes nothing", async ({
   await panel.getByRole("button", { name: /امسح كل الملاحظات/ }).click();
   await panel.getByRole("button", { name: "أيوه، امسح" }).click();
   await expect(
-    panel.getByText("مفيش ملاحظات لسه", { exact: false }),
+    panel.getByText("لا توجد ملاحظات بعد", { exact: false }),
   ).toBeVisible();
   expect(api.notes).toHaveLength(0);
 });
@@ -391,7 +391,7 @@ test("switching memory off is sent to the server and disables adding", async ({
   await expect.poll(() => api.enabled).toBe(false);
   await expect(panel.getByRole("switch")).not.toBeChecked();
   await expect(
-    panel.getByText("الذاكرة مقفولة", { exact: false }),
+    panel.getByText("الذاكرة مغلقة", { exact: false }),
   ).toBeVisible();
   await expect(
     panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…"),
