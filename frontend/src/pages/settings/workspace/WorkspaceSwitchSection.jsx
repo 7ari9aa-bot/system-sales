@@ -38,6 +38,8 @@ export default function WorkspaceSwitchSection() {
   // paid for and how far each setup got, so the screen never guesses from a list.
   const [apps, setApps] = React.useState(null);
   const [appsError, setAppsError] = React.useState("");
+  const [installing, setInstalling] = React.useState(false);
+  const [installed, setInstalled] = React.useState(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -53,19 +55,42 @@ export default function WorkspaceSwitchSection() {
     };
   }, []);
 
-  React.useEffect(() => {
-    let alive = true;
-    api("/applications")
+  const loadApps = React.useCallback(() => {
+    return api("/applications")
       .then((data) => {
-        if (alive) setApps(data?.applications || []);
+        setApps(data?.applications || []);
+        return data;
       })
       .catch((failure) => {
-        if (alive) setAppsError(failure?.message || "failed");
+        setAppsError(failure?.message || "failed");
+        return null;
       });
-    return () => {
-      alive = false;
-    };
   }, []);
+
+  React.useEffect(() => {
+    loadApps();
+  }, [loadApps]);
+
+  /** Record what this business is licensed for, then read the verdict again.
+   *  A business that finished setup before the installations table existed has
+   *  no rows, so the gate has to let it through as "not configured yet" - this
+   *  button closes that window for this business, and only for it: the server
+   *  takes the workspace from the session, not from this request. */
+  async function recordApplications() {
+    if (installing) return;
+    setInstalling(true);
+    setAppsError("");
+    setInstalled(null);
+    try {
+      const result = await api("/applications/install", { method: "POST", body: {} });
+      setInstalled(result?.installed || []);
+      await loadApps();
+    } catch (failure) {
+      setAppsError(failure?.message || t("workspace.apps.install.failed"));
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   async function enter(workspace) {
     if (switching || workspace.id === currentId) return;
@@ -176,6 +201,34 @@ export default function WorkspaceSwitchSection() {
               </SettingRow>
             );
           })}
+          {installed !== null && (
+            <p className="mt-2 text-[12px] text-emerald-600" data-testid="applications-installed">
+              {t("workspace.apps.installed")}
+              {installed.length ? installed.join("، ") : "—"}
+            </p>
+          )}
+          <div className="mt-3 border-t pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={installing}
+              onClick={recordApplications}
+              data-testid="applications-install"
+            >
+              {installing ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  {t("workspace.apps.installing")}
+                </>
+              ) : (
+                t("workspace.apps.install")
+              )}
+            </Button>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
+              {t("workspace.apps.install.hint")}
+            </p>
+          </div>
         </SettingCard>
       </div>
       <p className="mt-4 text-[11.5px] leading-relaxed text-muted-foreground">{t("workspace.switch.note")}</p>
