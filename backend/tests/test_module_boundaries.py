@@ -369,7 +369,10 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # routers now import (purchasing, inventory, catalog, pos, customers, inbox,
 # segments). Those edges are the feature, not coupling: every one of them asks the
 # same registry whether this workspace bought that product.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 357
+# 357 -> 358: voice.assistant_turn books the spend of a spoken turn through the one
+# billing usage path (ai.usage.record_voice_turn_usage), the same surface the text
+# route already books against. One edge, voice -> ai.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 358
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
