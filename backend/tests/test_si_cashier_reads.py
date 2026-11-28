@@ -177,6 +177,70 @@ async def test_expected_cash_matches_the_till_s_own_arithmetic():
     assert reads.expected_cash(OPENING_FLOAT, MOVEMENTS) == original == EXPECTED
 
 
+def test_expected_cash_agrees_with_the_till_for_every_movement_reason():
+    """The same comparison over the reasons the ledger actually holds, and at the cent."""
+    from app.modules.pos.tender import expected_drawer_cash
+
+    cases = [
+        (Decimal("0"), []),
+        (Decimal("100.00"), [("in", "cash_sale", Decimal("50.00"))]),
+        (
+            Decimal("0"),
+            [("in", "pay_in", Decimal("12.34")), ("in", "cash_sale", Decimal("0.01"))],
+        ),
+        (
+            Decimal("250.00"),
+            [("out", "pay_out", Decimal("0.10")), ("out", "float_adjust", Decimal("0.05"))],
+        ),
+        (
+            Decimal("80.00"),
+            [
+                ("in", "cash_sale", Decimal("19.99")),
+                ("out", "cash_refund", Decimal("9.99")),
+                ("out", "cash_drop", Decimal("40.00")),
+            ],
+        ),
+    ]
+    for opening, movements in cases:
+        rows = [SimpleNamespace(direction=d, reason=r, amount=a) for d, r, a in movements]
+        assert reads.expected_cash(opening, rows) == expected_drawer_cash(
+            opening_float=opening, movements=movements
+        ), movements
+
+
+def test_the_difference_sign_is_the_till_s_own_variance_read_as_a_magnitude():
+    """``pos.tender.variance`` is counted minus expected; the read must not invent its own sign."""
+    from app.modules.pos.tender import variance as till_variance
+
+    cases = [
+        (Decimal("115.00"), Decimal("120.00"), "shortage", Decimal("5.00")),
+        (Decimal("125.00"), Decimal("120.00"), "overage", Decimal("5.00")),
+        (Decimal("120.00"), Decimal("120.00"), "matched", Decimal("0.00")),
+    ]
+    for counted, expected, label, magnitude in cases:
+        signed = till_variance(counted=counted, expected=expected)
+        assert difference_side(signed) == (label, magnitude)
+        # the magnitude is the absolute value, so a shortage is never quotable as "-5"
+        assert difference_side(signed)[1] == abs(signed)
+
+
+async def test_sales_by_method_totals_equal_what_the_till_settled_at_sale_time():
+    """The per-method takings are the tender lines the sale settled, added back up."""
+    from app.modules.pos.tender import TenderLine, settle
+
+    settled = settle(
+        [TenderLine("cash", Decimal("50.00")), TenderLine("card", Decimal("200.00"))],
+        total=Decimal("250.00"),
+        allowed_methods=("cash", "card", "wallet", "bank_transfer"),
+    )
+    summary = await reads.sales_by_method(
+        FakeSession(), TENANT, start=DAY, end=DAY + timedelta(days=1), limit=8
+    )
+    from_read = {row["method"]: Decimal(row["collected"]) for row in summary["methods"]}
+    assert from_read == dict(settled.by_method)
+    assert Decimal(summary["collected_total"]) == settled.paid
+
+
 async def test_expected_vs_counted_reports_the_drawer_as_the_close_recorded_it():
     summary = await reads.expected_vs_counted(
         FakeSession(), TENANT, start=DAY, end=DAY + timedelta(days=1), limit=10
