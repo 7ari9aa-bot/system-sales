@@ -71,7 +71,24 @@ def upgrade() -> None:
         "USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid) "
         "WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
     )
-    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_memberships TO sales_app")
+    # The runtime role is created by ``scripts/provision.py``, which runs either before or after
+    # Alembic depending on the environment: production already has it, a CI database does not.
+    # An unguarded GRANT therefore aborts the whole upgrade with
+    # ``role "sales_app" does not exist`` (CI run 46087084159, job live-api, step Apply
+    # migrations), taking every later migration with it. Issued inside the same pg_roles DO block
+    # the other RLS migrations use, so a database without the role still reaches head and a
+    # database with it still gets the grant.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_memberships TO sales_app;
+            END IF;
+        END
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:

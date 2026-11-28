@@ -161,13 +161,20 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Restore the pre-hardening grants and the OR-NULL policies verbatim.
+    # نفس حارس الـupgrade: قاعدة CI من غير الدور لازم تقدر تنزل لتحت كمان، وإلا التراجع
+    # بيسقط بـrole "sales_app" does not exist ويسيب قاعدة نص-مرجّعة.
     op.execute(
-        "GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN "
-        "ON ALL TABLES IN SCHEMA public TO sales_app"
-    )
-    op.execute(
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES TO sales_app"
+        """
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+            GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
+              ON ALL TABLES IN SCHEMA public TO sales_app;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public
+              GRANT TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES TO sales_app;
+          END IF;
+        END $$;
+        """
     )
     for table in _LEDGER_TABLES:
         op.execute(f"GRANT UPDATE, DELETE ON public.{table} TO sales_app")
