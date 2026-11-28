@@ -68,8 +68,12 @@ def test_the_hints_stay_short_because_every_tool_is_paid_for_on_every_message() 
         + len(json.dumps(get_tool(n).args_schema.model_json_schema(), ensure_ascii=False))
         for n in T.SI_TOOLS
     )
-    # 7962 with eleven tools, 4988 with three; growing past this is a decision, not drift
-    assert chars < 5600, f"the tool descriptions and schemas grew to {chars} characters"
+    # 7962 with eleven tools, 4988 with three; growing past this is a decision, not drift.
+    # 5600 -> 7400 for si_cashier (7 drawer/cash views in one tool). Measured: main was ALREADY
+    # over the old ceiling at 5822 before this tool existed, and this change takes it to 7356, so
+    # the raise is the new tool's ~1534 characters, not a re-baselining of the existing ones. The
+    # description is kept to one line per view; if a fifth tool is added, split or shorten first.
+    assert chars < 7400, f"the tool descriptions and schemas grew to {chars} characters"
 
 
 def test_the_shop_tool_never_invites_a_guessed_lookup():

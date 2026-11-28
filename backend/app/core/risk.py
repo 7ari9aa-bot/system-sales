@@ -108,6 +108,7 @@ _REGISTRY: dict[str, RiskLevel] = {
     "si_stock_status": RiskLevel.LOW,
     "si_purchasing_summary": RiskLevel.LOW,
     "si_cashier_summary": RiskLevel.LOW,
+    "si_cashier": RiskLevel.LOW,
     "si_find_order": RiskLevel.LOW,
     "si_find_customer": RiskLevel.LOW,
     "add_to_cart": RiskLevel.MEDIUM,

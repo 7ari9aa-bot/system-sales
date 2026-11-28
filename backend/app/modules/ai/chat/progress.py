@@ -86,6 +86,18 @@ TOOL_STEP_BY: dict[str, tuple[str, dict[str, str]]] = {
         "report",
         {"expenses": "finance", "profit": "finance", "purchasing": "purchasing"},
     ),
+    "si_cashier": (
+        "view",
+        {
+            "cash_in_out": "cashier",
+            "expected_vs_counted": "cashier",
+            "drawer_differences": "cashier",
+            "reconciliation_by_method": "cashier",
+            "shift_handovers": "cashier",
+            "daily_by_device": "cashier",
+            "sales_by_method": "cashier",
+        },
+    ),
 }
 
 

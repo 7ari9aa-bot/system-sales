@@ -1822,8 +1822,10 @@ async def _si_cashier_summary(
 ) -> dict:
     """What the till sold and refunded in the window, per cashier and per hour, and who is on shift.
 
-    Read-only. The cashier is a sales LEDGER: it records no payment method, no cash tendered to a
-    drawer count and no variance, so this reports none of those and says so."""
+    Read-only, and about SALES only. The till does record the rest — a float per payment method,
+    every drawer movement, the counted cash, the drawer difference and a per-method reconciliation
+    — but this read does not: ``si_cashier`` reads those, from the same ledgers. Saying otherwise
+    here was simply false, and the model repeated it to the owner."""
     window = await _resolve_window(session, tenant_id, days)
     # A till receipt exists the moment the sale happens, so unlike delivery-based metrics there is
     # nothing immature about today. The shared window stops at midnight and would answer "nothing
@@ -1896,8 +1898,9 @@ async def _si_cashier_summary(
     closed = sum(1 for sh in shifts if sh.status == "CLOSED")
 
     limitations = [
-        "the cashier records sales and returns only: it keeps no payment method, no cash count "
-        "and no drawer difference, so none of those can be reported",
+        "this read is the till's SALES only: the drawer, cash movements, counted cash, drawer "
+        "differences and the per-payment-method split are si_cashier's, and the till does record "
+        "them",
         "net sales is sales minus returns made in the window, including returns of older sales",
         "the window includes today up to now: a till sale is recorded the moment it happens",
     ]
@@ -2677,6 +2680,7 @@ SI_TOOLS: tuple[str, ...] = (
     "si_metric",
     "si_shop",
     "si_finance",
+    "si_cashier",
 )
 
 
@@ -2889,6 +2893,10 @@ def _split_table() -> str:
 
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
+    # si_cashier lives in its own file (tools.py is 3,200 lines). Imported here, not at module
+    # scope, because that module imports this one's helpers while it runs.
+    from app.modules.ai.agents.sales_intelligence.cashier import SICashierArgs, si_cashier
+
     _, computable_metric_names, _ = _metric_registry()
     # Read from the registry the tools validate against, so the model is never told to ask for
     # a metric that does not exist (the old text said "revenue", and every model believed it).
@@ -2938,8 +2946,8 @@ def register_si_tools() -> None:
                 "per warehouse, low stock, expired lots beside the lots expiring within 7 and 30 "
                 "days plus any expiry_days window, reorders (limit max 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
-                "shifts (days max 366, limit max 25; online order totals are in "
-                "si_metric); "
+                "shifts (days max 366, limit max 25; online order totals are in si_metric; "
+                "the drawer, cash in and out and payment-method splits are si_cashier); "
                 "order = ONE order by number, customer name or phone (needs query); "
                 "customer = ONE customer by name, phone or email (needs query; phone, email "
                 "masked); "
@@ -2970,6 +2978,30 @@ def register_si_tools() -> None:
             ),
             args_schema=SIFinanceArgs,
             handler=_si_finance,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_cashier",
+            description=(
+                "The till's cash and drawer (use for 'the drawer, short or over, cash in and out, "
+                "hand-over, how the day was paid'). view: "
+                "cash_in_out = drawer movements by reason, in, out and net; "
+                "expected_vs_counted = per closed shift what the drawer should have held versus "
+                "what was counted (pos:override); "
+                "drawer_differences = only the shifts that did not match, biggest first, labelled "
+                "shortage or overage (pos:override); "
+                "reconciliation_by_method = expected versus counted per payment method, with the "
+                "float it opened with; "
+                "shift_handovers = who handed the drawer to whom and the count at that moment "
+                "(pos:override); "
+                "daily_by_device = per till and day: shifts, invoices, returns, sales, returns, "
+                "tax; "
+                "sales_by_method = what each payment method collected on the till's sales. "
+                "Per-cashier SALES are si_shop view=cashier. days 1-366, default 30; limit max 25. "
+                "Every amount is already formatted. Read-only."
+            ),
+            args_schema=SICashierArgs,
+            handler=si_cashier,
             tags=["sales-intelligence"],
         ),
     ]
