@@ -1,0 +1,102 @@
+"""The gate a route actually calls, judged without a database.
+
+`workspace_gate` is the function seven routers depend on, so the enforcement is
+pinned here with a stub context: the facts are handed in, and what matters is
+whether a request is let through, refused, and for which reason.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+
+import pytest
+
+from app.core.errors import PermissionDeniedError
+from app.modules.applications import dependencies
+from app.modules.applications.access import AccessFacts
+
+KEY = "retail.purchasing"
+
+
+class _Ctx:
+    def __init__(self, states: dict[str, str], entitled: set[str] | None = None) -> None:
+        self.session = object()
+        self.tenant_id = uuid.uuid4()
+        self.workspace_id = uuid.uuid4()
+        self._facts = AccessFacts(
+            application_key=KEY,
+            entitled_applications=frozenset(entitled or set()),
+            installation_states=states,
+        )
+
+
+@pytest.fixture()
+def facts_from_ctx(monkeypatch):
+    """Answer `gather_facts` from the stub context instead of the database."""
+
+    def _install(ctx: _Ctx) -> None:
+        async def _fake(session, *, tenant_id, workspace_id, application_key):  # noqa: ANN001
+            return ctx._facts
+
+        monkeypatch.setattr(dependencies, "gather_facts", _fake)
+
+    return _install
+
+
+def _gate(ctx: _Ctx):
+    return asyncio.run(dependencies.workspace_gate(KEY, ctx))
+
+
+def test_an_unpaid_workspace_is_refused_with_403(facts_from_ctx) -> None:
+    """The whole point: a workspace with installations but no entitlement is denied."""
+    ctx = _Ctx(states={"retail.core": "active"}, entitled=set())
+    facts_from_ctx(ctx)
+    with pytest.raises(PermissionDeniedError):
+        _gate(ctx)
+
+
+def test_a_dependency_that_is_not_installed_refuses_the_application(facts_from_ctx) -> None:
+    """A paid product whose base is missing is still refused, and says which base."""
+    ctx = _Ctx(states={KEY: "active"}, entitled={KEY, "retail.core"})
+    facts_from_ctx(ctx)
+    with pytest.raises(PermissionDeniedError, match="dependency_inactive"):
+        _gate(ctx)
+
+
+def test_a_paid_but_uninstalled_workspace_is_refused(facts_from_ctx) -> None:
+    ctx = _Ctx(states={"retail.core": "active"}, entitled={KEY})
+    facts_from_ctx(ctx)
+    with pytest.raises(PermissionDeniedError):
+        _gate(ctx)
+
+
+def test_an_installed_but_unfinished_setup_is_refused(facts_from_ctx) -> None:
+    ctx = _Ctx(states={KEY: "setup_required"}, entitled={KEY})
+    facts_from_ctx(ctx)
+    with pytest.raises(PermissionDeniedError):
+        _gate(ctx)
+
+
+def test_an_entitled_and_active_application_passes(facts_from_ctx) -> None:
+    # retail.purchasing sits on top of retail.core, so both have to be on.
+    ctx = _Ctx(states={KEY: "active", "retail.core": "active"}, entitled={KEY, "retail.core"})
+    facts_from_ctx(ctx)
+    result = _gate(ctx)
+    assert result.allowed is True
+    assert result.reason == "allowed"
+
+
+def test_a_workspace_with_no_installations_at_all_still_passes(facts_from_ctx) -> None:
+    """The temporary transition rule: every account today has zero rows."""
+    ctx = _Ctx(states={}, entitled=set())
+    facts_from_ctx(ctx)
+    result = _gate(ctx)
+    assert result.allowed is True
+    assert result.reason == "workspace_not_configured"
+
+
+def test_a_route_without_a_facts_provider_refuses_to_run() -> None:
+    dependency = dependencies.require_application(KEY)
+    with pytest.raises(RuntimeError, match="no facts provider"):
+        dependency()
