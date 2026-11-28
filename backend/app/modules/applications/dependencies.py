@@ -89,6 +89,27 @@ async def workspace_gate(
     because a router serves reads and writes under different codes and only the endpoint
     knows which one it needs; the endpoint's own ``require_permission`` still decides.
     """
+    if getattr(ctx, "session", None) is None:
+        # No session on this context, so there are no facts to read and no honest way to
+        # decide. Every workspace is unconfigured today anyway, so this is the same verdict
+        # the query would reach — but it is reached loudly, and it is reached WITHOUT the
+        # database, which is what the request-surface tests that build a context by hand
+        # assert ("reaching the database would raise"). A context without a session on a
+        # real request path is a wiring bug, and this warning is where it shows up.
+        logger.warning(
+            "application gate has no session on this context: treating the workspace as "
+            "unconfigured instead of reading facts",
+            extra={
+                "application_key": application_key,
+                "workspace_id": str(getattr(ctx, "workspace_id", None)),
+                "tenant_id": str(getattr(ctx, "tenant_id", None)),
+            },
+        )
+        return evaluate(
+            AccessFacts(application_key=application_key),
+            application_key,
+            workspace_configured=False,
+        )
     if product_permission is not None:
         prefix = f"{product_permission}:"
         if not any(
