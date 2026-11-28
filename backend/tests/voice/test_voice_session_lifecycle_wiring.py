@@ -12,6 +12,7 @@ database replaced by stubs, because the wiring is the thing that was missing.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
@@ -260,6 +261,32 @@ async def test_any_other_failure_to_open_the_call_still_ends_the_session(monkeyp
 
     assert recorder.calls == [("fail", SESSION, "provider_error:ProviderBoom")]
     assert websocket.closed_with == 1011
+
+
+class _BrokenClose(_Call):
+    """A transport whose close() raises — the socket is already gone underneath us."""
+
+    async def close(self) -> None:
+        raise RuntimeError("the transport is already closed")
+
+
+@pytest.mark.asyncio
+async def test_a_close_that_raises_still_ends_the_session(monkeypatch, caplog) -> None:
+    """A failing ``call.close()`` must not cost the row its ending.
+
+    The close runs before ``finish()`` in the same ``finally``. One raising line
+    used to skip the state write entirely, which is how a session that really
+    ended stays ACTIVE in the database — the stuck-session symptom. The close
+    error is logged and the ending still happens.
+    """
+    recorder = _Recorder()
+    _install(monkeypatch, recorder, lambda **_kwargs: _await(_BrokenClose()))
+
+    with caplog.at_level(logging.WARNING, logger=api.logger.name):
+        await api.stream_audio(_WebSocket(), SESSION, ticket="t")
+
+    assert ("close", SESSION, "socket_closed") in recorder.calls
+    assert "voice.call_close_failed" in caplog.text
 
 
 async def _await(value):

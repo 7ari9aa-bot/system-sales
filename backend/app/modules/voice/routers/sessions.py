@@ -497,5 +497,15 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
         pass
     finally:
         pump.cancel()
-        await call.close()
-        await finish(ending)
+        # close() and finish() are two different promises. Closing the transport is a courtesy
+        # to the provider; recording the ending is the durable fact the control plane depends on.
+        # They used to share one sequence, so a close() that raised (a socket already gone, a
+        # transport that lost its task) skipped finish() and left a session that really ended
+        # looking ACTIVE. The close error is logged and the ending still happens.
+        try:
+            try:
+                await call.close()
+            except Exception:  # noqa: BLE001 - a broken close must not cost the row its ending
+                logger.warning("voice.call_close_failed session=%s", session_id, exc_info=True)
+        finally:
+            await finish(ending)
