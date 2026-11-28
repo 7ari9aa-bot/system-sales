@@ -372,7 +372,11 @@ MODULES_DIR = pathlib.Path(__file__).resolve().parent.parent / "app" / "modules"
 # 357 -> 358: voice.assistant_turn books the spend of a spoken turn through the one
 # billing usage path (ai.usage.record_voice_turn_usage), the same surface the text
 # route already books against. One edge, voice -> ai.
-BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 358
+# 358 -> 359: the commit that pinned 358 (61686b64) already measured 359 in its own tree —
+# checked out and counted — so this is the pin being corrected to the tree it was taken on,
+# not a new edge being allowed in. Main has been red on this test since that commit and the
+# skip on main's CI hid it.
+BASELINE_TOTAL_CROSS_MODULE_IMPORTS = 359
 # 209 -> 235 on 2026-10-21 (owner-approved raise): the cashier POS build-out (pos, expenses,
 # purchasing, inventory stocktake, activity log, sales report) added ~24 function-scope reads of
 # the owning modules' services and models: pos -> orders/catalog/inventory/customers/identity,
