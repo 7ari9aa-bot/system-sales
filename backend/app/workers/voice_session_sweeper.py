@@ -24,9 +24,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
 from app.modules.voice.application.session_sweeper import (
-    DEFAULT_CONFIGURING_GRACE,
     DEFAULT_LIMIT,
-    DEFAULT_STALE_AFTER,
     SweepOutcome,
     sweep_tenant_sessions,
 )
@@ -37,8 +35,8 @@ logger = logging.getLogger(__name__)
 async def sweep_stale_voice_sessions(
     *,
     now: dt.datetime | None = None,
-    stale_after: dt.timedelta = DEFAULT_STALE_AFTER,
-    configuring_grace: dt.timedelta = DEFAULT_CONFIGURING_GRACE,
+    stale_after: dt.timedelta | None = None,
+    configuring_grace: dt.timedelta | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> int:
     """End every abandoned voice session, one RLS-bound transaction per tenant.
@@ -48,7 +46,17 @@ async def sweep_stale_voice_sessions(
     transaction is opened, bound, swept and committed as one unit, so the binding
     is live for every read and write the service makes and needs no re-bind.
     """
+    from app.core.config import get_settings
     from app.modules.identity.models import Tenant
+
+    # The silence budgets are settings, resolved HERE rather than bound at import: the scheduler
+    # calls this with no arguments, and a deployment that needs a longer budget for long holds must
+    # not need a code change to get one.
+    settings = get_settings()
+    if stale_after is None:
+        stale_after = dt.timedelta(minutes=settings.voice_sweep_stale_after_minutes)
+    if configuring_grace is None:
+        configuring_grace = dt.timedelta(minutes=settings.voice_sweep_configuring_grace_minutes)
 
     # `tenants` carries no RLS, so the enumeration itself needs no context.
     async with SessionLocal() as session:
