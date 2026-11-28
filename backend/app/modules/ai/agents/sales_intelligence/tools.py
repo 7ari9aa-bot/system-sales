@@ -738,6 +738,9 @@ class SIShopArgs(BaseModel):
     query: str | None = Field(default=None, max_length=120)
     # stock only: an item that has not sold for this many days counts as stagnant
     stagnant_days: int = Field(default=30, ge=7, le=365)
+    # inventory_health only: an extra "expires within N days" window, reported beside the fixed
+    # 7- and 30-day lists. Omitted means no custom window is reported.
+    expiry_days: int | None = Field(default=None, ge=1, le=365)
 
 
 async def _si_shop(
@@ -749,6 +752,7 @@ async def _si_shop(
     limit: int | None = None,
     query: str | None = None,
     stagnant_days: int = 30,
+    expiry_days: int | None = None,
     context: dict | None = None,
 ) -> dict:
     """A thin router over the five reads it replaces; each runs exactly as it always did.
@@ -777,7 +781,7 @@ async def _si_shop(
     if view == "stock":
         return await _si_stock_status(session, tenant_id, limit=limit, stagnant_days=stagnant_days)
     if view == "inventory_health":
-        return await _si_inventory_health(session, tenant_id, limit=limit)
+        return await _si_inventory_health(session, tenant_id, limit=limit, expiry_days=expiry_days)
     if view == "top_customers":
         return await _si_top_customers(session, tenant_id, days=days, limit=limit)
     reader = _si_top_products if view == "products" else _si_cashier_summary
@@ -1117,12 +1121,17 @@ _VALUATION_SQL = (
     " GROUP BY w.name ORDER BY value DESC"
 )
 
-#: Variants with on_hand > 0 that have had no outward sale movement in N days.
+#: Variants with on_hand > 0 that have had no outward sale movement in N days, ONE ROW PER
+#: WAREHOUSE: a balance is per (warehouse, variant), so the same variant held in two warehouses is
+#: two positions, each with its own tied capital. Grouping without the warehouse merged the two
+#: sums into one row (and could emit the same sku twice).
 _DEAD_STOCK_SQL = (
-    "SELECT v.sku, p.title AS product, v.title AS variant,"
+    "SELECT w.name AS warehouse, w.code AS warehouse_code,"
+    " v.sku, p.title AS product, v.title AS variant,"
     " b.on_hand,"
     " COALESCE(SUM(cl.remaining_quantity * cl.unit_cost), 0) AS tied_value"
     " FROM inventory_balances b"
+    " JOIN warehouses w ON w.id = b.warehouse_id AND w.tenant_id = b.tenant_id"
     " JOIN product_variants v ON v.id = b.variant_id AND v.tenant_id = b.tenant_id"
     " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
     " LEFT JOIN inventory_cost_layers cl"
@@ -1135,8 +1144,8 @@ _DEAD_STOCK_SQL = (
     "       AND m.tenant_id = b.tenant_id AND m.direction = 'out'"
     "       AND m.reason = 'sale' AND m.created_at >= :since"
     "   )"
-    " GROUP BY v.sku, p.title, v.title, b.on_hand"
-    " ORDER BY tied_value DESC"
+    " GROUP BY b.warehouse_id, w.name, w.code, v.sku, p.title, v.title, b.on_hand"
+    " ORDER BY tied_value DESC, w.name ASC, v.sku ASC"
 )
 
 #: Variants at or below their policy min_stock (available = on_hand - quarantined - reserved).
@@ -1159,10 +1168,19 @@ _LOW_STOCK_SQL = (
     "       - COALESCE(b.reserved, 0), 0)) DESC"
 )
 
-#: Lots expiring within the next N days (default 30) — FEFO visibility.
+#: Lots that expire at all — already expired, and the ones due inside the caller's horizon.
+#: Each row carries its bucket so a lot that has already expired can never be read as "expiring
+#: soon": the old query bounded only the top of the range (``expires_at <= horizon``) and so put
+#: yesterday's expired lot in the same list as next week's.
 _EXPIRING_LOTS_SQL = (
     "SELECT l.lot_code, l.expires_at, v.sku,"
-    " p.title AS product, v.title AS variant"
+    " p.title AS product, v.title AS variant,"
+    " CASE"
+    "   WHEN l.expires_at < :now THEN 'expired'"
+    "   WHEN l.expires_at <= :in_7_days THEN 'within_7_days'"
+    "   WHEN l.expires_at <= :in_30_days THEN 'within_30_days'"
+    "   ELSE 'later'"
+    " END AS bucket"
     " FROM inventory_lots l"
     " JOIN product_variants v ON v.id = l.variant_id AND v.tenant_id = l.tenant_id"
     " JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id"
@@ -1188,6 +1206,7 @@ async def _si_inventory_health(
     tenant_id: uuid.UUID,
     *,
     limit: int = 10,
+    expiry_days: int | None = None,
     context: dict | None = None,
 ) -> dict:
     """Full inventory health dashboard: valuation, dead stock, low stock, expiring lots,
@@ -1196,8 +1215,12 @@ async def _si_inventory_health(
     Read-only. Every figure comes from SQL against the inventory tables built by the
     inventory service layer. No cross-module service import is needed."""
     window = await _resolve_window(session, tenant_id, 1)
-    since_90 = datetime.now(UTC) - timedelta(days=90)
-    horizon_30 = datetime.now(UTC) + timedelta(days=30)
+    now = datetime.now(UTC)
+    since_90 = now - timedelta(days=90)
+    # The caller's own window is reported beside the fixed ones; the query reaches as far as the
+    # wider of the two so a custom window past 30 days still sees its lots.
+    horizon_30 = now + timedelta(days=30)
+    expiry_horizon = now + timedelta(days=max(30, expiry_days or 0))
     params = {"tenant_id": str(tenant_id)}
 
     # 1. Valuation by warehouse
@@ -1209,19 +1232,41 @@ async def _si_inventory_health(
         for r in val_rows[:limit]
     ]
 
-    # 2. Dead stock (no sales in 90 days)
+    # 2. Dead stock (no sales in 90 days), one row per variant AND warehouse: the same variant
+    #    held in two warehouses is two positions, each carrying its own tied capital.
     dead_rows = (await session.execute(_sql(_DEAD_STOCK_SQL), {**params, "since": since_90})).all()
     dead_items = [
         {
             "sku": r.sku,
             "product": r.product,
             "variant": r.variant,
+            "warehouse": r.warehouse,
+            "warehouse_code": r.warehouse_code,
             "on_hand": int(r.on_hand),
             "tied_value": str(Decimal(str(r.tied_value))),
         }
         for r in dead_rows[:limit]
     ]
-    total_dead_value = sum(Decimal(str(r.tied_value)) for r in dead_rows)
+    total_dead_value = sum((Decimal(str(r.tied_value)) for r in dead_rows), Decimal(0))
+    # Totals are summed from the per-warehouse rows, so they always equal the parts.
+    dead_by_warehouse: dict[tuple[str, str], dict] = {}
+    for r in dead_rows:
+        key = (r.warehouse, r.warehouse_code)
+        bucket = dead_by_warehouse.setdefault(
+            key,
+            {
+                "warehouse": r.warehouse,
+                "warehouse_code": r.warehouse_code,
+                "count": 0,
+                "tied_value": Decimal(0),
+            },
+        )
+        bucket["count"] += 1
+        bucket["tied_value"] += Decimal(str(r.tied_value))
+    dead_warehouses = [
+        {**b, "tied_value": str(b["tied_value"])}
+        for b in sorted(dead_by_warehouse.values(), key=lambda b: b["tied_value"], reverse=True)
+    ]
 
     # 3. Low stock alerts (below policy min_stock)
     low_rows = (await session.execute(_sql(_LOW_STOCK_SQL), params)).all()
@@ -1237,20 +1282,41 @@ async def _si_inventory_health(
         for r in low_rows[:limit]
     ]
 
-    # 4. Expiring lots (within 30 days)
+    # 4. Expiring lots: already expired, within 7 days, within 30 days, and the caller's window.
+    #    Every upcoming window counts forward from now, so an expired lot is never in one.
     exp_rows = (
-        await session.execute(_sql(_EXPIRING_LOTS_SQL), {**params, "horizon": horizon_30})
+        await session.execute(
+            _sql(_EXPIRING_LOTS_SQL),
+            {
+                **params,
+                "now": now,
+                "in_7_days": now + timedelta(days=7),
+                "in_30_days": horizon_30,
+                "horizon": expiry_horizon,
+            },
+        )
     ).all()
-    expiring = [
-        {
-            "lot_code": r.lot_code,
-            "sku": r.sku,
-            "product": r.product,
-            "variant": r.variant,
-            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+
+    def _lot(row) -> dict:
+        return {
+            "lot_code": row.lot_code,
+            "sku": row.sku,
+            "product": row.product,
+            "variant": row.variant,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
         }
-        for r in exp_rows[:limit]
-    ]
+
+    expired_lots = [_lot(r) for r in exp_rows if r.bucket == "expired"]
+    expiring_7 = [_lot(r) for r in exp_rows if r.bucket == "within_7_days"]
+    expiring_30 = [_lot(r) for r in exp_rows if r.bucket in ("within_7_days", "within_30_days")]
+    custom_lots: list[dict] = []
+    if expiry_days:
+        custom_horizon = now + timedelta(days=expiry_days)
+        custom_lots = [
+            _lot(r)
+            for r in exp_rows
+            if r.bucket != "expired" and r.expires_at is not None and r.expires_at <= custom_horizon
+        ]
 
     # 5. Pending reorders
     reorder_rows = (await session.execute(_sql(_PENDING_REORDERS_SQL), params)).all()
@@ -1271,14 +1337,18 @@ async def _si_inventory_health(
     for name, total, shown in (
         ("dead stock items", len(dead_rows), dead_items),
         ("low stock alerts", len(low_rows), low_items),
-        ("expiring lots", len(exp_rows), expiring),
+        ("expiring lots", len(expiring_30), expiring_30[:limit]),
+        ("expired lots", len(expired_lots), expired_lots[:limit]),
+        ("lots expiring within 7 days", len(expiring_7), expiring_7[:limit]),
         ("pending reorders", len(reorder_rows), pending_reorders),
     ):
         if total > len(shown):
             limitations.append(f"showing {len(shown)} of {total} {name}")
     limitations.append(
-        "dead stock = no sale in 90 days; low stock = at or under policy min_stock; "
-        "expiring = lots expiring within 30 days; valuation = FIFO cost layers"
+        "dead stock = no sale in 90 days, one row per variant and warehouse, so a variant held "
+        "in two warehouses reports its tied capital in each; low stock = at or under policy "
+        "min_stock; expiring windows count forward from now, so an expired lot is never counted "
+        "as expiring, and the 7-day list is part of the 30-day list; valuation = FIFO cost layers"
     )
 
     store = _evidence_store()
@@ -1292,7 +1362,8 @@ async def _si_inventory_health(
             ("inventory_dead_stock_count", len(dead_rows), "count", {}),
             ("inventory_dead_stock_value", total_dead_value, "money", {}),
             ("inventory_low_stock_count", len(low_rows), "count", {}),
-            ("inventory_expiring_lots", len(exp_rows), "count", {}),
+            ("inventory_expiring_lots", len(expiring_30), "count", {}),
+            ("inventory_expired_lots", len(expired_lots), "count", {}),
             ("inventory_pending_reorders", len(reorder_rows), "count", {}),
         ],
     )
@@ -1308,6 +1379,7 @@ async def _si_inventory_health(
             "dead_stock": {
                 "count": len(dead_rows),
                 "tied_value": str(total_dead_value),
+                "by_warehouse": dead_warehouses,
                 "items": dead_items,
             },
             "low_stock": {
@@ -1315,8 +1387,22 @@ async def _si_inventory_health(
                 "items": low_items,
             },
             "expiring_lots": {
-                "count": len(exp_rows),
-                "items": expiring,
+                # count/items stay the upcoming 30-day list; expired lots live beside it and are
+                # never counted as expiring.
+                "count": len(expiring_30),
+                "items": expiring_30[:limit],
+                "expired": {"count": len(expired_lots), "items": expired_lots[:limit]},
+                "within_7_days": {"count": len(expiring_7), "items": expiring_7[:limit]},
+                "within_30_days": {"count": len(expiring_30), "items": expiring_30[:limit]},
+                "custom_window": (
+                    {
+                        "days": expiry_days,
+                        "count": len(custom_lots),
+                        "items": custom_lots[:limit],
+                    }
+                    if expiry_days
+                    else None
+                ),
             },
             "pending_reorders": {
                 "count": len(reorder_rows),
@@ -2848,8 +2934,9 @@ def register_si_tools() -> None:
                 "products = best sellers with units, revenue, options chosen "
                 "(days max 90, limit max 20); "
                 "stock = what is out, low or unsold (stagnant_days, limit max 25); "
-                "inventory_health = stock value per warehouse, dead stock and its tied-up capital, "
-                "low stock, expiring lots, reorders (limit max 25); "
+                "inventory_health = stock value per warehouse, dead stock and its tied-up capital "
+                "per warehouse, low stock, expired lots beside the lots expiring within 7 and 30 "
+                "days plus any expiry_days window, reorders (limit max 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
                 "shifts (days max 366, limit max 25; online order totals are in "
                 "si_metric); "
