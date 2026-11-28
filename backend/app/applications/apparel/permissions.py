@@ -91,3 +91,40 @@ def get_permission(code: str) -> ApparelPermission:
 
 def codes_for_module(module: str) -> tuple[str, ...]:
     return tuple(p.code for p in PERMISSIONS if p.module == module)
+
+
+#: The action verbs that change data. Read verbs (view, access) are everything else.
+WRITE_ACTIONS: frozenset[str] = frozenset(
+    {
+        "adjust",
+        "approve",
+        "cancel_sale",
+        "correct",
+        "count",
+        "create",
+        "delete",
+        "discount",
+        "edit",
+        "import",
+        "manage",
+        "receive",
+        "sell",
+        "transfer",
+    }
+)
+
+
+#: Verbs that take data out without changing it. Kept apart from writes on
+#: purpose: a workspace whose licence lapsed to read-only may still export its
+#: own reports, and refusing that would be holding the owner's data hostage.
+EGRESS_ACTIONS: frozenset[str] = frozenset({"export"})
+
+
+def is_write_code(permission_code: str) -> bool:
+    """Does this permission change data? The verb is the code's last segment."""
+    return permission_code.rsplit(".", 1)[-1] in WRITE_ACTIONS
+
+
+def is_egress_code(permission_code: str) -> bool:
+    """Does this permission move data out of the store without changing it?"""
+    return permission_code.rsplit(".", 1)[-1] in EGRESS_ACTIONS

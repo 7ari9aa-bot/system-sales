@@ -65,6 +65,17 @@ def test_read_only_allows_reading_and_refuses_writing() -> None:
         held_codes=ALL_CODES,
         installation_state="read_only",
     )
+    # Export is egress, not mutation: a lapsed licence must not hold the
+    # owner's own reports hostage.
+    decide_apparel_access(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        user_id=USER,
+        permission_code="apparel.reports.export",
+        held_codes=ALL_CODES | {"apparel.reports.export"},
+        installation_state="read_only",
+    )
+
     with pytest.raises(PermissionDeniedError, match="read only"):
         decide_apparel_access(
             tenant_id=TENANT,

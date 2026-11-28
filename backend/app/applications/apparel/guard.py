@@ -8,7 +8,8 @@ receives a verified context instead of assembling one from request fields
 (industry-applications §16).
 
 Read-only is a real state, not a note: a workspace whose licence lapsed to
-read-only can still open its reports and cannot post a sale.
+read-only can still open its reports, and can still export them, because the
+data is the owner's; it cannot post a sale.
 """
 
 from __future__ import annotations
@@ -18,7 +19,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from app.applications.apparel.permissions import get_permission
+from app.applications.apparel.compat import satisfied_by_legacy
+from app.applications.apparel.permissions import get_permission, is_write_code
 from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import decide_access
 from app.modules.applications.repository import gather_facts
@@ -41,27 +43,6 @@ UNCONFIGURED = "__unconfigured__"
 #: separately because it depends on what the endpoint does.
 BLOCKED_STATES = frozenset({"suspended", "uninstalled", "revoked", "expired"})
 
-#: The action verb, taken from the permission code, that writes something.
-WRITE_ACTIONS = frozenset(
-    {
-        "adjust",
-        "approve",
-        "cancel_sale",
-        "correct",
-        "count",
-        "create",
-        "delete",
-        "discount",
-        "edit",
-        "export",
-        "import",
-        "manage",
-        "receive",
-        "sell",
-        "transfer",
-    }
-)
-
 
 @dataclass(frozen=True, slots=True)
 class ApparelAccess:
@@ -76,12 +57,8 @@ class ApparelAccess:
 
 
 def is_write(permission_code: str) -> bool:
-    """Does this permission change data?
-
-    The verb is the last segment of ``apparel.<area>.<action>``; the registry
-    decides whether the code exists at all.
-    """
-    return permission_code.rsplit(".", 1)[-1] in WRITE_ACTIONS
+    """Does this permission change data? One rule, defined with the codes."""
+    return is_write_code(permission_code)
 
 
 def decide_apparel_access(
@@ -112,7 +89,9 @@ def decide_apparel_access(
     if installation_state in BLOCKED_STATES:
         raise PermissionDeniedError(f"apparel is {installation_state} for this workspace")
 
-    if permission_code not in held_codes:
+    # The apparel code first, then the legacy code it replaces while roles are
+    # still platform-era (see compat.py: the bridge is temporary and directional).
+    if permission_code not in held_codes and not satisfied_by_legacy(permission_code, held_codes):
         raise PermissionDeniedError(f"missing permission: {permission_code}")
 
     read_only = installation_state == "read_only"
