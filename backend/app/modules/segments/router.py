@@ -21,10 +21,21 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError
+from app.modules.applications.dependencies import workspace_gate
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.segments.service import Segment, SegmentService, validate_dsl
 
-router = APIRouter(prefix="/segments", tags=["segments"])
+
+async def _segments_gate(ctx: TenantContext = Depends(TenantCtxDep)):
+    """Audience segments belong to the engagement product."""
+    return await workspace_gate("customer.engagement", ctx)
+
+
+router = APIRouter(
+    prefix="/segments",
+    tags=["segments"],
+    dependencies=[Depends(_segments_gate)],
+)
 
 WriteCtx = Annotated[TenantContext, Depends(require_permission("marketing:write"))]
 
