@@ -10,6 +10,9 @@ rather than say the till does not keep them; the model repeated the old wording 
 "your till does not record payment methods", which was false. Sales and returns use the same
 rules as the shift report: sales on ``kind == 'sale'`` receipts only (a return receipt points at
 the same order), returns on the return lines.
+
+Every test here runs against the app database (``DATABASE_URL_APP_ADMIN``) and skips without
+it, so a sandbox with no Postgres proves the module imports, not the numbers.
 """
 
 from __future__ import annotations
