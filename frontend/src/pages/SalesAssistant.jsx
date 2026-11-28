@@ -371,9 +371,7 @@ export default function SalesAssistant() {
         error={sendError ? t("salesAssistant.sendFailed") : null}
         onSend={send}
         disabled={sending || createThread.isPending}
-        // المكالمة بتحصل في نفس المحادثة المفتوحة
-        threadId={activeId ?? undefined}
-        // المكالمة بتحصل في نفس المحادثة المفتوحة
+        // المكالمة بتحصل في نفس المحادثة المفتوحة: الكلام بينتكتب في نفس الثريد
         threadId={activeId ?? undefined}
         // بعد المكالمة نعيد قراءة نفس الثريد: الترانسكريبت اللي اتكتب على السيرفر
         // أثناء الكلام لازم يظهر في نفس الشاشة، مش في محادثة تانية.
