@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.core.idempotency import (
     IfMatch,
@@ -14,6 +14,7 @@ from app.core.idempotency import (
     parse_if_match,
 )
 from app.core.pagination import decode_cursor, page_slice
+from app.modules.applications.dependencies import workspace_gate
 from app.modules.customers import schemas
 from app.modules.customers.schemas import (
     ArchiveBody,
@@ -25,6 +26,7 @@ from app.modules.customers.schemas import (
 )
 from app.modules.customers.service import CustomerService
 from app.modules.customers.timeline import Customer360Service
+from app.modules.identity.deps import TenantContext, get_tenant_ctx
 
 from ._deps import (
     ReadCtx,
@@ -34,7 +36,13 @@ from ._deps import (
     _redact_issue_item,
 )
 
-router = APIRouter(tags=["customers"])
+
+async def _customers_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """Customer records belong to the engagement product, not the base till."""
+    return await workspace_gate("customer.engagement", ctx)
+
+
+router = APIRouter(tags=["customers"], dependencies=[Depends(_customers_gate)])
 
 # Query params are declared `Annotated[type, Query(...)] = <value>`, never
 # `name: type = Query(...)` — see the parameter-declaration rule in
