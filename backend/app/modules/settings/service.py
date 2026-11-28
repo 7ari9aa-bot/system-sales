@@ -38,6 +38,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit_row
+from app.core.context import application_key_contextvar
 from app.core.errors import ConflictError, ValidationError
 from app.core.events.writer import add_outbox_event
 from app.modules.settings.models import (
@@ -55,6 +56,10 @@ from app.modules.settings.registry import (
     list_definitions,
 )
 from app.modules.settings.scope_graph import ScopeLink, require_scope_entity, resolve_chain
+from app.modules.settings.sector_boundary import (
+    assert_application_may_read,
+    assert_platform_may_read,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,11 +90,34 @@ def _scope(scope: Scope | str) -> Scope:
         raise ValidationError(f"unknown scope {scope!r}") from None
 
 
+def _guard_domain(domain: str) -> None:
+    """Refuse a settings domain the acting application does not own.
+
+    Only an explicit application context is checked. A platform-era screen that
+    resolves settings without one keeps today's behaviour: refusing there would
+    take the settings pages down before anyone decided what they own. The context
+    is set by an application's own gate, so the rule bites exactly where a second
+    application could otherwise read the first one's trading rules
+    (industry-applications §12).
+    """
+    application = application_key_contextvar.get()
+    if application is None:
+        return
+    if application == "platform":
+        assert_platform_may_read(domain)
+    else:
+        assert_application_may_read(domain, application)
+
+
 def _definition(key: str) -> SettingDef:
     try:
-        return get_definition(key)
+        definition = get_definition(key)
     except KeyError:
         raise ValidationError(f"unknown setting {key!r}") from None
+    # Every read and every write resolves its definition through here, so the
+    # ownership rule cannot be forgotten on one path and remembered on another.
+    _guard_domain(definition.domain)
+    return definition
 
 
 def _validate(defn: SettingDef, value: Any) -> Any:
