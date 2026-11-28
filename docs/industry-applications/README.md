@@ -14,25 +14,25 @@
 
 | العنصر | القيمة المقاسة |
 |---|---|
-| وحدات الـBackend | 33 وحدة تحت `backend/app/modules/` |
+| وحدات الـBackend | 17 وحدة منصة تحت `backend/app/platform/` و17 وحدة ملابس تحت `backend/app/applications/apparel/modules/` |
 | أسطر Python في الوحدات | نحو 150 ألف سطر |
 | جداول معرّفة (`__tablename__`) | 241 جدولاً |
 | مخططات قاعدة البيانات المستخدمة | مخطط `public` واحد فقط (لا `platform` ولا `apparel`) |
 | مسارات الواجهة | 133 مساراً في `frontend/src/App.jsx` |
 | هجرات Alembic | 245 هجرة في `backend/migrations/versions` |
-| سجلات الإعدادات | سجل واحد فيه 19 قسماً في `backend/app/modules/settings/registry.py` |
-| تطبيقات معلنة | 7 تطبيقات في `backend/app/modules/applications/manifests.py` |
+| سجلات الإعدادات | سجل واحد فيه 19 قسماً في `backend/app/platform/settings/registry.py` |
+| تطبيقات معلنة | 7 تطبيقات في `backend/app/platform/applications/manifests.py` |
 
 ### ما هو موجود فعلاً ويصلح كأساس
 
 - **هوية الحساب ومساحة العمل:** `tenants`، `users`، `workspaces`،
   `workspace_memberships`، `roles`، `permissions`، `invitations`
-  في `backend/app/modules/identity/models.py`. هذا هو أساس
+  في `backend/app/platform/identity/models.py`. هذا هو أساس
   `Organization & Workspace Identity` المطلوب في القسم 3.2.
 - **تثبيت التطبيقات:** جداول `workspace_app_installations`،
   `subscription_items`، `plan_application_inclusions` مع
   `install.py` و`access.py` و`routing.py` و`dependencies.py`.
-- **قرار الوصول:** `backend/app/modules/applications/access.py` يحسب
+- **قرار الوصول:** `backend/app/platform/applications/access.py` يحسب
   `allowed` بترتيب صريح (حساب عامل، عضوية، مساحة عمل نشطة، تطبيق موجود،
   قطاع متوافق، اشتراك، تثبيت نشط، تبعيات، قدرات). هذا هو نواة
   `Application Access Guard` في القسم 7.
@@ -175,15 +175,15 @@
 | 1. القرار المعماري | مطبق كإعلان | لا Business Core جديد. القديم (`retail.core` في `manifests.py`) ما زال قائماً بالكود ويحتاج قرار D1 |
 | 2. شكل المنصة | جزئي | `app/applications/` موجود، والمنصة ما زالت تعرف أسماء تطبيقات عبر السجل فقط |
 | 3. Platform Infrastructure | موجود فعلاً | identity، billing، applications، privacy، operations، notifications، realtime، voice |
-| 4. مكونات التطبيق | مطبق كسجل | manifest يعلن 10 وحدات مربوطة بحزم موجودة فعلاً؛ لا نقل ملفات بعد |
+| 4. مكونات التطبيق | مطبق | manifest يعلن 10 وحدات، وكل وحدة بقت تحت `app/applications/apparel/modules/` بملفاتها |
 | 5. الحسابات ومساحات العمل | موجود فعلاً | `tenants`، `workspaces`، `workspace_memberships` |
-| 6. قاعدة البيانات | **لم ينفذ** | 241 جدولاً في مخطط `public` واحد؛ يحتاج قرار D4 وهجرات بموافقة المالك |
-| 7. Backend Architecture | جزئي | حدود التطبيق والبوابة موجودة؛ مسار الطلب لم يُحوَّل بعد |
+| 6. قاعدة البيانات | منفذ على الإنتاج | مخطط `apparel` فيه 85 جدول تداول و`platform` فيه 9 جداول، و`public` نزل من 260 لـ175 جدول؛ مسار الرجوع `migrations/sql/rollback_apparel_schema.sql` |
+| 7. Backend Architecture | مطبق | بوابة `require_apparel` مربوطة بـ6 موجّهات (catalog, inventory, purchasing, pos, orders, customers) بوضع shadow و`APPAREL_GATE_MODE=enforce` للمنع |
 | 8. العزل بين التطبيقات | مطبق ومختبر | `test_application_boundaries` يمنع المنصة من استيراد تطبيق، بقائمة دين 9 مواضع |
-| 9. Apparel Application | تعريف وبوابة | `app/applications/apparel/` كامل؛ الوحدات نفسها ما زالت في `app/modules` |
-| 10. الواجهة | سجل فقط | `frontend/src/applications/apparel/registry.js`؛ لا نقل ملفات صفحات |
+| 9. Apparel Application | مطبق | 17 وحدة (369 ملف) تحت `app/applications/apparel/modules/`، و920 ملف استيرادات اتحدّث |
+| 10. الواجهة | مطبق | 458 ملف واجهة انتقلوا من `frontend/src/cashier` لـ`frontend/src/applications/apparel`، و3725 اختبار أخضر |
 | 11. التوجيه والوصول | مطبق | 15 مسار `/apparel/*` معلن + مسارات توافق مختبرة مقابل `App.jsx` |
-| 12. الإعدادات | ملكية مفروضة | `settings/sector_boundary.py` يمنع المنصة من قراءة قسم تطبيق؛ تقسيم السجل نفسه لم يتم |
+| 12. الإعدادات | ملكية مفروضة على الخدمة | كل قراءة/كتابة بتمرا من `_definition`، والتطبيق ما يقراش أقسام غيره، والقسم بلا مالك بيترفض؛ و`settings/sector_boundary.py` هو الحد |
 | 13. الصلاحيات | مطبق | 30 رمز `apparel.*` + جسر مؤقت من الأكواد القديمة |
 | 14. Manifest | مطبق ومختبر | كل اسم معلن يقابله كود موجود |
 | 15. دورة الحياة | مطبق ومختبر | `lifecycle.py`: 8 حالات وانتقالات مغلقة |

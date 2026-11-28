@@ -16,7 +16,7 @@ worked here, including the mistakes.
 
 This repository = **Sales OS / FIHRIST** — a multi-tenant conversational-commerce SaaS.
 
-- `backend/` FastAPI modular monolith. `app/modules/<domain>/{models,service,router}.py`.
+- `backend/` FastAPI modular monolith. `app/platform/<domain>/` للبنية التحتية و`app/applications/apparel/modules/<domain>/` لتطبيق الملابس.
 - `frontend/` React 18 / Vite / React Router 7 / TanStack Query v5. Arabic-first RTL.
 - `desktop/` Tauri 2 desktop app (React 19).
 - `docs/` the architecture plan. The numbered spec (§n) is the source of truth for what a
