@@ -47,6 +47,7 @@ const METRIC_KEYS = {
   inventory_dead_stock_value: "kpi.metric.inventory_dead_stock_value",
   inventory_low_stock_count: "kpi.metric.inventory_low_stock_count",
   inventory_expiring_lots: "kpi.metric.inventory_expiring_lots",
+  inventory_expired_lots: "kpi.metric.inventory_expired_lots",
   inventory_pending_reorders: "kpi.metric.inventory_pending_reorders",
 };
 
