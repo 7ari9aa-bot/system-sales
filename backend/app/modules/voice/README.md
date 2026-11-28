@@ -25,10 +25,24 @@ gets a refusal, because the refusal is in Python, not in the instructions.
 | `domain/states.py`, `domain/calls.py` | session, turn, call and leg state machines |
 | `domain/metrics.py`, `application/merchant_intelligence.py` | metric registry and the four read paths, no SQL |
 | `application/session_manager.py`, `application/turn_orchestrator.py` | session lifecycle, turn orchestration through the gateway |
+| `application/assistant_turn.py` | one live spoken turn: resolves the session's conversation and hands the turn to the shared assistant runtime |
+| `application/transcript_sync.py` | the single writer of a voice turn's conversation rows: the question (`open_turn`) and the `voice_turns` row that joins both messages (`complete_turn`) |
 | `application/omnichannel.py`, `domain/channels.py` | voice notes on WhatsApp/Instagram/webchat under declared per-channel contracts |
 | `application/inbound_calls.py`, `domain/routing.py`, `domain/recording.py` | signed, idempotent inbound calls; DID routing; recording consent |
 | `application/hardening.py`, `domain/resilience.py` | circuit breakers, failover, cost ceilings, autoscale signal, quality scoring |
 | `api/router.py` | the five `/api/v1/voice` endpoints |
+
+## Where a spoken turn is written
+
+`ai_chat_messages` is the only record of what was said; the voice tables point into it. A live
+turn is written by `application/transcript_sync.py` and by nothing else — `open_turn` creates the
+question with `voice_session_id`, `input_modality='live_voice'` and its `transcript_status`, the
+shared runtime (`chat.turns.run_chat_turn`) writes the answer once for typed and spoken turns
+alike, and `complete_turn` marks that answer as spoken and inserts the one `voice_turns` row that
+keeps `user_message_id` + `assistant_message_id`. `application/assistant_turn.py` then records the
+turn number on the session. The text route keeps `chat.service.append_user_message`; a spoken
+question never goes through it, which is what stops the two paths disagreeing again. A replayed
+idempotency key adds no second message and no second turn.
 
 ## Production readiness review
 

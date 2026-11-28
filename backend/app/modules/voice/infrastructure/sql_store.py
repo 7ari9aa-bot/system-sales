@@ -63,6 +63,23 @@ class SqlSessionStore:
             return None
         return _to_record(row)
 
+    async def record_completed_turn(self, session_id: uuid.UUID, sequence: int) -> None:
+        """Move the turn counter forward in one statement.
+
+        Not ``put()``: a read-modify-write of the whole row would carry the state this worker read
+        a moment ago back over a CLOSED or FAILED written in between. This UPDATE cannot move the
+        counter backwards, and running it twice changes nothing the second time.
+        """
+        await self._session.execute(
+            update(VoiceSessionRow)
+            .where(
+                VoiceSessionRow.id == session_id,
+                VoiceSessionRow.last_completed_turn < sequence,
+            )
+            .values(last_completed_turn=sequence, updated_at=datetime.now(UTC))
+        )
+        await self._session.flush()
+
     async def put(self, record: VoiceSessionRecord) -> None:
         values = {
             "id": record.session_id,
