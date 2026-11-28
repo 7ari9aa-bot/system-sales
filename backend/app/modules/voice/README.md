@@ -45,6 +45,33 @@ turn number on the session. The text route keeps `chat.service.append_user_messa
 question never goes through it, which is what stops the two paths disagreeing again. A replayed
 idempotency key adds no second message and no second turn.
 
+## While a spoken turn is being answered
+
+`application/live_loop.py` never waits for the answer. A delegation is started as a task and the
+pump goes straight back to the provider socket, because the caller keeps talking while the analytic
+turn runs: their barge-in, the model's audio and a second question would otherwise queue behind it
+and the answer to the question they already abandoned would be the only one that could be spoken.
+
+One answer is in flight per call. A newer delegation or an explicit interrupt drops the turn from
+the `spoken_turns` ledger first and then cancels the task; an answer that was already past its last
+cancellation point is still refused a speaker by the ledger check in `client_delegation` and
+`assistant_turn`, and a cancelled turn's rows are rolled back with the runner's own transaction.
+`LiveCallLoop.drain()` waits for the work — tests and shutdown only; the pump must not call it.
+
+**The caller's voice is the barge-in.** `session.input_transcript.delta` used to only append to the
+buffer and lift the mute, so the model kept talking over the person interrupting it until a new
+delegation arrived or the interrupt button was pressed — the caller's sentence had to end before
+their interruption was heard. Now the first words of the caller stop the speaker on that frame and
+cancel the answer being written (`barged_in` in `LiveCallLoop.counts`), and the mute stays down
+while they keep talking.
+
+The one thing speech alone cannot tell you is *which* question it belongs to: a provider flushes
+the tail of an utterance after it has already delegated, so a fragment can arrive for the question
+being answered. `QUESTION_TAIL_GRACE_SECONDS` (0.6 s) separates the two — inside it, speech is the
+end of the question and the answer is kept; past it, or at any point once model audio is playing,
+it is a barge-in. Cancelling on the tail instead would leave the caller in silence with no second
+delegation coming, which is worse than the bug it fixes.
+
 ## What ends a call nobody ended
 
 A session's ending is written by the socket that carried the call. A replaced worker, a closed tab,
