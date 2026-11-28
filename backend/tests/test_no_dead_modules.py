@@ -88,13 +88,14 @@ _VOICE_UNWIRED_WHY = (
 
 KNOWN_DEAD_MODULES: dict[str, str] = {
     # --- voice: unwired until the assistant turn service owns the call ---
+    # transcript_sync is NOT here any more: the live spoken turn writes its question and its
+    # voice_turns row through it (assistant_turn.run_voice_turn), so it has a real caller.
     "app.modules.voice.application.customer_context": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.hardening": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.inbound_calls": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.merchant_intelligence": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.omnichannel": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.turn_orchestrator": _VOICE_UNWIRED_WHY,
-    "app.modules.voice.application.transcript_sync": _VOICE_UNWIRED_WHY,
     "app.modules.voice.application.voice_profile": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.calls": _VOICE_UNWIRED_WHY,
     "app.modules.voice.domain.channels": _VOICE_UNWIRED_WHY,

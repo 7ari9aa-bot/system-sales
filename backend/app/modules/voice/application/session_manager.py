@@ -91,6 +91,8 @@ class SessionStore(Protocol):
         self, tenant_id: uuid.UUID, client_key: str
     ) -> VoiceSessionRecord | None: ...
 
+    async def record_completed_turn(self, session_id: uuid.UUID, sequence: int) -> None: ...
+
 
 class InMemorySessionStore:
     """The store tests use, and the reference for the SQL one that follows it."""
@@ -111,6 +113,16 @@ class InMemorySessionStore:
             if record.tenant_id == tenant_id and record.client_key == client_key:
                 return record
         return None
+
+    async def record_completed_turn(self, session_id: uuid.UUID, sequence: int) -> None:
+        record = self._records.get(session_id)
+        if record is None:
+            return
+        self._records[session_id] = replace(
+            record,
+            last_completed_turn=max(record.last_completed_turn, sequence),
+            updated_at=dt.datetime.now(dt.UTC),
+        )
 
 
 class VoiceSessionManager:
@@ -236,11 +248,16 @@ class VoiceSessionManager:
         record = await self._move(record, VoiceSessionState.FAILED)
         return await self._save(replace(record, closed_reason=reason))
 
-    async def note_turn_completed(self, session_id: uuid.UUID, sequence: int) -> VoiceSessionRecord:
-        record = await self.require(session_id)
-        return await self._save(
-            replace(record, last_completed_turn=max(record.last_completed_turn, sequence))
-        )
+    async def note_turn_completed(self, session_id: uuid.UUID, sequence: int) -> None:
+        """Record how far the call got, without rewriting the rest of the row.
+
+        A turn counter is not a state. Writing the whole record back here would let a turn that
+        finishes while the socket closes put the session back to ACTIVE after it was already
+        CLOSED — the exact stuck-session symptom the lifecycle work exists to remove — so the
+        store applies one monotone, idempotent UPDATE instead.
+        """
+        await self.require(session_id)
+        await self._store.record_completed_turn(session_id, max(0, sequence))
 
     async def _authorized(
         self, session_id: uuid.UUID, tenant_id: uuid.UUID | None
