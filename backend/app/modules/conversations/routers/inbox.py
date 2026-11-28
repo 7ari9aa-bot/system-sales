@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.pagination import decode_cursor, encode_cursor
+from app.modules.applications.dependencies import workspace_gate
 from app.modules.conversations.gateway.instagram_limits import InstagramLimitError, check_upload
 from app.modules.conversations.gateway.messenger_media import (
     SENDABLE_REACTIONS,
@@ -49,13 +50,19 @@ from app.modules.conversations.routers._deps import (
     require_permission,
 )
 from app.modules.conversations.service import ConversationService
+from app.modules.identity.deps import get_tenant_ctx
 from app.modules.platform.services import channel_access as _channel_access
 
 logger = logging.getLogger(__name__)
 
 _FILE_CHANNELS = ("whatsapp", "instagram", "messenger", "telegram")
 
-router = APIRouter(tags=["inbox"])
+async def _inbox_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """The inbox is the engagement product's front door."""
+    return await workspace_gate("customer.engagement", ctx)
+
+
+router = APIRouter(tags=["inbox"], dependencies=[Depends(_inbox_gate)])
 
 
 async def _allowed_channels(ctx: TenantContext) -> set[str] | None:
