@@ -23,7 +23,7 @@ import pytest
 from app.core.errors import ValidationError
 from app.modules.ai.assistant.contracts import LIVE_VOICE
 from app.modules.voice.application import assistant_turn
-from app.modules.voice.application.transcript_sync import CompletedTurn, OpenedTurn
+from app.modules.voice.application.transcript_sync import DELIVERED, CompletedTurn, OpenedTurn
 
 TENANT = uuid.uuid4()
 AGENT = uuid.uuid4()
@@ -58,12 +58,17 @@ def _thread():
 @pytest.fixture
 def wired(monkeypatch):
     """Every collaborator stubbed, and every call recorded."""
-    seen: dict[str, list] = {
+    seen: dict[str, list | dict] = {
         "runtime": [],
         "opened": [],
         "completed": [],
+        "outcomes": [],
         "threads": [],
         "counted": [],
+        # (session, question) -> turn id, and the spend booked for it: a stand-in for
+        # transcript_sync's UNIQUE (session, question) and the usage row it writes once.
+        "turns": {},
+        "spend": [],
     }
 
     async def fake_ensure_thread(session, ctx, session_id):
@@ -96,11 +101,22 @@ def wired(monkeypatch):
         user_message_id,
         assistant_message_id,
         transcript_status="final",
+        outcome=None,
+        **kwargs,
     ):
         seen["completed"].append(
             (voice_session_id, thread_id, user_message_id, assistant_message_id)
         )
-        return CompletedTurn(turn_id=uuid.uuid4(), sequence_number=1, created=True)
+        seen["outcomes"].append(outcome)
+        # complete_turn is idempotent on (session, question): the second call finds
+        # the row, returns created=False and books no spend.
+        key = (voice_session_id, user_message_id)
+        if key in seen["turns"]:
+            return CompletedTurn(turn_id=seen["turns"][key], sequence_number=1, created=False)
+        turn_id = uuid.uuid4()
+        seen["turns"][key] = turn_id
+        seen["spend"].append(key)
+        return CompletedTurn(turn_id=turn_id, sequence_number=len(seen["turns"]), created=True)
 
     async def fake_run_chat_turn(session, ctx, thread):
         seen["runtime"].append(thread.id)
@@ -168,9 +184,9 @@ async def test_an_empty_transcript_is_refused_before_anything_costs_money(wired)
     assert wired["runtime"] == []
 
 
-async def test_a_replayed_key_returns_the_existing_answer_instead_of_a_second_call(
-    wired, monkeypatch
-):
+def _replay(monkeypatch, *, user_message_id, reply):
+    """A key that was already answered: the question and the answer both exist."""
+
     async def replayed(
         session,
         *,
@@ -181,13 +197,21 @@ async def test_a_replayed_key_returns_the_existing_answer_instead_of_a_second_ca
         idempotency_key=None,
         transcript_status="final",
     ):
-        return OpenedTurn(user_message_id=uuid.uuid4(), user_sequence_no=1, created=False)
+        return OpenedTurn(user_message_id=user_message_id, user_sequence_no=1, created=False)
 
     async def existing_reply(session, ctx, thread, *, user_seq):
-        return SimpleNamespace(id=uuid.uuid4(), content="الرد الأول", status="completed")
+        return reply
 
     monkeypatch.setattr(assistant_turn.transcript_sync, "open_turn", replayed)
     monkeypatch.setattr(assistant_turn.chat_service, "get_assistant_reply_for", existing_reply)
+    return replayed
+
+
+async def test_a_replayed_key_returns_the_existing_answer_instead_of_a_second_call(
+    wired, monkeypatch
+):
+    reply = SimpleNamespace(id=uuid.uuid4(), content="الرد الأول", status="completed")
+    _replay(monkeypatch, user_message_id=uuid.uuid4(), reply=reply)
 
     result = await assistant_turn.run_voice_turn(
         _Session(), _ctx(), session_id=VOICE_SESSION, text="الأوردر وصل؟", idempotency_key="k1"
@@ -195,7 +219,54 @@ async def test_a_replayed_key_returns_the_existing_answer_instead_of_a_second_ca
 
     assert result.content == "الرد الأول"
     assert result.modality == LIVE_VOICE
-    # No model call and no second turn: a replay adds nothing.
+    # No model call: a replay never buys a second answer.
     assert wired["runtime"] == []
-    assert wired["completed"] == []
-    assert wired["counted"] == []
+    # The turn IS written, though: the answer existing does not mean the turn row does.
+    assert wired["completed"] == [(VOICE_SESSION, THREAD, wired["completed"][0][2], reply.id)]
+
+
+async def test_a_replayed_question_heals_its_missing_voice_turns_link(wired, monkeypatch):
+    """The crash-between-two-commits case: answer written, voice_turns row missing."""
+    question_id = uuid.uuid4()
+    reply = SimpleNamespace(id=uuid.uuid4(), content="الرد الأول", status="completed")
+    _replay(monkeypatch, user_message_id=question_id, reply=reply)
+
+    result = await assistant_turn.run_voice_turn(
+        _Session(), _ctx(), session_id=VOICE_SESSION, text="الأوردر وصل؟", idempotency_key="k1"
+    )
+
+    # The link exists now, keyed by the question that was already in the conversation.
+    assert (VOICE_SESSION, question_id) in wired["turns"]
+    assert wired["completed"] == [(VOICE_SESSION, THREAD, question_id, reply.id)]
+    # ...booked once, and counted so "resume from turn N" is honest again.
+    assert wired["spend"] == [(VOICE_SESSION, question_id)]
+    assert wired["counted"] == [(VOICE_SESSION, 1)]
+    # DELIVERED, so the heal cannot rewrite the answer's status.
+    assert wired["outcomes"] == [DELIVERED]
+    # The caller gets the answer they were owed.
+    assert result.content == "الرد الأول"
+    assert result.status == "completed"
+
+
+async def test_healing_a_replay_twice_books_nothing_and_adds_no_second_turn(wired, monkeypatch):
+    question_id = uuid.uuid4()
+    reply = SimpleNamespace(id=uuid.uuid4(), content="الرد الأول", status="completed")
+    _replay(monkeypatch, user_message_id=question_id, reply=reply)
+    session = _Session()
+
+    first = await assistant_turn.run_voice_turn(
+        session, _ctx(), session_id=VOICE_SESSION, text="الأوردر وصل؟", idempotency_key="k1"
+    )
+    second = await assistant_turn.run_voice_turn(
+        session, _ctx(), session_id=VOICE_SESSION, text="الأوردر وصل؟", idempotency_key="k1"
+    )
+
+    # Both calls reach the writer...
+    assert len(wired["completed"]) == 2
+    # ...and only the first creates the turn: one row, one spend, one counted turn.
+    assert list(wired["turns"]) == [(VOICE_SESSION, question_id)]
+    assert wired["spend"] == [(VOICE_SESSION, question_id)]
+    assert wired["counted"] == [(VOICE_SESSION, 1)]
+    assert first.content == second.content == "الرد الأول"
+    # Nothing was bought twice either.
+    assert wired["runtime"] == []
