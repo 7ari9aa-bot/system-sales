@@ -14,6 +14,7 @@ gate is real for it — and the row is what onboarding writes.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
@@ -21,6 +22,8 @@ from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import AccessFacts, decide_access
 from app.modules.applications.manifests import get_manifest
 from app.modules.applications.repository import gather_facts
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +85,17 @@ async def workspace_gate(application_key: str, ctx) -> GateResult:
         application_key=application_key,
     )
     if not facts.installation_states:
+        # The transition rule has to be loud. Every account today has zero rows, so
+        # this line is the only record of which workspaces are still outside the
+        # gate - silent, it would look like enforcement that never happened.
+        logger.warning(
+            "application gate bypassed: workspace has no installations",
+            extra={
+                "application_key": application_key,
+                "workspace_id": str(ctx.workspace_id),
+                "tenant_id": str(ctx.tenant_id),
+            },
+        )
         return evaluate(facts, application_key, workspace_configured=False)
     result = evaluate(facts, application_key)
     if not result.allowed:

@@ -100,3 +100,22 @@ def test_a_route_without_a_facts_provider_refuses_to_run() -> None:
     dependency = dependencies.require_application(KEY)
     with pytest.raises(RuntimeError, match="no facts provider"):
         dependency()
+
+
+def test_the_bypass_is_logged_because_it_is_temporary(facts_from_ctx, caplog) -> None:
+    """A workspace outside the gate must leave a trace, not pass in silence."""
+    ctx = _Ctx(states={}, entitled=set())
+    facts_from_ctx(ctx)
+    with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
+        _gate(ctx)
+    assert any(
+        "bypassed" in record.message for record in caplog.records
+    ), "the transition bypass went unlogged"
+
+
+def test_a_real_decision_is_not_logged_as_a_bypass(facts_from_ctx, caplog) -> None:
+    ctx = _Ctx(states={KEY: "active", "retail.core": "active"}, entitled={KEY, "retail.core"})
+    facts_from_ctx(ctx)
+    with caplog.at_level("WARNING", logger="app.modules.applications.dependencies"):
+        _gate(ctx)
+    assert not any("bypassed" in record.message for record in caplog.records)
