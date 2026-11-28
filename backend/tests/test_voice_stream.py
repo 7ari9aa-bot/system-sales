@@ -157,15 +157,22 @@ def test_a_valid_ticket_carries_pcm_into_the_call_and_closes_it(stream_client, g
     call = _FakeCall()
     seen: dict = {}
 
-    async def factory(*, session_id, tenant_id, user_id, send_audio):
+    async def factory(*, session_id, tenant_id, user_id, send_audio, config):
         seen.update(
             session_id=session_id,
             tenant_id=tenant_id,
             user_id=user_id,
             send_audio=send_audio,
+            config=config,
         )
         return call
 
+    prompt = {"instructions": "تفويض: أي رقم مبيعات يجي من الأداة، مش من الموديل."}
+
+    async def _config(_tenant_id):
+        return prompt
+
+    monkeypatch.setattr(voice_sessions, "_voice_config", _config)
     monkeypatch.setattr(voice_sessions, "_call_factory", lambda: factory)
     jti = asyncio.run(grants.grant(session_id=SESSION, tenant_id=TENANT, user_id=USER))
     ticket = _issuer().issue(session_id=SESSION, tenant_id=TENANT, jti=jti)
@@ -178,6 +185,9 @@ def test_a_valid_ticket_carries_pcm_into_the_call_and_closes_it(stream_client, g
         time.sleep(0.1)
 
     assert call.pushed == [b"\x01\x02" * 4, b"\x03\x04" * 4]
+    # The socket must hand the shop prompt to the call: an empty config is what made every real
+    # call open GPT-Live with no dialect and no delegation contract.
+    assert seen["config"] == prompt, "the shop prompt must reach the call builder"
     assert seen["tenant_id"] == str(TENANT)
     assert seen["user_id"] == str(USER)
     assert call.closes == 1

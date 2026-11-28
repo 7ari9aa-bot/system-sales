@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
 from app.modules.customers.models import Customer
+from app.modules.customers.routers import customers as customers_router
 from app.modules.customers.service import CustomerService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
@@ -37,11 +38,27 @@ from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 
 class _FakeResult:
+    """Enough of a ``Result`` for the paths this file drives.
+
+    ``all()``/``scalars()`` are here because the router-level customers gate runs a real query
+    (``applications.repository.entitled``) before the route body; that gate is overridden below, and
+    these keep any other ``Result`` read from raising instead of hiding a genuine failure.
+    """
+
     def __init__(self, version: int | None) -> None:
         self._version = version
 
     def scalar_one_or_none(self) -> int | None:
         return self._version
+
+    def all(self) -> list[object]:
+        return []
+
+    def scalars(self) -> _FakeResult:
+        return self
+
+    def __iter__(self):
+        return iter(())
 
 
 class _FakeSession:
@@ -95,7 +112,15 @@ def _app(session: object, tenant_id: uuid.UUID):
     async def _override() -> TenantContext:
         return ctx
 
+    async def _override_gate() -> None:
+        return None
+
     app.dependency_overrides[get_tenant_ctx] = _override
+    # The customers router is gated on the engagement application (subscription entitled +
+    # installed). That gate is not this file's subject — it has its own tests in
+    # tests/test_application_access.py — and it would otherwise run a real subscription query
+    # against the fake session, so it is overridden to "allowed" here.
+    app.dependency_overrides[customers_router._customers_gate] = _override_gate
     return app
 
 

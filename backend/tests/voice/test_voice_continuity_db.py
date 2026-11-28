@@ -12,6 +12,7 @@ refused with 404 semantics rather than adopted.
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
@@ -102,7 +103,11 @@ async def test_another_shops_thread_is_never_adopted(db, tenant_ctx) -> None:
     db.add(other)
     await db.flush()
     await bind_tenant(db, other.id)
-    their_session = await _session(db, tenant_ctx)
+    # Written AS the other shop: voice_sessions sits under RLS, so inserting its row while the
+    # tenant GUC still names our shop is a privilege error, not a test of the adoption rule.
+    their_ctx = SimpleNamespace(user=tenant_ctx.user, tenant_id=other.id)
+    their_session = await _session(db, their_ctx)
+    await bind_tenant(db, tenant_ctx.tenant_id)
 
     with pytest.raises(NotFoundError):
         await ensure_session_thread(
