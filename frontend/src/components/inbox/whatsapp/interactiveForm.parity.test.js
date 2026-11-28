@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { LIMITS } from "./interactiveForm";
 
-const SERVER = resolve(__dirname, "../../../../../backend/app/modules/conversations/gateway/whatsapp_interactive.py");
+const SERVER = resolve(__dirname, "../../../../../backend/app/applications/apparel/modules/conversations/gateway/whatsapp_interactive.py");
 const source = readFileSync(SERVER, "utf8");
 const server = (name) => {
   const m = source.match(new RegExp(`^${name}\\s*=\\s*(\\d+)`, "m"));

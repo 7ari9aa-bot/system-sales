@@ -5,14 +5,14 @@
  * بتعرض بس. نفس النداءات ونفس الحقول زي ما كانت، فالمكوّنات السبع ماحستش بفرق.
  */
 import { ArrowLeftRight, Barcode, ClipboardCheck, Layers, MapPin, Share2, TrendingUp } from "lucide-react";
-import { activeOrFirst, visibleTabs } from "@/cashier/lib/stockScreens";
+import { activeOrFirst, visibleTabs } from "@/applications/apparel/lib/stockScreens";
 import { api } from "@/lib/api";
 import { supplyChainApi } from "@/lib/supplyChainApi";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useNavigate, useParams } from "react-router-dom";
-import { useStockScreens } from "@/cashier/api/useShopOptions";
+import { useStockScreens } from "@/applications/apparel/api/useShopOptions";
 
 export function useSupplyChain() {
   const { lang } = useI18n();

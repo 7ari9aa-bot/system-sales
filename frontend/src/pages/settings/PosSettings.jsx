@@ -1,18 +1,18 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { DatabaseBackup, FileCheck2, ScrollText, Printer, Store, Tags, Users, MonitorSmartphone, Undo2 } from "lucide-react";
-import { Toaster } from "@/cashier/components/ui/sonner";
+import { Toaster } from "@/applications/apparel/components/ui/sonner";
 import { useI18n, useT } from "@/lib/i18n";
-import "@/cashier/cashier.css";
-import ShopProfileForm from "@/cashier/components/settings/ShopProfileForm";
-import PrintAndBarcodeSettings from "@/cashier/components/settings/PrintAndBarcodeSettings";
-import ReportsAccessSettings from "@/cashier/components/settings/ReportsAccessSettings";
-import CategoriesSettings from "@/cashier/components/settings/CategoriesSettings";
-import UsersSettings from "@/cashier/components/settings/UsersSettings";
-import BackupTab from "@/cashier/components/settings/BackupTab";
-import ShopPolicySettings from "@/cashier/components/settings/ShopPolicySettings";
-import ReceiptTracking from "@/cashier/components/settings/ReceiptTracking";
-import TaxSettings from "@/cashier/components/settings/TaxSettings";
+import "@/applications/apparel/cashier.css";
+import ShopProfileForm from "@/applications/apparel/components/settings/ShopProfileForm";
+import PrintAndBarcodeSettings from "@/applications/apparel/components/settings/PrintAndBarcodeSettings";
+import ReportsAccessSettings from "@/applications/apparel/components/settings/ReportsAccessSettings";
+import CategoriesSettings from "@/applications/apparel/components/settings/CategoriesSettings";
+import UsersSettings from "@/applications/apparel/components/settings/UsersSettings";
+import BackupTab from "@/applications/apparel/components/settings/BackupTab";
+import ShopPolicySettings from "@/applications/apparel/components/settings/ShopPolicySettings";
+import ReceiptTracking from "@/applications/apparel/components/settings/ReceiptTracking";
+import TaxSettings from "@/applications/apparel/components/settings/TaxSettings";
 import DevicesSection from "./pos/DevicesSection";
 
 /** إعدادات نقاط البيع — كل قسم بمساره بدل تسعة أقسام مكدّسة في صفحة واحدة.

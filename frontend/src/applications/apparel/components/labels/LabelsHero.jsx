@@ -1,0 +1,24 @@
+import { Printer } from "lucide-react";
+import { Button } from "@/applications/apparel/components/ui/button";
+import PageHero from "@/applications/apparel/components/ui-kit/PageHero";
+import { BTN_PRIMARY } from "@/applications/apparel/components/ui-kit/ledgerStyles";
+import { fmtInt } from "@/applications/apparel/lib/format";
+
+// شريط عنوان شاشة الملصقات: صورة بكرة الملصقات مع زر المعاينة والطباعة.
+export default function LabelsHero({ totalLabels, onPreview }) {
+  return (
+    <PageHero
+      image="https://media.base44.com/images/public/6ad5982c1b45f350e41ffe73/8ef8f131c_generated_b34f58af.jpg"
+      imageAlt="طباعة ملصقات على طابعة حرارية"
+      title="طباعة الباركود"
+      description="اسحب كميات فاتورة التوريد التي دخلت المتجر أو أدخل الأعداد يدوياً، ثم اطبع الملصقات بأسعارها"
+    >
+      <Button className={BTN_PRIMARY} disabled={!totalLabels} onClick={onPreview}>
+        <Printer className="h-4 w-4 shrink-0 !text-white" />
+        <span className="!text-white font-semibold">
+          {`معاينة وطباعة${totalLabels ? ` ${fmtInt(totalLabels)} ملصق` : ""}`}
+        </span>
+      </Button>
+    </PageHero>
+  );
+}
