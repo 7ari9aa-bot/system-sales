@@ -31,7 +31,7 @@ Backend modules (`backend/app/modules/`): `identity`, `authority`, `privacy`, `v
 `customers`, `conversations`, `realtime`, `notifications`, `catalog`, `inventory`,
 `purchasing`, `orders`, `pos` (cashier), `expenses`, `imports` (merchant data import), `financial`, `billing`, `marketing`,
 `segments`, `analytics`, `automation`, `decisions`, `effects`, `evidence`, `activity`,
-`pricing` (price lists, tiers, offers and the quote), `operations`, `settings`, `website`, `platform`, `einvoice`, `customer_accounts` (credit sales and deposits ledger), `taxation` (business tax identity and tax classes), and `ai` (agents, tools, model configs).
+`pricing` (price lists, tiers, offers and the quote), `operations`, `settings`, `website`, `platform`, `einvoice`, `customer_accounts` (credit sales and deposits ledger), `taxation` (business tax identity and tax classes), `applications` (what a workspace may use, and what it switched on), and `ai` (agents, tools, model configs).
 Imports between modules are ratcheted by `tests/test_module_boundaries.py`.
 
 ## Golden rules (short version)

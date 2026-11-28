@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 723,
-    "sha256": "1b3b9616386f2309ca1cd316f4ed716cd90f3818ae966f8ce00fbfe0ddf1d99d",
-    "typed_operations": 406
+    "operations": 725,
+    "sha256": "cbf819b751ac3bd19c9efd838278d2a0a78bfac3483b26b6a4f4415f7fdce21c",
+    "typed_operations": 408
   },
   "spec": {
     "components": {
@@ -22583,6 +22583,18 @@
                 }
               ],
               "title": "Client Key"
+            },
+            "thread_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
             }
           },
           "title": "StartSessionRequest",
@@ -38104,6 +38116,206 @@
           "summary": "Save Shop Size Sets",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/applications": {
+        "get": {
+          "description": "Every application, with this workspace's verdict on it.",
+          "operationId": "list_applications_api_v1_applications_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response List Applications Api V1 Applications Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Applications",
+          "tags": [
+            "applications"
+          ]
+        }
+      },
+      "/api/v1/applications/install": {
+        "post": {
+          "description": "Record what this workspace is licensed for, so the gate has something to read.\n\nA workspace that finished setup before the installations table existed has no\nrows, and the gate has to let it through as \"not configured yet\". This closes\nthat window for the workspace making the request - and only for it: the id\ncomes from the resolved context, never from the request body, so nobody can\ninstall a product into somebody else's business. It installs only what the\nlive subscription already covers, so it cannot grant anything unpaid.",
+          "operationId": "install_applications_api_v1_applications_install_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Install Applications Api V1 Applications Install Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Install Applications",
+          "tags": [
+            "applications"
           ]
         }
       },

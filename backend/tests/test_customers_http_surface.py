@@ -182,15 +182,37 @@ class _RecordingSession:
     ``statements`` is what lets these tests say "the ORDER BY the code BUILT"
     rather than "the rows looked sane", and answer the reads with whatever rows
     the test needs.
+
+    ``rows`` answers the statements this fake database was built to model. The
+    commercial tables the applications gate reads (subscriptions, plan inclusions,
+    bought items, installations) answer EMPTY, because this fake database has no
+    billing in it: it used to answer them with the customer rows, so the gate read
+    `Customer` objects where it expects `(subscription_id, plan_id)` and the route
+    500ed. The route was fine; the stub was answering for tables it never modelled.
     """
+
+    #: The gate's own tables. Answering them with the test's rows is a lie about a
+    #: database that has no subscription in it, and the gate then reads the wrong
+    #: type. Named, not imported, so this file keeps its single module import.
+    _APPLICATION_FACT_ENTITIES = frozenset(
+        {"Subscription", "SubscriptionItem", "PlanApplicationInclusion", "WorkspaceAppInstallation"}
+    )
 
     def __init__(self, rows: list[Any] | None = None) -> None:
         self._rows = list(rows or [])
         self.statements: list[Any] = []
 
+    @classmethod
+    def _answers_empty(cls, stmt: Any) -> bool:
+        for description in getattr(stmt, "column_descriptions", None) or ():
+            entity = description.get("entity")
+            if getattr(entity, "__name__", "") in cls._APPLICATION_FACT_ENTITIES:
+                return True
+        return False
+
     async def execute(self, stmt: Any, *_args: Any, **_kwargs: Any) -> _Result:
         self.statements.append(stmt)
-        return _Result(self._rows)
+        return _Result([] if self._answers_empty(stmt) else self._rows)
 
     def add(self, instance: Any) -> None:
         return None
@@ -288,6 +310,23 @@ async def _patch(monkeypatch: pytest.MonkeyPatch, target: Any, pairs: Any) -> No
     """setattr for a batch of (name, replacement) pairs on one target."""
     for name, replacement in pairs:
         monkeypatch.setattr(target, name, replacement)
+
+
+def _customer_statement(session: Any) -> Any:
+    """The list's own statement, not the applications gate's entitlement read.
+
+    The gate runs before the route body, so ``statements[0]`` is the gate's
+    `select subscriptions.id, subscriptions.plan_id` — a statement with no ORDER BY
+    and nothing to do with the sort these tests are reading. Pick the one that
+    reads customers.
+    """
+    for statement in session.statements:
+        for description in getattr(statement, "column_descriptions", None) or ():
+            if getattr(description.get("entity"), "__name__", "") == "Customer":
+                return statement
+    raise AssertionError(
+        f"no customer statement among {len(session.statements)} recorded statement(s)"
+    )
 
 
 def _order_by(statement: Any) -> str:
@@ -949,8 +988,8 @@ async def test_page_1_and_a_cursor_page_sort_on_the_same_key() -> None:
     )
     assert paged_session.statements, "the cursor page sent no statement"
 
-    page_one = _order_by(session.statements[0])
-    page_n = _order_by(paged_session.statements[0])
+    page_one = _order_by(_customer_statement(session))
+    page_n = _order_by(_customer_statement(paged_session))
     assert page_one == page_n, (
         "the customer list has two sort keys: page 1 is ordered "
         f"{page_one!r} while a cursor page is ordered {page_n!r}. Rows tied on "
@@ -978,9 +1017,10 @@ async def test_the_keyset_predicate_uses_the_same_pair_as_the_order_by() -> None
             "cursor": _cursor_for(BASE, uuid.uuid4()),
         },
     )
-    sql = str(paged.statements[0].compile(dialect=postgresql.dialect()))
-    assert "customers.created_at" in _order_by(paged.statements[0])
-    assert "customers.id" in _order_by(paged.statements[0]), sql
+    listed = _customer_statement(paged)
+    sql = str(listed.compile(dialect=postgresql.dialect()))
+    assert "customers.created_at" in _order_by(listed)
+    assert "customers.id" in _order_by(listed), sql
     assert session.statements, "page 1 sent nothing — the harness is broken"
 
 

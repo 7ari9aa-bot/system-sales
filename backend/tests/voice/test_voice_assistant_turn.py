@@ -22,7 +22,7 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.modules.ai.assistant.contracts import LIVE_VOICE
-from app.modules.voice.application import assistant_turn
+from app.modules.voice.application import assistant_turn, transcript_sync
 from app.modules.voice.application.transcript_sync import CompletedTurn, OpenedTurn
 
 TENANT = uuid.uuid4()
@@ -62,6 +62,7 @@ def wired(monkeypatch):
         "runtime": [],
         "opened": [],
         "completed": [],
+        "outcomes": [],
         "threads": [],
         "counted": [],
     }
@@ -96,10 +97,12 @@ def wired(monkeypatch):
         user_message_id,
         assistant_message_id,
         transcript_status="final",
+        outcome=transcript_sync.DELIVERED,
     ):
         seen["completed"].append(
             (voice_session_id, thread_id, user_message_id, assistant_message_id)
         )
+        seen["outcomes"].append(outcome)
         return CompletedTurn(turn_id=uuid.uuid4(), sequence_number=1, created=True)
 
     async def fake_run_chat_turn(session, ctx, thread):
