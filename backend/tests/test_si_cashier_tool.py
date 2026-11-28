@@ -1,11 +1,15 @@
 """``si_cashier_summary``: what the till sold, returned and netted, and who is on shift.
 
-The cashier is a sales LEDGER, not a cash settler: it records no payment method, no cash tendered
-to the shop's drawer count and no variance (the close stores counted/variance as NULL). So this
-tool reports sales, returns, net, tax, per-cashier totals and shifts, and says outright that it
-knows nothing about cash versus card or drawer differences. Sales and returns use the same rules
-as the shift report: sales on ``kind == 'sale'`` receipts only (a return receipt points at the
-same order), returns on the return lines.
+This is the SALES read: sales, returns, net, tax, per-cashier totals and shifts. The till itself
+records much more — a float per payment method (``pos_session_floats``), every drawer movement
+(``pos_cash_movements``), the counted cash and variance at close (``pos_sessions``), the
+per-payment-method reconciliation (``pos_session_reconciliations``) and mid-shift handovers
+(``pos_session_handovers``) — and this read returns none of it: ``si_cashier`` reads those, from
+the same ledgers. So the limitation line here has to place those figures with ``si_cashier``
+rather than say the till does not keep them; the model repeated the old wording to the owner as
+"your till does not record payment methods", which was false. Sales and returns use the same
+rules as the shift report: sales on ``kind == 'sale'`` receipts only (a return receipt points at
+the same order), returns on the return lines.
 """
 
 from __future__ import annotations
@@ -394,13 +398,24 @@ async def test_busiest_hours_rank_the_busiest_first_whatever_the_clock_order(db,
 # ------------------------------ honesty and isolation ---------------------------------------
 
 
-async def test_it_never_claims_anything_about_payment_methods_or_the_drawer(db, tenant_ctx):
+async def test_it_says_the_drawer_and_the_split_are_read_elsewhere(db, tenant_ctx):
+    """The tool must not claim something it cannot read — in either direction.
+
+    It cannot read the drawer, so it must not report one; and the till DOES keep those ledgers, so
+    it must not tell the owner they do not exist. The limitation has to name ``si_cashier`` as the
+    read that answers them, using the real wording ("per-payment-method split", not the vaguer
+    "payment method" this assertion used to look for)."""
     t = tenant_ctx.tenant_id
     sh = await _shift(db, t)
     await _sale(db, t, sh, 100)
     r = await _si_cashier_summary(db, t, days=30)
     text = " ".join(r["limitations"]).lower()
-    assert "payment method" in text and "drawer" in text
+    assert "drawer" in text and "per-payment-method split" in text
+    # it points at the read that does answer them...
+    assert "si_cashier" in text
+    # ...and never says the till does not record them
+    assert "does not record" not in text and "no payment method" not in text
+    # and the summary itself carries no figure this read never computed
     for forbidden in ("cash_total", "card_total", "variance", "by_method", "counted"):
         assert forbidden not in r["summary"]
 
