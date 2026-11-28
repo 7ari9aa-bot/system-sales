@@ -152,18 +152,30 @@ class BillingService:
 
     @staticmethod
     async def record_usage(
-        session: AsyncSession, tenant_id: uuid.UUID, *, feature: str, quantity: Decimal
-    ) -> None:
-        """Append one metering row."""
-        session.add(
-            UsageRecord(
-                tenant_id=tenant_id,
-                feature=feature,
-                quantity=quantity,
-                period_date=datetime.now(UTC).date(),
-            )
+        session: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        feature: str,
+        quantity: Decimal,
+        extra: dict | None = None,
+    ) -> UsageRecord:
+        """Append one metering row.
+
+        ``extra`` is the row's own detail (``usage_records.extra``): a feature that
+        is billed per CALL rather than per period needs to say which call it was,
+        and that belongs on the row, not in a second table. Omitted it stays the
+        empty object every existing row already has, so this is additive.
+        """
+        row = UsageRecord(
+            tenant_id=tenant_id,
+            feature=feature,
+            quantity=quantity,
+            period_date=datetime.now(UTC).date(),
+            extra=extra or {},
         )
+        session.add(row)
         await session.flush()
+        return row
 
     # ------------------------------------------------------------------
     # Section 19 read models — what the Settings Center's plan pages show

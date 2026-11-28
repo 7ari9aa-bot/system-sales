@@ -11,8 +11,10 @@ This module is the SINGLE writer of a voice turn's message rows, and the live pa
 
 * ``open_turn`` writes the question — with ``voice_session_id``, ``input_modality`` and
   ``transcript_status`` on the row it creates — and answers whether it wrote it or found it.
-* ``complete_turn`` marks the answer that the shared runtime wrote as spoken and inserts the ONE
-  ``voice_turns`` row that joins the two messages.
+* ``complete_turn`` marks the answer that the shared runtime wrote as spoken, inserts the ONE
+  ``voice_turns`` row that joins the two messages, and books the turn's spend — it is the first
+  point at which a turn is known to have FINISHED, which is exactly when a call has cost what it
+  is going to cost.
 
 ``chat_service.append_user_message`` stays the text route's writer. A spoken question never goes
 through it, so two writers can no longer disagree about whether a message carries
@@ -42,6 +44,7 @@ from typing import Any, Literal
 from sqlalchemy import func, select, update
 
 from app.modules.ai.models import AIChatMessage
+from app.modules.ai.usage import record_voice_turn_usage
 from app.modules.voice.domain.models import VoiceTurnRow
 from app.modules.voice.domain.states import TurnState
 
@@ -319,6 +322,16 @@ async def complete_turn(
     )
     session.add(row)
     await session.flush()
+    # Spend is booked HERE and only here, because this is the one place a turn is known to have
+    # finished: the answer exists, it is linked, and the turn row has an id to attribute to. A
+    # replayed delegation returns above without reaching this, so a turn is never billed twice.
+    await record_voice_turn_usage(
+        session,
+        tenant_id,
+        voice_session_id=voice_session_id,
+        voice_turn_id=row.id,
+        assistant_message_id=assistant_message_id,
+    )
     return CompletedTurn(turn_id=row.id, sequence_number=next_seq, created=True)
 
 

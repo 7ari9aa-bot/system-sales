@@ -30,14 +30,16 @@ from __future__ import annotations
 
 import enum
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Final
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import AIUsage
+from app.modules.ai.models import AgentRun, AIChatMessage, AIUsage
 
 #: Namespace for bucket identities. Named by URL like every other stable id this
 #: codebase derives (`app/core/secrets.py`), so the derivation is reproducible
@@ -148,3 +150,189 @@ async def record_usage(
         )
     )
     await session.execute(stmt)
+
+
+# --------------------------------------------------------------------------
+# A spoken turn's spend
+# --------------------------------------------------------------------------
+#
+# A voice turn used to cost money that no ledger could name. The model call
+# behind the answer IS booked — the runner writes its tokens and its
+# ``estimate_cost`` into ``ai_usage`` before it returns — but that row is keyed
+# by (tenant, day, agent bucket) and says nothing about which call it was, so a
+# spoken turn could not be priced, attributed or capped per call. Nothing else
+# in the schema carried it either: ``voice_turns`` is the join of a turn's two
+# messages, and the carrier's own usage (audio seconds) is never reported to us.
+#
+# So a completed turn gets ONE ledger row in ``usage_records`` — the existing
+# per-event metering table, written through ``BillingService.record_usage`` —
+# that names the session and the turn, the provider and model that answered, the
+# units the provider actually reported, and the cost. This is deliberately NOT
+# an increment of ``ai_usage``: the runner already booked that token cost, and
+# booking it a second time would double the tenant's month-to-date spend and
+# make the §42 cap bite at half the real budget. A carrier that reports a cost
+# the ledger has never seen (audio seconds, when a provider starts reporting
+# them) books it through ``record_usage`` — the one path that feeds the cap.
+
+#: The metering feature a spoken turn's ledger row is booked under.
+#:
+#: Not one of the plan features (``ai_tokens`` / ``messages`` / ``orders``) on
+#: purpose: this is a per-CALL ledger entry, and folding it into ``ai_tokens``
+#: would charge the same model call twice against a plan's token limit, because
+#: the runner already meters it there.
+VOICE_TURN_FEATURE: Final = "voice_turn"
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceTurnSpend:
+    """What one spoken turn cost, in the units its provider actually reported.
+
+    ``audio_seconds`` is the unit a realtime carrier bills by and ``tokens`` the
+    one the model bills by; whichever was reported is what the row is quantified
+    in. Today no carrier in this codebase returns a usage record, so the honest
+    value is ``None`` — an estimate dressed up as a measurement is exactly the
+    invention this class refuses to make.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+    audio_seconds: Decimal | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    #: The cost that is known for this turn, or ``None`` for "not reported".
+    #: Never defaulted to 0: a zero is a claim that the call was free.
+    cost: Decimal | None = None
+
+    @property
+    def uncosted(self) -> bool:
+        """True when nobody told us what this turn cost."""
+        return self.cost is None
+
+    @property
+    def unit(self) -> str:
+        """The unit the provider reported, which is the unit the row is in."""
+        return "audio_seconds" if self.audio_seconds is not None else "tokens"
+
+    @property
+    def quantity(self) -> Decimal:
+        """The row's quantity, in :attr:`unit`."""
+        if self.audio_seconds is not None:
+            return Decimal(self.audio_seconds)
+        return Decimal(int(self.tokens_in or 0) + int(self.tokens_out or 0))
+
+
+def voice_turn_usage_payload(
+    spend: VoiceTurnSpend,
+    *,
+    voice_session_id: uuid.UUID,
+    voice_turn_id: uuid.UUID,
+    agent_id: uuid.UUID | None = None,
+) -> dict[str, object]:
+    """The ``usage_records.extra`` of one spoken turn: who, in what unit, at what cost.
+
+    Money travels as a string, the way every other payload in this codebase
+    carries a ``Decimal`` (JSON has no exact decimal). ``uncosted`` is the flag
+    that says the cost is unknown, and ``cost`` is then JSON null rather than
+    ``"0"`` — "nobody told us" and "it was free" are different facts.
+    """
+    return {
+        "voice_session_id": str(voice_session_id),
+        "voice_turn_id": str(voice_turn_id),
+        "agent_id": str(agent_id) if agent_id is not None else None,
+        "provider": spend.provider,
+        "model": spend.model,
+        "unit": spend.unit,
+        "tokens_in": int(spend.tokens_in or 0),
+        "tokens_out": int(spend.tokens_out or 0),
+        "audio_seconds": None if spend.audio_seconds is None else str(spend.audio_seconds),
+        "cost": None if spend.cost is None else str(spend.cost),
+        "uncosted": spend.uncosted,
+    }
+
+
+async def spend_of_turn(
+    session: AsyncSession, *, tenant_id: uuid.UUID, assistant_message_id: uuid.UUID | None
+) -> VoiceTurnSpend:
+    """The spend of the model call behind a spoken answer, or an uncosted one.
+
+    The answer row keeps ``run_id`` (``chat.turns.run_chat_turn`` writes it), and
+    the run keeps what the provider billed and which model did the answering —
+    so the turn's own row is the way back to its cost without threading a second
+    contract through the runtime. A turn with no run is not a bug: a memory
+    command is answered with no model call at all, and it is recorded as uncosted
+    with zero units rather than dropped.
+    """
+    if assistant_message_id is None:
+        return VoiceTurnSpend()
+    run_id = (
+        await session.execute(
+            select(AIChatMessage.run_id).where(
+                AIChatMessage.tenant_id == tenant_id,
+                AIChatMessage.id == assistant_message_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if run_id is None:
+        return VoiceTurnSpend()
+    run = await session.get(AgentRun, run_id)
+    if run is None:
+        return VoiceTurnSpend()
+    output = run.output or {}
+    tokens_in = int(run.tokens_in or 0)
+    tokens_out = int(run.tokens_out or 0)
+    booked = Decimal(run.cost or 0)
+    return VoiceTurnSpend(
+        provider=output.get("provider") or None,
+        model=output.get("model_name") or None,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        # A run that was billed nothing (no tokens, or a zero-cost model) has no
+        # cost to report — that is uncosted, not a free turn.
+        cost=booked if booked > 0 else None,
+    )
+
+
+async def record_voice_turn_usage(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    voice_session_id: uuid.UUID,
+    voice_turn_id: uuid.UUID,
+    assistant_message_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None = None,
+) -> VoiceTurnSpend:
+    """Book the spend of one completed spoken turn, exactly once.
+
+    Called by ``transcript_sync.complete_turn`` — the single writer of a turn, and
+    the first place where a turn is known to have FINISHED — with the ids it just
+    wrote. Exactly once follows from that: ``complete_turn`` only reaches this on
+    the call that created the turn row, so a replayed delegation books nothing.
+
+    ONE row is written (``usage_records``, feature :data:`VOICE_TURN_FEATURE`) and
+    the ``ai_usage`` rollup is deliberately left alone: the runner already booked
+    this turn's token cost there, and a second booking would double-count the §42
+    cap — a tenant would see its month-to-date spend double and the cap fire at
+    half the real budget. When a carrier starts reporting audio seconds as a cost
+    of its own, that cost is the part the ledger has never seen and belongs in
+    ``record_usage`` beside this call, not in a second counter.
+    """
+    spend = await spend_of_turn(
+        session, tenant_id=tenant_id, assistant_message_id=assistant_message_id
+    )
+    # Call-scoped: billing.services imports this package's models, so a module
+    # scope import here would be a cycle (the same reason budget.py does it).
+    from app.modules.billing.services.subscriptions import BillingService
+
+    await BillingService.record_usage(
+        session,
+        tenant_id,
+        feature=VOICE_TURN_FEATURE,
+        quantity=spend.quantity,
+        extra=voice_turn_usage_payload(
+            spend,
+            voice_session_id=voice_session_id,
+            voice_turn_id=voice_turn_id,
+            agent_id=agent_id,
+        ),
+    )
+    return spend
