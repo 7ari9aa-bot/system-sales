@@ -85,8 +85,8 @@ async def main() -> int:
     provider = GptLiveProvider(config, gpt_live_transport.connect)
     heard: list[tuple[str, str]] = []
 
-    async def turn_runner(transcript: str, idempotency_key: str) -> str:
-        heard.append((transcript, idempotency_key))
+    async def turn_runner(request) -> str:
+        heard.append((request.transcript, request.idempotency_key))
         return ANSWER
 
     delegations = ClientDelegationService(provider, turn_runner)

@@ -47,3 +47,8 @@ class AssistantTurnResult:
     #: The answer row itself, already on the caller's session: the API serialises
     #: it directly instead of re-reading what this service just wrote.
     message: object | None = None
+    #: The answer was produced for a question the caller had already moved past, so it is not to
+    #: be delivered or spoken. Only a live spoken turn can be superseded (a newer question takes
+    #: the call over); a typed turn is always wanted, hence the default. ``content`` is empty when
+    #: it is True, so a caller that ignores the flag still cannot speak the stale answer.
+    superseded: bool = False

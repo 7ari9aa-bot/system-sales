@@ -135,10 +135,24 @@ class LiveCallLoop:
         The provider is told as well (it owns the turn), but the guarantee this
         loop makes is local and immediate: no further model audio reaches the
         sink until the caller speaks again or a delegation is answered.
+
+        Silencing the speaker is only half of a barge-in. The answer being
+        computed for the question the caller just talked over is still running,
+        and it would be handed to the model as soon as it finished — so the
+        delegation service is told too, and the turn in flight stops being the
+        call's current turn. That is what makes the rest of the interruption
+        hold after the audio has already stopped.
         """
         if self._closed:
             return
         self._muted = True
+        drop_turn = getattr(self._delegations, "interrupt", None)
+        if drop_turn is not None and self._provider_session is not None:
+            # Same reason as the provider's interrupt below: await it when it is a
+            # coroutine, so a refusal cannot be swallowed by a missing await.
+            result = drop_turn(self._provider_session)
+            if asyncio.iscoroutine(result):
+                await result
         interrupt = getattr(self._provider, "interrupt", None)
         if interrupt is not None and self._provider_session is not None:
             # The provider's interrupt is a coroutine: awaiting it is the whole

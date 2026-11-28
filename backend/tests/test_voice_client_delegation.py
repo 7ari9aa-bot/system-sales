@@ -47,8 +47,8 @@ def _created(delegation_id="item_1", target="client"):
 def _runner(answer="المبيعات النهاردة 12 ألف", *, boom=False):
     calls: list[tuple[str, str]] = []
 
-    async def run(transcript: str, idempotency_key: str) -> str:
-        calls.append((transcript, idempotency_key))
+    async def run(request) -> str:
+        calls.append((request.transcript, request.idempotency_key))
         if boom:
             raise RuntimeError("the backend is down")
         return answer
