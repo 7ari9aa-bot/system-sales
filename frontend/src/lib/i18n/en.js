@@ -262,6 +262,7 @@ export default {
   "kpi.metric.inventory_dead_stock_value": "Dead stock value",
   "kpi.metric.inventory_low_stock_count": "Items running low",
   "kpi.metric.inventory_expiring_lots": "Expiring shipments",
+  "kpi.metric.inventory_expired_lots": "Expired shipments",
   "kpi.metric.inventory_pending_reorders": "Pending reorder suggestions",
   "notice.safe.si_response_invalid": "I could not confirm the numbers in that answer, so I did not show it. Try asking again in different words.",
   "notice.safe.unsourced_claim": "That answer had claims your store data does not support, so I did not show it.",

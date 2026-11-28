@@ -262,6 +262,7 @@ export default {
   "kpi.metric.inventory_dead_stock_value": "قيمة المخزون الراكد",
   "kpi.metric.inventory_low_stock_count": "أصناف قريبة من النفاد",
   "kpi.metric.inventory_expiring_lots": "شحنات قريبة من الانتهاء",
+  "kpi.metric.inventory_expired_lots": "شحنات منتهية الصلاحية",
   "kpi.metric.inventory_pending_reorders": "طلبات إعادة الشراء المعلقة",
   "notice.safe.si_response_invalid": "لم أتمكن من التحقق من أرقام هذا الرد، فلم أعرضه. أعد السؤال بصياغة أخرى.",
   "notice.safe.unsourced_claim": "الرد يحتوي على كلام غير مدعوم ببيانات المتجر، فلم أعرضه.",
