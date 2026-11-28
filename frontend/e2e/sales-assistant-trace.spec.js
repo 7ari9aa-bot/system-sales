@@ -100,7 +100,7 @@ test("the finished answer folds to 'thought for N s' and says why it was slow", 
   await expect(steps.nth(3)).toContainText("5.3 ث");
   // a cut thinking says it was cut
   await steps.nth(2).getByRole("button").click();
-  await expect(page.getByTestId("assistant-trace-reasoning")).toContainText("واتقص");
+  await expect(page.getByTestId("assistant-trace-reasoning")).toContainText("التفكير أطول من ذلك وتم اختصاره هنا");
   await expect(page.getByTestId("assistant-trace-summary")).toContainText("الإجمالي 17.0 ث");
   await expect(page.getByTestId("assistant-trace-why")).toContainText("اترفض في مراجعة الأرقام");
   await expect(page.getByTestId("assistant-trace-why")).toContainText("كتب كتير");
@@ -115,7 +115,7 @@ test("an answer with nothing slow says so, and an old answer with no trace shows
   ];
   await page.getByTestId("assistant-trace-toggle").click({ timeout: 8000 });
   await expect(page.getByTestId("assistant-trace-why")).toHaveCount(0);
-  await expect(page.getByTestId("assistant-trace-summary")).toContainText("مفيش حاجة بطّأت الرد");
+  await expect(page.getByTestId("assistant-trace-summary")).toContainText("لم يبطئ هذا الرد أي شيء");
   // the answers already in the thread were written before tracing existed: no panel on them
   await expect(page.getByTestId("assistant-trace")).toHaveCount(1);
 });
@@ -148,7 +148,7 @@ test("the reply-speed panel shows the measured split, the causes and the slowest
   await expect(panel.getByTestId("timing-causes")).toContainText("في 7 من 12");
   await expect(panel.getByTestId("timing-slowest")).toContainText("قارن مبيعات الشهر");
   await expect(panel.getByTestId("timing-slowest")).toContainText("53.9 ث");
-  await expect(panel).toContainText("3 رد اتكتبوا قبل القياس");
+  await expect(panel).toContainText("3 ردود كُتبت قبل القياس فلم تُحتسب");
   await panel.getByTestId("timing-range-1").click();
   await expect(panel.getByTestId("timing-empty")).toBeVisible();
   expect(asked).toEqual(["7", "1"]);

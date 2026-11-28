@@ -31,6 +31,9 @@ test("English home is English, self-canonical and linked to its Arabic twin", as
 test("a Saudi page keeps its visitor in Saudi Arabia", async ({ page }) => {
   await page.goto("/sa/en/pricing", { waitUntil: "domcontentloaded" });
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `${ORIGIN}/sa/en/pricing`);
+  // The prerendered page hands over to the app after domcontentloaded; reading the links mid-swap
+  // destroyed the execution context ("most likely because of a navigation"). Settle first, then read.
+  await page.waitForLoadState("networkidle");
   const hrefs = await page.locator("header a[href], footer a[href]").evaluateAll((els) => els.map((e) => e.getAttribute("href")));
   expect(hrefs).toContain("/sa/en/pricing");
   expect(hrefs.filter((h) => h.startsWith("/eg/"))).toEqual([]);
