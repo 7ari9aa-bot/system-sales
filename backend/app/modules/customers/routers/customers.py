@@ -45,7 +45,7 @@ async def _customers_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     caller holding no customer permission at all would still make the gate read the
     commercial tables before being refused.
     """
-    return await workspace_gate("customer.engagement", ctx, product_permission="customers")
+    return await workspace_gate("apparel.customers", ctx, product_permission="customers")
 
 
 router = APIRouter(tags=["customers"], dependencies=[Depends(_customers_gate)])

@@ -6,10 +6,10 @@
 
 export const APPAREL_MODULES = [
   {
-    key: "retail.core",
+    key: "apparel",
     title: "البيع والمخزون",
     function: "يبيع من الكاشير ويسجل الوردية والخزنة، وبيعرض الأرصدة وحركة الأصناف والجرد.",
-    capability: "retail.core",
+    capability: "apparel",
     pages: [
       { to: "/pos", label: "الكاشير" },
       { to: "/returns", label: "المرتجع" },
@@ -25,7 +25,7 @@ export const APPAREL_MODULES = [
     key: "retail.catalog",
     title: "المنتجات",
     function: "يدخل المنتج بمقاساته ولونه وماركته وموسمه، ويطبع الباركود ويربط المقاس بالكمية.",
-    capability: "retail.core",
+    capability: "apparel",
     pages: [
       { to: "/products", label: "المنتجات" },
       { to: "/products/new", label: "إضافة منتج" },
@@ -34,10 +34,10 @@ export const APPAREL_MODULES = [
     ],
   },
   {
-    key: "retail.purchasing",
+    key: "apparel.purchasing",
     title: "الموردون والمشتريات",
     function: "يشتري من المورد، ويستلم الأصناف بفحص جودة وكمية، ويحدد تكلفتها على الصنف.",
-    capability: "retail.purchasing",
+    capability: "apparel.purchasing",
     pages: [
       { to: "/suppliers", label: "الموردون" },
       { to: "/purchases", label: "المشتريات" },
@@ -46,10 +46,10 @@ export const APPAREL_MODULES = [
     ],
   },
   {
-    key: "retail.warehouse",
+    key: "apparel.warehouse",
     title: "المخزون المتقدم",
     function: "ينقل الأصناف بين فروع المحل، ويتبع الدفعة، ويعرف فين الصنف واقف.",
-    capability: "retail.warehouse",
+    capability: "apparel.warehouse",
     pages: [
       { to: "/supply-chain/transfers", label: "التحويلات بين الفروع" },
       { to: "/supply-chain/locations", label: "المواقع والرفوف" },
@@ -57,10 +57,10 @@ export const APPAREL_MODULES = [
     ],
   },
   {
-    key: "customer.engagement",
+    key: "apparel.customers",
     title: "العملاء والمحادثات",
     function: "يجمع بيانات العميل ومقاساته المفضلة، ويجمع رسايل إنستجرام وفيسبوك في صندوق واحد.",
-    capability: "customer.engagement",
+    capability: "apparel.customers",
     pages: [
       { to: "/customers", label: "العملاء" },
       { to: "/inbox", label: "صندوق المحادثات" },

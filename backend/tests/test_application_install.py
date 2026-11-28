@@ -57,12 +57,12 @@ def entitled_keys(monkeypatch):
 
 
 def test_installs_only_what_is_entitled(entitled_keys) -> None:
-    entitled_keys({"retail.core", "retail.purchasing"})
+    entitled_keys({"apparel", "apparel.purchasing"})
     session = _Session()
     installed = asyncio.run(
         install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
-    assert installed == ["retail.core", "retail.purchasing"]
+    assert installed == ["apparel", "apparel.purchasing"]
     assert [row.application_key for row in session.added] == installed
     assert all(row.state == "active" and row.is_active for row in session.added)
     assert session.flushed == 1
@@ -81,8 +81,8 @@ def test_nothing_entitled_writes_nothing(entitled_keys) -> None:
 
 def test_an_existing_installation_is_never_reopened(entitled_keys) -> None:
     """A product somebody switched off stays off, even if it is still paid for."""
-    entitled_keys({"retail.core"})
-    session = _Session(existing=["retail.core"])
+    entitled_keys({"apparel"})
+    session = _Session(existing=["apparel"])
     installed = asyncio.run(
         install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
@@ -91,16 +91,16 @@ def test_an_existing_installation_is_never_reopened(entitled_keys) -> None:
 
 
 def test_only_the_missing_ones_are_installed(entitled_keys) -> None:
-    entitled_keys({"retail.core", "retail.purchasing"})
-    session = _Session(existing=["retail.core"])
+    entitled_keys({"apparel", "apparel.purchasing"})
+    session = _Session(existing=["apparel"])
     installed = asyncio.run(
         install_module.install_entitled(session, tenant_id=uuid.uuid4(), workspace_id=uuid.uuid4())
     )
-    assert installed == ["retail.purchasing"]
+    assert installed == ["apparel.purchasing"]
 
 
 def test_the_setup_hook_does_nothing_without_a_workspace(entitled_keys) -> None:
-    entitled_keys({"retail.core"})
+    entitled_keys({"apparel"})
     session = _Session()
 
     class _Ctx:
@@ -115,7 +115,7 @@ def test_the_setup_hook_does_nothing_without_a_workspace(entitled_keys) -> None:
 
 def test_every_workspace_of_an_account_is_installed_separately(entitled_keys) -> None:
     """Catching up an account that finished setup before this module existed."""
-    entitled_keys({"retail.core"})
+    entitled_keys({"apparel"})
     first, second = uuid.uuid4(), uuid.uuid4()
     session = _Session()
     installed = asyncio.run(
@@ -123,7 +123,7 @@ def test_every_workspace_of_an_account_is_installed_separately(entitled_keys) ->
             session, tenant_id=uuid.uuid4(), workspace_ids=[first, second]
         )
     )
-    assert installed == {str(first): ["retail.core"], str(second): ["retail.core"]}
+    assert installed == {str(first): ["apparel"], str(second): ["apparel"]}
     assert len(session.added) == 2
     assert {row.workspace_id for row in session.added} == {first, second}
 

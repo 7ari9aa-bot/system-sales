@@ -19,7 +19,7 @@ def test_an_unentitled_application_is_not_allowed_and_says_so() -> None:
 
 
 def test_an_entitled_and_installed_application_is_allowed() -> None:
-    key = "retail.core"
+    key = "apparel"
     rows = {
         row["key"]: row
         for row in describe(
@@ -34,7 +34,7 @@ def test_an_entitled_and_installed_application_is_allowed() -> None:
 
 
 def test_installed_but_unfinished_setup_is_reported_separately() -> None:
-    key = "retail.core"
+    key = "apparel"
     rows = {
         row["key"]: row
         for row in describe(

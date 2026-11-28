@@ -18,7 +18,7 @@ from .variants import router as variants_router
 
 async def _catalog_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     """Products, variants and categories are the core product, not an add-on."""
-    return await workspace_gate("retail.core", ctx)
+    return await workspace_gate("apparel", ctx)
 
 
 router = APIRouter(tags=["catalog"], dependencies=[Depends(_catalog_gate)])

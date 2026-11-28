@@ -30,7 +30,7 @@ from app.modules.pos.stock_view import StockViewService
 
 async def _pos_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
     """Selling is the core product; a workspace without it has no till."""
-    return await workspace_gate("retail.core", ctx)
+    return await workspace_gate("apparel", ctx)
 
 
 router = APIRouter(

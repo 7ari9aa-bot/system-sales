@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 #: The commercial key the licence is sold under today. The sector application is
 #: one product; the billing catalogue still names it ``retail.core`` until the
 #: rename in decision D1 lands, and this constant is the only place that knows.
-APPAREL_LICENCE_KEY = "retail.core"
+APPAREL_LICENCE_KEY = "apparel"
 
 #: No installation rows at all: the workspace predates the gate. Same transition
 #: rule the platform gate applies, stated once here so the two cannot disagree.

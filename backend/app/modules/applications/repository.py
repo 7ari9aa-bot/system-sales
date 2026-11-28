@@ -11,6 +11,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.applications.access import AccessFacts
+from app.modules.applications.manifests import normalize_key
 from app.modules.applications.models import (
     PlanApplicationInclusion,
     SubscriptionItem,
@@ -68,7 +69,7 @@ async def entitled(
         .scalars()
         .all()
     )
-    return frozenset(keys)
+    return frozenset(normalize_key(key) for key in keys)
 
 
 async def installed(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str, str]:
@@ -80,7 +81,7 @@ async def installed(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[s
             )
         )
     ).all()
-    return {key: state for key, state in rows}
+    return {normalize_key(key): state for key, state in rows}
 
 
 async def gather_facts(

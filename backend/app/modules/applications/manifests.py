@@ -1,5 +1,16 @@
 """The manifest registry — what each application is, in code.
 
+There is no shared Business Core here. The base application IS the sector
+application (``apparel``); the other entries are that application's own
+extensions, and every one of them is namespaced under it. A second sector gets
+its own application with its own modules, never a seat on a common core
+(industry-applications §1, §21 "no shared Retail Core").
+
+``LEGACY_KEYS`` carries the keys a deployed database may still hold from before
+the rename. They resolve to their new owner so a migration that has not run yet
+cannot close a paid screen.
+
+
 The database may decide whether an application is *for sale*, *at what price*,
 and *whether this workspace bought it*. It may never decide what the application
 can do: a row cannot invent a route or run code. So capabilities live here, in
@@ -39,59 +50,89 @@ class ApplicationManifest:
     tags: tuple[str, ...] = field(default_factory=tuple)
 
 
+#: Old key -> current key. Read-only compatibility: nothing new may be written
+#: under an old key, and every entry here is removed once the data migration has
+#: run everywhere.
+LEGACY_KEYS: dict[str, str] = {
+    "retail.core": "apparel",
+    "retail.purchasing": "apparel.purchasing",
+    "retail.warehouse": "apparel.warehouse",
+    "retail.inventory_advanced": "apparel.inventory_advanced",
+    "customer.engagement": "apparel.customers",
+    "ai.customer_support": "apparel.ai_support",
+    "ai.business_intelligence": "apparel.ai_intelligence",
+}
+
+
+def normalize_key(key: str) -> str:
+    """The current key for ``key``, following one legacy hop."""
+    return LEGACY_KEYS.get(key, key)
+
+
 REGISTRY: dict[str, ApplicationManifest] = {
     m.key: m
     for m in (
         ApplicationManifest(
-            key="retail.core",
+            # The sector application itself. It owns the shop's whole trading
+            # surface; nothing here is a base another sector would sit on.
+            key="apparel",
             version=1,
-            title_ar="النظام الأساسي للمتاجر",
-            title_en="Retail Core",
-            category="core",
+            title_ar="FIHRIST للملابس",
+            title_en="FIHRIST Apparel",
+            category="industry",
             owner_domain="catalog",
-            api_groups=("products", "categories", "inventory", "pos", "orders", "expenses"),
-            settings_sections=("products", "inventory", "pos", "receipts"),
-            navigation_group="core",
-            setup_flow="retail_core_setup",
+            api_groups=(
+                "products",
+                "categories",
+                "inventory",
+                "pos",
+                "orders",
+                "expenses",
+                "customers",
+                "reports",
+            ),
+            settings_sections=("business", "products", "inventory", "pos", "receipts"),
+            navigation_group="industry",
+            setup_flow="apparel_setup",
             notes_ar=(
-                "المنتجات والمقاسات والألوان والباركود والمخزون الأساسي "
-                "والكاشير والمرتجعات والورديات."
+                "المنتجات والمقاسات والألوان والباركود والمخزون والكاشير "
+                "والمرتجعات والورديات."
             ),
         ),
         ApplicationManifest(
-            key="retail.purchasing",
+            key="apparel.purchasing",
             version=1,
             title_ar="المشتريات والموردون",
             title_en="Purchasing & Suppliers",
             category="operations",
             owner_domain="purchasing",
-            dependencies=("retail.core",),
+            dependencies=("apparel",),
             api_groups=("suppliers", "purchase-orders", "goods-receipts", "supplier-returns"),
             settings_sections=("purchasing",),
             setup_flow="purchasing_setup",
             notes_ar="الموردون وأوامر الشراء واستلام البضاعة وفحص الجودة ومرتجعات الموردين.",
         ),
         ApplicationManifest(
-            key="retail.warehouse",
+            key="apparel.warehouse",
             version=1,
             title_ar="إدارة المستودعات",
             title_en="Warehouse Management",
             category="operations",
             owner_domain="inventory",
-            dependencies=("retail.core",),
+            dependencies=("apparel",),
             api_groups=("warehouses", "transfers", "locations-bins"),
             settings_sections=("warehouses",),
             setup_flow="warehouse_setup",
             notes_ar="مخازن متعددة ومواقع ورفوف وتحويلات بين المخازن والفروع.",
         ),
         ApplicationManifest(
-            key="retail.inventory_advanced",
+            key="apparel.inventory_advanced",
             version=1,
             title_ar="المخزون المتقدم",
             title_en="Advanced Inventory",
             category="operations",
             owner_domain="inventory",
-            dependencies=("retail.core", "retail.warehouse"),
+            dependencies=("apparel", "apparel.warehouse"),
             api_groups=("replenishment", "valuation", "landed-cost", "traceability"),
             settings_sections=("inventory-advanced",),
             setup_flow="advanced_inventory_setup",
@@ -99,39 +140,39 @@ REGISTRY: dict[str, ApplicationManifest] = {
             notes_ar="التجديد وإعادة الشراء والتقييم وLanded Cost والدفعات والسيريال عند الحاجة.",
         ),
         ApplicationManifest(
-            key="customer.engagement",
+            key="apparel.customers",
             version=1,
             title_ar="العملاء والرسائل",
             title_en="Customer Engagement",
             category="growth",
             owner_domain="conversations",
-            dependencies=("retail.core",),
+            dependencies=("apparel",),
             api_groups=("customers", "inbox", "channels", "integrations"),
             settings_sections=("channels", "customers"),
             setup_flow="channels_setup",
             notes_ar="إدارة العملاء وصندوق الرسائل الموحد وقنوات التواصل والتكاملات.",
         ),
         ApplicationManifest(
-            key="ai.customer_support",
+            key="apparel.ai_support",
             version=1,
             title_ar="مساعد خدمة العملاء",
             title_en="Customer Agent",
             category="intelligence",
             owner_domain="ai",
-            dependencies=("retail.core", "customer.engagement"),
+            dependencies=("apparel", "apparel.customers"),
             api_groups=("ai-chat", "voice"),
             settings_sections=("customer-agent",),
             setup_flow="agent_setup",
             notes_ar="مساعد نصي وصوتي للعملاء يجاوب من بيانات المتجر ويصعّد لموظف بشري.",
         ),
         ApplicationManifest(
-            key="ai.business_intelligence",
+            key="apparel.ai_intelligence",
             version=1,
             title_ar="التحليلات الذكية",
             title_en="Business Intelligence",
             category="intelligence",
             owner_domain="analytics",
-            dependencies=("retail.core",),
+            dependencies=("apparel",),
             api_groups=("analytics", "sales-intelligence"),
             settings_sections=("analytics",),
             setup_flow="analytics_setup",
@@ -151,7 +192,7 @@ def get_manifest(key: str) -> ApplicationManifest:
     Applications fail closed: an unknown key must never be treated as "no
     restriction", which is how a typo would silently open a paid product.
     """
-    manifest = REGISTRY.get(key)
+    manifest = REGISTRY.get(normalize_key(key))
     if manifest is None:
         raise KeyError(f"unknown application: {key!r}")
     return manifest
