@@ -234,9 +234,9 @@ async function open(page) {
   await page.goto("/sales-assistant", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "ذاكرة المساعد" }).click();
   await expect(
-    page.getByRole("dialog", { name: "اللي المساعد فاكره عنك" }),
+    page.getByRole("dialog", { name: "ما يتذكره المساعد عنك" }),
   ).toBeVisible();
-  return page.getByRole("dialog", { name: "اللي المساعد فاكره عنك" });
+  return page.getByRole("dialog", { name: "ما يتذكره المساعد عنك" });
 }
 
 test("with no notes, delete-all is not offered; with notes it is", async ({
@@ -427,7 +427,7 @@ test("on a phone the panel is a sheet, and there is only one of it", async ({
   expect(box.width).toBeLessThanOrEqual(390);
   await panel.getByRole("button", { name: "إغلاق" }).click();
   await expect(
-    page.getByRole("dialog", { name: "اللي المساعد فاكره عنك" }),
+    page.getByRole("dialog", { name: "ما يتذكره المساعد عنك" }),
   ).toHaveCount(0);
 });
 
@@ -442,7 +442,7 @@ test("a habit is offered with how often it was seen, and nothing is saved until 
   await expect(offer).toHaveCount(1);
   await expect(offer).toContainText("بتفضّل تشوف الأرقام عن آخر 7 أيام");
   await expect(offer).toContainText("8");
-  await expect(offer).toContainText("مش هحفظها إلا لو وافقت");
+  await expect(offer).toContainText("لن أحفظها إلا بموافقتك");
   expect(api.notes).toHaveLength(0);
   expect(api.calls.filter((c) => c.startsWith("POST"))).toEqual([]);
 });
@@ -478,7 +478,7 @@ test("dismissing hides it, saves nothing, and it stays hidden after a reload", a
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "ذاكرة المساعد" }).click();
   await expect(
-    page.getByRole("dialog", { name: "اللي المساعد فاكره عنك" }),
+    page.getByRole("dialog", { name: "ما يتذكره المساعد عنك" }),
   ).toBeVisible();
   await expect(page.getByTestId("habit-suggestion")).toHaveCount(0);
 });
@@ -522,7 +522,7 @@ test("a full memory does not offer a suggestion it could not save", async ({
     habit: { period: "last_7_days", count: 8 },
   });
   const panel = await open(page);
-  await expect(panel.getByText("اللي المساعد فاكره عنك")).toBeVisible();
+  await expect(panel.getByText("ما يتذكره المساعد عنك")).toBeVisible();
   await expect(panel.getByTestId("habit-suggestion")).toHaveCount(0);
 });
 
@@ -566,7 +566,7 @@ test("a suggestion for a period the server cannot accept, or with no text, is ne
     ],
   });
   const panel = await open(page);
-  await expect(panel.getByText("اللي المساعد فاكره عنك")).toBeVisible();
+  await expect(panel.getByText("ما يتذكره المساعد عنك")).toBeVisible();
   await expect(panel.getByTestId("habit-suggestion")).toHaveCount(0);
   await expect(panel.getByText("بتفضّل حاجة غريبة")).toHaveCount(0);
 });

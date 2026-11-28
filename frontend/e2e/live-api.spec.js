@@ -1206,7 +1206,7 @@ test("a cash expense is recorded on the screen with no shift and moves no drawer
   await expect(
     page.getByRole("dialog"),
     "the cashier is told a cash expense is recorded even with no shift",
-  ).toContainText("المصروف بيتسجّل على حساب خارج الدرج");
+  ).toContainText("يُسجَّل المصروف على حساب خارج الدرج");
   await expect(
     page.getByRole("dialog").getByRole("button", { name: /تسجيل المصروف/ }),
     "cash with no shift is allowed",
