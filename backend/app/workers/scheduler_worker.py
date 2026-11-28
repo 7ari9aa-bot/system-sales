@@ -168,6 +168,12 @@ async def _sync_whatsapp_template_status() -> int:
     return await sweep_template_status()
 
 
+async def _sweep_voice_sessions() -> int:
+    from app.workers.voice_session_sweeper import sweep_stale_voice_sessions
+
+    return await sweep_stale_voice_sessions()
+
+
 GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     "password_reset_email": (timedelta(seconds=5), _deliver_password_reset_email),
     "email_verification_email": (timedelta(seconds=5), _deliver_email_verification_email),
@@ -191,6 +197,13 @@ GLOBAL_SWEEPERS: dict[str, tuple[timedelta, Callable[[], object]]] = {
     # opens an empty inbox and a missed delivery leaves a hole. This sweep reads each connected
     # Page's own conversations on an interval and fills both, capped per store.
     "messenger.backfill_reconcile": (timedelta(minutes=30), _reconcile_messenger_backfill),
+    # A voice session is ended by the socket that carried it. When the socket
+    # never gets to run its own finally — a replaced worker, a closed tab, a
+    # provider that never answered — the row says CONFIGURING or ACTIVE forever:
+    # 30 sessions on the owner's database, every one of them CONFIGURING, none
+    # ever ended. Every 5 minutes, so a call abandoned mid-conversation is
+    # written down while somebody might still ask about it.
+    "voice.session_sweep": (timedelta(minutes=5), _sweep_voice_sessions),
 }
 
 

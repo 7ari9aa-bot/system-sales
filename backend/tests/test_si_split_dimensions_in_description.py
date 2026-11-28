@@ -72,6 +72,12 @@ def test_the_listing_follows_the_registry_not_a_typed_copy(monkeypatch):
 
 
 def test_the_listing_stays_inside_the_size_bound():
+    """The SAME budget the tool-choice guard reads, from tools.py.
+
+    This test used to hold its own ceiling of 5600 while the other guard held 7400, so the two
+    disagreed and main was red in both directions. The table below is the one that grows when a
+    metric is added, so the bound belongs here too — but the number is not typed twice.
+    """
     import json
 
     T.register_si_tools()
@@ -80,7 +86,9 @@ def test_the_listing_stays_inside_the_size_bound():
         + len(json.dumps(get_tool(n).args_schema.model_json_schema(), ensure_ascii=False))
         for n in T.SI_TOOLS
     )
-    assert chars < 5600
+    assert chars <= T.SI_TOOL_BUDGET_CHARS, (
+        f"the listing grew to {chars} characters (budget {T.SI_TOOL_BUDGET_CHARS})"
+    )
 
 
 def test_the_metrics_are_separated_so_one_cannot_run_into_the_next():

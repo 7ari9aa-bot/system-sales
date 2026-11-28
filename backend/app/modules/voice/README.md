@@ -27,6 +27,7 @@ gets a refusal, because the refusal is in Python, not in the instructions.
 | `application/session_manager.py`, `application/turn_orchestrator.py` | session lifecycle, turn orchestration through the gateway |
 | `application/assistant_turn.py` | one live spoken turn: resolves the session's conversation and hands the turn to the shared assistant runtime |
 | `application/transcript_sync.py` | the single writer of a voice turn's conversation rows: the question (`open_turn`) and the `voice_turns` row that joins both messages (`complete_turn`) |
+| `application/session_sweeper.py`, `app/workers/voice_session_sweeper.py` | the ending for a call nobody ended: a CONFIGURING/ACTIVE row past its grace is closed or failed with a reason, one RLS-bound transaction per tenant |
 | `application/omnichannel.py`, `domain/channels.py` | voice notes on WhatsApp/Instagram/webchat under declared per-channel contracts |
 | `application/inbound_calls.py`, `domain/routing.py`, `domain/recording.py` | signed, idempotent inbound calls; DID routing; recording consent |
 | `application/hardening.py`, `domain/resilience.py` | circuit breakers, failover, cost ceilings, autoscale signal, quality scoring |
@@ -70,6 +71,19 @@ being answered. `QUESTION_TAIL_GRACE_SECONDS` (0.6 s) separates the two — insi
 end of the question and the answer is kept; past it, or at any point once model audio is playing,
 it is a barge-in. Cancelling on the tail instead would leave the caller in silence with no second
 delegation coming, which is worse than the bug it fixes.
+
+## What ends a call nobody ended
+
+A session's ending is written by the socket that carried the call. A replaced worker, a closed tab,
+or a provider that never answered skips that `finally`, and the row keeps saying `CONFIGURING` or
+`ACTIVE` — 30 rows, all CONFIGURING, on the owner's database. `application/session_sweeper.py`
+decides what such a row has earned (expiry first, then a 5-minute CONFIGURING grace, then 30
+minutes of ACTIVE silence) and writes it through `VoiceSessionManager`, so the move is one the
+state machine already allows: `CONFIGURING` can only FAIL, an expired `ACTIVE` call closes, an
+ACTIVE call that went silent fails with `connection_lost`. The service flushes; the worker owns
+the transaction, binds each tenant with `bind_tenant` because `voice_sessions` is FORCE RLS, and
+logs and skips a tenant or a row that fails. It is registered in `scheduler_worker.GLOBAL_SWEEPERS`
+as `voice.session_sweep` (every 5 minutes), because code nothing calls ends nothing.
 
 ## Production readiness review
 

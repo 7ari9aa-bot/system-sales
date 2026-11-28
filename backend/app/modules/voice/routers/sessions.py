@@ -271,6 +271,26 @@ def _call_factory():
     return build_browser_call
 
 
+def start_failure_reason(exc: BaseException) -> str:
+    """Why a call never became real, in the vocabulary the row keeps.
+
+    Every failure to open a call ends the session, so the reason has to be
+    readable months later by somebody who was not here: the provider said no, the
+    gateway refused the session, the network dropped, or something nobody
+    anticipated. The last bucket is not laziness — the exception types a vendor
+    transport can raise are not knowable, and a row left in CONFIGURING because
+    the type was not on a list is worse than a row that says "provider_error".
+    """
+    name = type(exc).__name__
+    if isinstance(exc, GptLiveProtocolError):
+        return f"provider_protocol_error:{name}"
+    if isinstance(exc, GptLiveUnavailable | MediaPlaneUnavailable):
+        return f"provider_unavailable:{name}"
+    if isinstance(exc, ConnectionError | TimeoutError):
+        return f"provider_connection_error:{name}"
+    return f"provider_error:{name}"
+
+
 def _grant_store() -> StreamGrantStore:
     return StreamGrantStore.from_settings()
 
@@ -317,7 +337,10 @@ async def _lifecycle(tenant_id: uuid.UUID, step) -> None:  # noqa: ANN001 - a ca
 
     A socket that is already carrying audio is worth more than a tidy row, so a
     bookkeeping failure is logged and the call continues. The sweeper exists for
-    exactly the rows this can leave behind.
+    exactly the rows this can leave behind: it runs every 5 minutes from
+    ``scheduler_worker.GLOBAL_SWEEPERS`` and ends a session left in CONFIGURING
+    or ACTIVE past its grace (``voice/application/session_sweeper.py``), so this
+    failure leaves a row that is late, never one that is stuck forever.
     """
     try:
         async with _session_factory()() as session:
@@ -443,9 +466,20 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
             send_audio=websocket.send_bytes,
             config=config,
         )
-    except (GptLiveUnavailable, MediaPlaneUnavailable) as exc:
-        # The call never became real. Say so on the row instead of leaving it CONFIGURING.
-        await finish(f"provider_unavailable:{type(exc).__name__}", failed=True)
+    except Exception as exc:  # noqa: BLE001 - every way a call can fail is an ending
+        # The call never became real. Say so on the row instead of leaving it CONFIGURING:
+        # an unlisted provider exception used to escape here entirely, so the session sat in
+        # CONFIGURING until the sweeper found it and the client got a dead socket instead of
+        # 1011. The reason names what happened; the row is ended either way.
+        reason = start_failure_reason(exc)
+        logger.warning(
+            "voice.start_failed session=%s tenant=%s reason=%s",
+            session_id,
+            grant.tenant_id,
+            reason,
+            exc_info=True,
+        )
+        await finish(reason)
         await websocket.close(code=1011)
         return
 
@@ -485,5 +519,15 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
         pass
     finally:
         pump.cancel()
-        await call.close()
-        await finish(ending)
+        # close() and finish() are two different promises. Closing the transport is a courtesy
+        # to the provider; recording the ending is the durable fact the control plane depends on.
+        # They used to share one sequence, so a close() that raised (a socket already gone, a
+        # transport that lost its task) skipped finish() and left a session that really ended
+        # looking ACTIVE. The close error is logged and the ending still happens.
+        try:
+            try:
+                await call.close()
+            except Exception:  # noqa: BLE001 - a broken close must not cost the row its ending
+                logger.warning("voice.call_close_failed session=%s", session_id, exc_info=True)
+        finally:
+            await finish(ending)

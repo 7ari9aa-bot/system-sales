@@ -1822,8 +1822,10 @@ async def _si_cashier_summary(
 ) -> dict:
     """What the till sold and refunded in the window, per cashier and per hour, and who is on shift.
 
-    Read-only. The cashier is a sales LEDGER: it records no payment method, no cash tendered to a
-    drawer count and no variance, so this reports none of those and says so."""
+    Read-only, and about SALES only. The till does record the rest — a float per payment method,
+    every drawer movement, the counted cash, the drawer difference and a per-method reconciliation
+    — but this read does not: ``si_cashier`` reads those, from the same ledgers. Saying otherwise
+    here was simply false, and the model repeated it to the owner."""
     window = await _resolve_window(session, tenant_id, days)
     # A till receipt exists the moment the sale happens, so unlike delivery-based metrics there is
     # nothing immature about today. The shared window stops at midnight and would answer "nothing
@@ -1896,8 +1898,9 @@ async def _si_cashier_summary(
     closed = sum(1 for sh in shifts if sh.status == "CLOSED")
 
     limitations = [
-        "the cashier records sales and returns only: it keeps no payment method, no cash count "
-        "and no drawer difference, so none of those can be reported",
+        "this read is the till's SALES only: the drawer, cash movements, counted cash, drawer "
+        "differences and the per-payment-method split are si_cashier's, and the till does record "
+        "them",
         "net sales is sales minus returns made in the window, including returns of older sales",
         "the window includes today up to now: a till sale is recorded the moment it happens",
     ]
@@ -2677,7 +2680,33 @@ SI_TOOLS: tuple[str, ...] = (
     "si_metric",
     "si_shop",
     "si_finance",
+    "si_cashier",
 )
+
+#: What the tools are allowed to cost, in characters of description plus argument schema.
+#:
+#: Every one of these strings is paid for on EVERY message of every conversation: the model can
+#: only choose a tool it can read, so the descriptions are prompt cost, not documentation. The
+#: budget exists so growth is a decision somebody makes, not drift nobody notices.
+#:
+#: Measured (description + ``model_json_schema()``, characters):
+#:
+#:     si_metric   2713      si_shop    2124
+#:     si_cashier  1406      si_finance 1055      total 7298
+#:
+#: History: 4988 with three tools, 5600 became the ceiling, then the three grew to 5822 while the
+#: guard that was supposed to catch it lived in a second test with its own stale number — so main
+#: carried two red tests and neither was believed. ``si_cashier`` (the till's cash, seven views)
+#: costs 1406 of the raise. The number is now ONE constant that both guards read.
+#:
+#: A fifth tool must SPLIT or shorten before it fits: 100 characters of headroom is not room for
+#: another read, and the honest fix then is a view on an existing tool, not a bigger budget.
+SI_TOOL_BUDGET_CHARS = 7400
+
+#: No single tool may take more than this share of the budget. A tool that outgrows the others is
+#: the signal to split it (``si_cashier`` lives in its own module for the same reason), not to
+#: raise the total and let the three cheap tools subsidise it.
+SI_TOOL_MAX_SHARE = 0.5
 
 
 def _explain_unsupported(handler):
@@ -2889,6 +2918,10 @@ def _split_table() -> str:
 
 def register_si_tools() -> None:
     """Idempotent registration into the platform registry."""
+    # si_cashier lives in its own file (tools.py is 3,200 lines). Imported here, not at module
+    # scope, because that module imports this one's helpers while it runs.
+    from app.modules.ai.agents.sales_intelligence.cashier import SICashierArgs, si_cashier
+
     _, computable_metric_names, _ = _metric_registry()
     # Read from the registry the tools validate against, so the model is never told to ask for
     # a metric that does not exist (the old text said "revenue", and every model believed it).
@@ -2938,7 +2971,8 @@ def register_si_tools() -> None:
                 "inventory_health = stock value and dead stock per warehouse, low stock, "
                 "expired and expiring lots (7/30 days or expiry_days), reorders (limit max 25); "
                 "cashier = in-shop point-of-sale totals, returns, net, per cashier and open "
-                "shifts (days max 366, limit max 25; online order totals are in si_metric); "
+                "shifts (days max 366, limit max 25; online order totals are in si_metric; "
+                "the drawer, cash in and out and payment-method splits are si_cashier); "
                 "order = ONE order by number, customer name or phone (needs query); "
                 "customer = ONE customer by name, phone or email (needs query; phone, email "
                 "masked); "
@@ -2967,6 +3001,28 @@ def register_si_tools() -> None:
             ),
             args_schema=SIFinanceArgs,
             handler=_si_finance,
+            tags=["sales-intelligence"],
+        ),
+        ToolSpec(
+            name="si_cashier",
+            description=(
+                "The till's cash and drawer (use for 'the drawer, short or over, cash in and out, "
+                "hand-over, how the day was paid'). view: "
+                "cash_in_out = movements by reason, in, out, net; "
+                "expected_vs_counted = per closed shift, expected versus counted; "
+                "drawer_differences = only the shifts that did not match, biggest gap first, "
+                "shortage or overage; "
+                "reconciliation_by_method = expected versus counted per payment method, with its "
+                "opening float; "
+                "shift_handovers = who handed the drawer to whom, and the count then; "
+                "daily_by_device = per till and day: shifts, invoices, sales, returns, tax; "
+                "sales_by_method = what each method collected on the till's sales. "
+                "expected_vs_counted, drawer_differences and shift_handovers need pos:override. "
+                "Per-cashier SALES are si_shop view=cashier. days 1-366, default 30; limit max 25. "
+                "Amounts are formatted. Read-only."
+            ),
+            args_schema=SICashierArgs,
+            handler=si_cashier,
             tags=["sales-intelligence"],
         ),
     ]
