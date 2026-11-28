@@ -11,18 +11,14 @@ appear without somebody deciding who owns it (industry-applications §12).
 from __future__ import annotations
 
 from app.applications.apparel.manifest import MODULES
+from app.modules.settings.sector_boundary import PLATFORM_DOMAINS
 
 #: Domains the platform owns: the account, its people, its security, its bill.
 #: None of these describe how a shop trades, so no sector application may claim
 #: them, and the platform screens may read them without knowing the sector.
-PLATFORM_SETTINGS_DOMAINS: frozenset[str] = frozenset(
-    {
-        "organization",
-        "team",
-        "security",
-        "billing",
-    }
-)
+#: Imported from the platform module rather than restated: the platform decides
+#: what it owns, and the application only refuses to claim it.
+PLATFORM_SETTINGS_DOMAINS: frozenset[str] = PLATFORM_DOMAINS
 
 #: Domains that belong to the application as a whole rather than to one module:
 #: what the business is, where it trades from, and how data comes in.

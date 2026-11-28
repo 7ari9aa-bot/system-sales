@@ -169,6 +169,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     discover_agents()
     validate_registry()
 
+    # Sector applications: they register what they own (settings domains,
+    # permission namespaces, route prefixes) so platform code can ask the
+    # registry who owns a name without ever importing an application.
+    from app.applications.registry import register_all
+
+    register_all()
+
     # Multimodal readiness (voice-in, customer photos): every one of these
     # features fails CLOSED on a missing credential, and a closed gate with no
     # signpost is indistinguishable from "the model is bad". Say exactly what
