@@ -80,3 +80,27 @@ async def _install_after_setup(ctx, result: dict) -> None:
 
 
 register_setup_completed_hook(_install_after_setup)
+
+
+async def install_entitled_many(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    workspace_ids: list[uuid.UUID],
+) -> dict[str, list[str]]:
+    """Install for every workspace of an account, one by one.
+
+    The hook only fires when setup finishes, so an account that finished setup
+    before this module existed has no rows and the gate cannot speak for it. This
+    is the path that catches those up: it takes the workspace ids rather than
+    reading them, so it stays a function of its inputs and cannot quietly widen
+    its own scope.
+    """
+    installed: dict[str, list[str]] = {}
+    for workspace_id in workspace_ids:
+        keys = await install_entitled(
+            session, tenant_id=tenant_id, workspace_id=workspace_id
+        )
+        if keys:
+            installed[str(workspace_id)] = keys
+    return installed

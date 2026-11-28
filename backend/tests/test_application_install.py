@@ -111,3 +111,30 @@ def test_the_setup_hook_does_nothing_without_a_workspace(entitled_keys) -> None:
     asyncio.run(install_module._install_after_setup(_Ctx(), result))
     assert result == {}
     assert session.added == []
+
+
+def test_every_workspace_of_an_account_is_installed_separately(entitled_keys) -> None:
+    """Catching up an account that finished setup before this module existed."""
+    entitled_keys({"retail.core"})
+    first, second = uuid.uuid4(), uuid.uuid4()
+    session = _Session()
+    installed = asyncio.run(
+        install_module.install_entitled_many(
+            session, tenant_id=uuid.uuid4(), workspace_ids=[first, second]
+        )
+    )
+    assert installed == {str(first): ["retail.core"], str(second): ["retail.core"]}
+    assert len(session.added) == 2
+    assert {row.workspace_id for row in session.added} == {first, second}
+
+
+def test_an_account_with_nothing_entitled_reports_nothing(entitled_keys) -> None:
+    entitled_keys(set())
+    session = _Session()
+    installed = asyncio.run(
+        install_module.install_entitled_many(
+            session, tenant_id=uuid.uuid4(), workspace_ids=[uuid.uuid4()]
+        )
+    )
+    assert installed == {}
+    assert session.added == []
