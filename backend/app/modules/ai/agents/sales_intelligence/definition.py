@@ -38,6 +38,14 @@ _DEFINITION = AgentDefinition(
             description="What the shop spent, earned after costs, bought and owes its suppliers",
             required=False,
         ),
+        AgentCapability(
+            name="si_cashier",
+            description=(
+                "The till's cash: drawer movements, expected versus counted cash, shortages and "
+                "overages, reconciliation per payment method, hand-overs, daily per device"
+            ),
+            required=False,
+        ),
     ],
     system_prompt_template=SI_SYSTEM_PROMPT,
     default_model="strong",

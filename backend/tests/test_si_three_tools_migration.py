@@ -68,7 +68,9 @@ def test_the_old_names_match_what_the_code_no_longer_offers() -> None:
     from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 
     assert not set(OLD) & set(SI_TOOLS)
-    assert set(SI_TOOLS) == {"si_metric", "si_shop", "si_finance"}
+    # si_cashier arrived after this migration, so the three are a subset of today's set
+    assert {"si_metric", "si_shop", "si_finance"} <= set(SI_TOOLS)
+    assert "si_cashier" in SI_TOOLS
     # the eleven the owner had are exactly what the three replace
     assert set(ELEVEN) == set(OLD) | {"si_metric", "si_finance"}
 

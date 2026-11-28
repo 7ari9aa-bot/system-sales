@@ -63,13 +63,23 @@ def test_each_read_a_tool_can_run_is_named_in_its_description() -> None:
 def test_the_hints_stay_short_because_every_tool_is_paid_for_on_every_message() -> None:
     import json
 
-    chars = sum(
-        len(_d(n))
+    per_tool = {
+        n: len(_d(n))
         + len(json.dumps(get_tool(n).args_schema.model_json_schema(), ensure_ascii=False))
         for n in T.SI_TOOLS
+    }
+    # The budget lives in tools.py, next to the specs it pays for, and BOTH guards read it. It
+    # used to be typed here and again in test_si_split_dimensions_in_description.py, and the two
+    # drifted apart: main carried 5822 against a 5600 ceiling in both files, red and unnoticed.
+    assert sum(per_tool.values()) <= T.SI_TOOL_BUDGET_CHARS, (
+        f"the tool descriptions and schemas grew to {sum(per_tool.values())} characters "
+        f"(budget {T.SI_TOOL_BUDGET_CHARS}): {per_tool}"
     )
-    # 7962 with eleven tools, 4988 with three; growing past this is a decision, not drift
-    assert chars < 5600, f"the tool descriptions and schemas grew to {chars} characters"
+    # One tool ballooning is not the same problem as four tools growing: say which it is.
+    for name, chars in per_tool.items():
+        assert chars <= T.SI_TOOL_BUDGET_CHARS * T.SI_TOOL_MAX_SHARE, (
+            f"{name} alone costs {chars} characters; split it instead of raising the budget"
+        )
 
 
 def test_the_shop_tool_never_invites_a_guessed_lookup():

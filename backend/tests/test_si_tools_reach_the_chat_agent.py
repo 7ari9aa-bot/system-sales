@@ -151,11 +151,11 @@ async def test_an_employee_without_finance_access_is_never_shown_the_money_tools
     """Attaching the rows must not widen what a person may see: the permission still hides them."""
     shown = await _offered(db, tenant_ctx, monkeypatch, set())
 
-    # all three are offered to everyone: the permission is checked by each read, when it runs
-    assert shown == {"si_metric", "si_shop", "si_finance"}
+    # every one of them is offered: the permission is checked by each read, when it runs
+    assert shown == {"si_metric", "si_shop", "si_finance", "si_cashier"}
 
 
 async def test_an_asker_with_the_permission_is_shown_the_tool(db, tenant_ctx, monkeypatch):
     shown = await _offered(db, tenant_ctx, monkeypatch, {"finance:read", "orders:read"})
 
-    assert shown == {"si_finance", "si_shop", "si_metric"}
+    assert shown == {"si_finance", "si_shop", "si_metric", "si_cashier"}
