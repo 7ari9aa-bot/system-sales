@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.modules.customers.routers.integrations import reconcile_page_id
+from app.applications.apparel.modules.customers.routers.integrations import reconcile_page_id
 
 
 def test_a_messenger_channel_walks_the_page_id_the_oauth_callback_stored() -> None:

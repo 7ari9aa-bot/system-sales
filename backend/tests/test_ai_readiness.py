@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.modules.ai.readiness import multimodal_readiness
+from app.applications.apparel.modules.ai.readiness import multimodal_readiness
 
 
 def _settings(**overrides):

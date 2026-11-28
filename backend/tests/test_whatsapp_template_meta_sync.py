@@ -14,8 +14,8 @@ import pytest
 
 from app.core.circuit_breaker import reset_breakers
 from app.core.errors import ConflictError, ExternalProviderError
-from app.modules.conversations.models import MessageTemplate, TemplateApproval
-from app.modules.conversations.templates import TemplateInput, TemplateService
+from app.applications.apparel.modules.conversations.models import MessageTemplate, TemplateApproval
+from app.applications.apparel.modules.conversations.templates import TemplateInput, TemplateService
 
 TENANT = uuid.uuid4()
 CREDS = {"access_token": "tok", "waba_id": "555"}

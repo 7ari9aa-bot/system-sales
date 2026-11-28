@@ -22,8 +22,8 @@ import pytest
 from sqlalchemy import select, text
 
 from app.core.db import bind_tenant
-from app.modules.conversations import whatsapp_sync
-from app.modules.conversations.models import WhatsAppSyncRun
+from app.applications.apparel.modules.conversations import whatsapp_sync
+from app.applications.apparel.modules.conversations.models import WhatsAppSyncRun
 from app.modules.platform.models import Integration
 
 NUMBER = "456"

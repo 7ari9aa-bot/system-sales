@@ -60,7 +60,7 @@ def upgrade() -> None:
         if k.strip()
     ]
     from app.core.secrets import EnvelopeSecretStore
-    from app.modules.ai.secret_backfill import backfill_model_config_secrets
+    from app.applications.apparel.modules.ai.secret_backfill import backfill_model_config_secrets
 
     moved = backfill_model_config_secrets(
         conn, store=EnvelopeSecretStore(master, previous_master_keys=previous)

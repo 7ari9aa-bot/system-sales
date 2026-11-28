@@ -21,12 +21,12 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order, OrderStatusHistory
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order, OrderStatusHistory
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import AuditLog
 
 # ------------------------------------------------------------------ fixtures ----
@@ -124,7 +124,7 @@ def test_the_order_list_advertises_the_staff_filters():
 
 def test_a_naive_date_bound_is_read_as_utc():
     """The column is timestamptz; a bound without an offset is UTC, not local."""
-    from app.modules.orders.service import to_utc_bound
+    from app.applications.apparel.modules.orders.service import to_utc_bound
 
     naive = datetime(2026, 1, 2, 3, 4, 5)
     assert to_utc_bound(naive) == naive.replace(tzinfo=UTC)
@@ -471,7 +471,7 @@ def _detail_order(**over):
 
 
 def _detail_out(**over) -> dict:
-    from app.modules.orders.router import _order_detail_out
+    from app.applications.apparel.modules.orders.router import _order_detail_out
 
     return _order_detail_out(_detail_order(**over), _DETAIL_POSITION, permission_codes={"pii:read"})
 
@@ -493,7 +493,7 @@ def test_the_detail_read_names_the_fields_the_shipping_patch_accepts():
     other name would either be dropped by the PATCH or invent a second
     vocabulary for the same value.
     """
-    from app.modules.orders.router import ShippingUpdateRequest
+    from app.applications.apparel.modules.orders.router import ShippingUpdateRequest
 
     payload = _detail_out()
     write_fields = set(ShippingUpdateRequest.model_fields)
@@ -515,7 +515,7 @@ def test_the_address_on_the_detail_read_follows_the_pii_guard():
     (`customers/router.py::_redact_issue_item`); the order detail rides the
     same guard rather than inventing a second one. The method is routing,
     not PII, and the money position is never redacted."""
-    from app.modules.orders.router import _order_detail_out
+    from app.applications.apparel.modules.orders.router import _order_detail_out
 
     payload = _order_detail_out(_detail_order(), _DETAIL_POSITION, permission_codes=set())
     assert payload["shipping_address"] is None
@@ -533,7 +533,7 @@ async def test_the_detail_route_answers_the_address_a_correction_stored(
 
     from app.core.idempotency import etag_for
     from app.modules.identity.deps import AuthedUser, TenantContext
-    from app.modules.orders.router import get_order
+    from app.applications.apparel.modules.orders.router import get_order
 
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
@@ -573,7 +573,7 @@ async def test_the_detail_route_hides_the_address_without_pii_read(db: AsyncSess
     from fastapi import Response
 
     from app.modules.identity.deps import AuthedUser, TenantContext
-    from app.modules.orders.router import get_order
+    from app.applications.apparel.modules.orders.router import get_order
 
     tenant_id = tenant_ctx.tenant_id
     order = await _order(db, tenant_id)
@@ -615,8 +615,8 @@ async def test_the_shipping_write_does_not_echo_back_what_the_read_withholds(
     from fastapi import Response
 
     from app.modules.identity.deps import AuthedUser, TenantContext
-    from app.modules.orders import router as orders_router
-    from app.modules.orders.router import ShippingUpdateRequest
+    from app.applications.apparel.modules.orders import router as orders_router
+    from app.applications.apparel.modules.orders.router import ShippingUpdateRequest
 
     row = _detail_order(shipping_address={"city": "Giza", "street": "Nile 4"})
 
@@ -658,8 +658,8 @@ async def test_the_shipping_write_echoes_the_address_to_a_pii_reader(
     from fastapi import Response
 
     from app.modules.identity.deps import AuthedUser, TenantContext
-    from app.modules.orders import router as orders_router
-    from app.modules.orders.router import ShippingUpdateRequest
+    from app.applications.apparel.modules.orders import router as orders_router
+    from app.applications.apparel.modules.orders.router import ShippingUpdateRequest
 
     address = {"city": "Alexandria", "street": "Rami 12"}
     row = _detail_order(shipping_address=address)

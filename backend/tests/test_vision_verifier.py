@@ -10,9 +10,9 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from app.modules.ai.agents.customer.vision.verifier import verify_products
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import InventoryBalance, Warehouse
+from app.applications.apparel.modules.ai.agents.customer.vision.verifier import verify_products
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
 
 
 async def _seed_product(db, tenant_id, *, title: str, status: str = "active") -> Product:

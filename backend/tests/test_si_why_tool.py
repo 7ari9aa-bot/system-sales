@@ -15,10 +15,10 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order, Shipment
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.tools import get_tool
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order, Shipment
 
 NOW = datetime.now(UTC)
 OLD = (

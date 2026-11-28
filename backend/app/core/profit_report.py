@@ -29,14 +29,14 @@ from sqlalchemy import Integer, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import PermissionDeniedError
-from app.modules.catalog.apparel.matrix import color_column, size_column
-from app.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.apparel.matrix import color_column, size_column
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import ValidationError
-from app.modules.expenses.models import Expense
+from app.applications.apparel.modules.expenses.models import Expense
 from app.modules.identity.deps import TenantContext, require_permission
-from app.modules.inventory.models import InventoryCostLayer, InventoryMovement
-from app.modules.orders.models import Order, OrderItem
-from app.modules.pos.models import PosReturnLine
+from app.applications.apparel.modules.inventory.models import InventoryCostLayer, InventoryMovement
+from app.applications.apparel.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.pos.models import PosReturnLine
 
 _CENT = Decimal("0.01")
 _ZERO = Decimal("0")

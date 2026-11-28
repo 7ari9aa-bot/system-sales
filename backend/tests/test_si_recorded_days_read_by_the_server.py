@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import agent as si_agent
-from app.modules.ai.agents.sales_intelligence import tools as si_tools
-from app.modules.ai.agents.sales_intelligence.response import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as si_agent
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si_tools
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     period_dates_from_evidence,
     recorded_days_from_evidence,
@@ -258,7 +258,7 @@ def _validate_calls(module):
 def test_every_real_gate_call_hands_over_the_recorded_days(module_name):
     import importlib
 
-    module = importlib.import_module(f"app.modules.ai.agents.sales_intelligence.{module_name}")
+    module = importlib.import_module(f"app.applications.apparel.modules.ai.agents.sales_intelligence.{module_name}")
     calls = _validate_calls(module)
     assert calls, "this module no longer validates an answer: update this test"
     for call in calls:

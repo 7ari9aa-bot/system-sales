@@ -27,14 +27,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
-from app.modules.ai.tools import TOOLS, requires_approval
-from app.modules.catalog.service import CatalogService
-from app.modules.conversations.models import CONVERSATION_STATUSES, Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.models import InventoryBalance, InventoryReservation, Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.ai.tools import TOOLS, requires_approval
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.conversations.models import CONVERSATION_STATUSES, Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.models import InventoryBalance, InventoryReservation, Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import EventLog, Integration, ProcessedEvent, WebhookEvent
 from app.workers.run import POOLS
 

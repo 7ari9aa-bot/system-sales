@@ -14,9 +14,9 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.telegram import telegram_adapter
-from app.modules.conversations.gateway.telegram_media import (
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.telegram import telegram_adapter
+from app.applications.apparel.modules.conversations.gateway.telegram_media import (
     MAX_BYTES,
     MAX_CAPTION_CHARS,
     TelegramLimitError,

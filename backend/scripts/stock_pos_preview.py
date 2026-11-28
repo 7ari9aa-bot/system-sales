@@ -12,9 +12,9 @@ from sqlalchemy import select
 
 from app.core import model_registry  # noqa: F401  (completes Base.metadata)
 from app.core.db import bind_tenant, get_sessionmaker
-from app.modules.catalog.models import ProductVariant
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.models import PosProfile
+from app.applications.apparel.modules.catalog.models import ProductVariant
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.models import PosProfile
 
 TENANT = "6cbe3d0e-93b1-4e7a-96a1-94dbabe66545"
 WAREHOUSE = "80c4ceb2-f79b-48c4-b0ff-74adf92fce44"

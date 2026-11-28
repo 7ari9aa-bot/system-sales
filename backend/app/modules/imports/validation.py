@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from app.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
+from app.applications.apparel.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
 from app.modules.imports import normalize as n
 from app.modules.imports.fields import (
     SHEET_CUSTOMERS,

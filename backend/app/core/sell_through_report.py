@@ -28,8 +28,8 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profit_report import ProfitCtx, ProfitReportService, _parse
-from app.modules.catalog.apparel.matrix import color_column, size_column
-from app.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.apparel.matrix import color_column, size_column
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 
 # inventory's balance table, declared light like the stock view does: this report only reads three
 # columns, and importing inventory.models here would be one more core -> inventory edge.

@@ -16,7 +16,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.ai.owner_memory import (
+from app.applications.apparel.modules.ai.owner_memory import (
     MAX_ACTIVE_MEMORIES,
     MAX_MEMORY_CHARS,
     MemoryRefused,
@@ -459,7 +459,7 @@ async def test_long_numbers_that_are_not_cards_are_kept(db, tenant_ctx, ordinary
 
 
 def test_the_luhn_check_accepts_real_cards_and_rejects_near_misses():
-    from app.modules.ai.owner_memory import _luhn
+    from app.applications.apparel.modules.ai.owner_memory import _luhn
 
     assert _luhn("4111111111111111") and _luhn("5555555555554444")
     assert not _luhn("4111111111111112") and not _luhn("1234567890123")

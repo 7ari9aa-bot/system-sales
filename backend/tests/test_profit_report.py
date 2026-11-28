@@ -16,11 +16,11 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.core.profit_report import ProfitReportService
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.models import InventoryMovement, Warehouse
-from app.modules.orders.models import Order, OrderItem
-from app.modules.pos.models import PosReceipt, PosReturnLine  # noqa: F401
+from app.applications.apparel.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.models import InventoryMovement, Warehouse
+from app.applications.apparel.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.pos.models import PosReceipt, PosReturnLine  # noqa: F401
 
 pytestmark = pytest.mark.asyncio
 
@@ -159,7 +159,7 @@ async def _return(db, tctx, wh, order, variant, *, qty, refund, shelved=True, co
 
 async def _expense(db, tid, amount, *, on=DAY, status="posted"):
     """A posted expense with every required column, in a category made for it."""
-    from app.modules.expenses.models import Expense, ExpenseCategory
+    from app.applications.apparel.modules.expenses.models import Expense, ExpenseCategory
 
     cat = ExpenseCategory(tenant_id=tid, name=f"c-{uuid.uuid4().hex[:6]}")
     db.add(cat)
@@ -517,7 +517,7 @@ async def test_another_shops_expenses_are_not_counted(db, tenant_ctx) -> None:
 
 
 async def test_stock_value_at_cost_comes_from_the_live_cost_layers(db, tenant_ctx) -> None:
-    from app.modules.inventory.service import ValuationService
+    from app.applications.apparel.modules.inventory.service import ValuationService
 
     tid = tenant_ctx.tenant_id
     wh = await _wh(db, tid)
@@ -533,7 +533,7 @@ async def test_stock_value_at_cost_comes_from_the_live_cost_layers(db, tenant_ct
 
 
 async def test_stock_already_sold_out_of_a_layer_is_not_valued(db, tenant_ctx) -> None:
-    from app.modules.inventory.service import InventoryService, ValuationService
+    from app.applications.apparel.modules.inventory.service import InventoryService, ValuationService
 
     tid = tenant_ctx.tenant_id
     wh = await _wh(db, tid)
@@ -561,8 +561,8 @@ async def test_a_sale_made_on_the_real_till_is_reported_at_the_cost_the_ledger_b
     """Every test above builds the sale movement by hand. This one sells through the cashier path
     and checks the report reads what that path really stored: a receipt of 50 at 40.00, three
     sold at 100.00, so 300.00 of revenue against 120.00 of cost."""
-    from app.modules.inventory.service import ValuationService
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.inventory.service import ValuationService
+    from app.applications.apparel.modules.pos.models import PosSession
     from tests._pos_helpers import start_day, till
     from tests._pos_sell import sell
 
@@ -604,7 +604,7 @@ async def test_a_till_sale_of_stock_with_no_cost_layer_is_flagged_not_a_hundred_
     """A product added from the add-product screen has stock but no purchase cost yet (its cost
     comes from purchase invoices). Selling it on the real till must report the cost as UNKNOWN,
     the way the movement ledger defines NULL, and not as a free item with a 100% margin."""
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.pos.models import PosSession
     from tests._pos_helpers import start_day, till
     from tests._pos_sell import sell
 
@@ -632,8 +632,8 @@ async def test_a_till_sale_only_partly_covered_by_cost_layers_is_flagged_not_cos
     """Two units have a purchase cost layer, the third does not. The movement's cost is then
     unknown for the sale as a whole, so the report flags all three units instead of costing the
     third as free (which would understate the cost and overstate the profit)."""
-    from app.modules.inventory.service import ValuationService
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.inventory.service import ValuationService
+    from app.applications.apparel.modules.pos.models import PosSession
     from tests._pos_helpers import start_day, till
     from tests._pos_sell import sell
 
@@ -880,7 +880,7 @@ async def test_a_return_larger_than_the_sale_in_the_period_gives_no_margin(db, t
 
 
 async def test_a_layer_sold_out_to_zero_is_not_valued(db, tenant_ctx) -> None:
-    from app.modules.inventory.service import InventoryService, ValuationService
+    from app.applications.apparel.modules.inventory.service import InventoryService, ValuationService
 
     tid = tenant_ctx.tenant_id
     wh = await _wh(db, tid)

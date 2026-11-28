@@ -21,8 +21,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.facebook import facebook_adapter
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.facebook import facebook_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 from app.modules.platform.models import Integration
 
 BODY = b'{"object":"page","entry":[]}'
@@ -46,7 +46,7 @@ def _use(monkeypatch, **fields):
     # Facebook inherits Messenger's rule, so there is exactly one place to configure.
     settings = _settings(**fields)
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.messenger.get_settings", lambda: settings
+        "app.applications.apparel.modules.conversations.gateway.messenger.get_settings", lambda: settings
     )
 
 
@@ -115,7 +115,7 @@ def test_no_verify_token_configured_fails_closed(monkeypatch, adapter):
 
 
 def _badge(monkeypatch, provider: str, **fields) -> str:
-    from app.modules.customers.routers import integrations as routes
+    from app.applications.apparel.modules.customers.routers import integrations as routes
 
     settings = _settings(
         whatsapp_app_secret="",

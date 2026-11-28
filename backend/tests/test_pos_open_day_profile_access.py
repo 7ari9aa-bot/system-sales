@@ -12,8 +12,8 @@ import uuid
 import pytest
 
 from app.modules.errors import ConflictError
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 from tests.test_pos_returns import _register, _warehouse
 from tests.test_pos_shift_ownership import _user
 

@@ -23,12 +23,12 @@ from datetime import timedelta
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.modules.ai.approvals import ApprovalService, payload_fingerprint
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool, ApprovalRequest
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import ToolSpec, register_tool
+from app.applications.apparel.modules.ai.approvals import ApprovalService, payload_fingerprint
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentTool, ApprovalRequest
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.tools import ToolSpec, register_tool
 
 EXECUTED: list[str] = []
 DANGEROUS_TOOL = "purge_customer_data"
@@ -92,7 +92,7 @@ def _ensure_ops_kind() -> None:
     """The runtime checks the registry's per-kind allowlist BEFORE the
     AgentTool row, so a customer-kind agent could never reach the gate this
     file tests. A test-only kind authorizes exactly the destructive tool."""
-    from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentDefinition, AgentRegistry
 
     if AgentRegistry.get_or_none(OPS_KIND) is None:
         AgentRegistry.register(
@@ -122,8 +122,8 @@ async def _agent(db, tenant_id) -> Agent:
 
 
 async def _conversation(db, tenant_id):
-    from app.modules.conversations.service import ConversationService
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,
@@ -360,7 +360,7 @@ async def test_a_stale_approval_is_not_auto_continued(db, tenant_ctx, monkeypatc
     `is_stale_for_conversation` existed but had no caller, so an approval could
     be honoured after the conversation had moved on.
     """
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     EXECUTED.clear()
     _register()

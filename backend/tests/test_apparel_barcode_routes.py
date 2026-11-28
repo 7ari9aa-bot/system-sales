@@ -8,8 +8,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.modules.catalog.apparel.service import ApparelMatrixService as M
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.apparel.service import ApparelMatrixService as M
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from tests.security.test_role_authz_matrix import _authz_app
 

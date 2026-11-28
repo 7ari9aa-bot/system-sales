@@ -16,10 +16,10 @@ from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
 from app.modules.identity.deps import get_db, get_tenant_ctx
-from app.modules.inventory.models import InventoryBalance
-from app.modules.orders.models import OrderPayment
-from app.modules.pos.models import PosCashMovement
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.inventory.models import InventoryBalance
+from app.applications.apparel.modules.orders.models import OrderPayment
+from app.applications.apparel.modules.pos.models import PosCashMovement
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import ctx_for, start_day, till
 
 pytestmark = pytest.mark.asyncio
@@ -183,7 +183,7 @@ async def test_overselling_over_http_is_a_clear_conflict_not_a_500(db, tenant_ct
 
 async def test_asking_for_the_session_never_opens_a_day(db, tenant_ctx) -> None:
     """Looking at the till must not start the day: the balance has to be entered first."""
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.pos.models import PosSession
 
     shift, _variant, _customer = await till(db, tenant_ctx)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)
@@ -204,7 +204,7 @@ async def test_asking_for_the_session_never_opens_a_day(db, tenant_ctx) -> None:
 
 
 async def test_open_day_needs_a_balance_and_keeps_the_first_one(db, tenant_ctx) -> None:
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.pos.models import PosSession
 
     shift, _variant, _customer = await till(db, tenant_ctx)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id)

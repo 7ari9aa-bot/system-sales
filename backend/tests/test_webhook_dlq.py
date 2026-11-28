@@ -24,7 +24,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects import postgresql
 
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
-from app.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 from app.modules.platform.models import AuditLog, OutboxEvent, WebhookEvent
 from app.modules.platform.router import (
     admin_ignore_webhook_event,

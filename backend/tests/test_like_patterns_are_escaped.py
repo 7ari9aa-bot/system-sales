@@ -92,7 +92,7 @@ def _ilike_claims(rendered_sql: str, values: list[str]) -> tuple[bool, list[str]
 
 
 def test_customer_search_escapes_the_term_it_binds() -> None:
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     session = _Capture()
     asyncio.run(CustomerService.list_customers(session, uuid.uuid4(), search=TERM, limit=10))
@@ -134,7 +134,7 @@ def test_global_search_escapes_wildcards_and_keeps_an_apostrophe() -> None:
 
 
 def test_segment_contains_escapes_the_stored_value() -> None:
-    from app.modules.segments.service import _compile_where
+    from app.applications.apparel.modules.segments.service import _compile_where
 
     params: dict = {}
     fragment = _compile_where(
@@ -149,7 +149,7 @@ def test_segment_contains_still_accepts_a_value_that_is_not_a_string() -> None:
     text — and JSON numbers arrive from the rule builder. Interpolating one into
     a pattern always worked, so escaping it must not turn `contains 5` into a
     500 on the way."""
-    from app.modules.segments.service import _compile_where
+    from app.applications.apparel.modules.segments.service import _compile_where
 
     params: dict = {}
     _compile_where({"all": [{"field": "source", "op": "contains", "value": 5}]}, params)
@@ -164,7 +164,7 @@ def test_order_number_search_still_escapes_after_the_helper_moved() -> None:
     its module, so this pins that the call kept the escaping and the escape
     declaration. It passes on arrival by design — it is the tripwire, not the
     proof, and unlike the three sites above it was never red."""
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     session = _Capture()
     asyncio.run(OrderService.list_orders(session, uuid.uuid4(), number=TERM, limit=5))

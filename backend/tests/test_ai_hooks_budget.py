@@ -16,12 +16,12 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import RateLimitExceededError, ValidationError
-from app.modules.ai.gateway import AIBudgetExhaustedError, _on_budget_exceeded
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, AIHandover
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.gateway import AIBudgetExhaustedError, _on_budget_exceeded
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, AIHandover
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
 
 

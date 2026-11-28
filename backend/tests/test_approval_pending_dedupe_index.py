@@ -1,7 +1,7 @@
 """§135 — the PENDING dedupe in ``ApprovalService.request`` is a DATABASE rule.
 
 The defect (found while fixing a different bug; verified against
-``app/modules/ai/approvals.py``): ``request`` dedupes an existing PENDING
+``app/applications/apparel/modules/ai/approvals.py``): ``request`` dedupes an existing PENDING
 approval with an UNLOCKED check-then-act — SELECT for a PENDING row, INSERT if
 none. Under concurrency two simultaneous gate entries for the same
 (tenant, conversation, action, payload_hash) each see no PENDING row and both
@@ -57,8 +57,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.modules.ai.approvals import ApprovalService, payload_fingerprint
-from app.modules.ai.models import ApprovalRequest
+from app.applications.apparel.modules.ai.approvals import ApprovalService, payload_fingerprint
+from app.applications.apparel.modules.ai.models import ApprovalRequest
 
 BACKEND = Path(__file__).resolve().parent.parent
 MIGRATION_PATH = (

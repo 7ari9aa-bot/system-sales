@@ -15,11 +15,11 @@ from types import SimpleNamespace
 from sqlalchemy import select
 
 from app.core.media_scanner import MediaScannerError
-from app.modules.conversations import media as media_mod
-from app.modules.conversations.media import MediaService
-from app.modules.conversations.models import Attachment
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.conversations import media as media_mod
+from app.applications.apparel.modules.conversations.media import MediaService
+from app.applications.apparel.modules.conversations.models import Attachment
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 
 class _FakeStorage:

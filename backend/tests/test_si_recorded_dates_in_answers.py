@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.response import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     period_dates_from_evidence,
     validate_answer,

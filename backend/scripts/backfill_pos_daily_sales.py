@@ -29,10 +29,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
-from app.modules.analytics.timekit import resolve_timezone
+from app.applications.apparel.modules.analytics.timekit import resolve_timezone
 from app.modules.identity.models import Tenant
-from app.modules.pos.models import PosDailySales, PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.models import PosDailySales, PosSession
+from app.applications.apparel.modules.pos.service import PosService
 
 
 async def _plan(session: AsyncSession, tenant_id, tz) -> tuple[set[date], set[date]]:

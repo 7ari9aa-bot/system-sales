@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.modules.customers import capability_states as cs
-from app.modules.customers import whatsapp_roadmap as rm
-from app.modules.customers.meta_linking import MetaPageConnection
+from app.applications.apparel.modules.customers import capability_states as cs
+from app.applications.apparel.modules.customers import whatsapp_roadmap as rm
+from app.applications.apparel.modules.customers.meta_linking import MetaPageConnection
 
 
 def _state(rows, key):

@@ -34,8 +34,8 @@ from app.core.consent import (
     validate_purpose,
 )
 from app.core.errors import ValidationError
-from app.modules.conversations.policy import OutboundBlockedError
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.policy import OutboundBlockedError
+from app.applications.apparel.modules.conversations.service import ConversationService
 
 MARKETING = "50% off everything this weekend — shop now!"
 TRANSACTIONAL = "Your order #1042 has shipped."
@@ -224,7 +224,7 @@ async def test_the_consent_lookup_is_tenant_scoped_in_sql():
 
 
 async def _customer_and_conversation(db: AsyncSession, tenant_id, *, channel="webchat"):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,
@@ -277,7 +277,7 @@ async def test_a_promotional_send_without_consent_is_refused(db, tenant_ctx):
 async def test_the_refused_promotional_message_is_not_persisted(db, tenant_ctx):
     from sqlalchemy import func, select
 
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     _, conversation = await _customer_and_conversation(db, tenant_ctx.tenant_id)
 

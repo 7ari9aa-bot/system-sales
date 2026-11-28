@@ -29,9 +29,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.ai.approvals import APPROVALS_PAGE_SIZE, ApprovalService
-from app.modules.ai.models import ApprovalRequest
-from app.modules.ai.router import router as ai_router
+from app.applications.apparel.modules.ai.approvals import APPROVALS_PAGE_SIZE, ApprovalService
+from app.applications.apparel.modules.ai.models import ApprovalRequest
+from app.applications.apparel.modules.ai.router import router as ai_router
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 LIST_PATH = "/api/v1/ai/approvals"

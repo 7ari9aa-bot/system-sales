@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.pos.receipt_settings import receipt_settings
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.receipt_settings import receipt_settings
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_helpers import till
 
@@ -144,7 +144,7 @@ async def test_the_receipt_is_read_at_the_till_it_was_issued_on(db, tenant_ctx) 
 
 
 def test_a_value_the_settings_would_refuse_still_prints_with_a_safe_fallback() -> None:
-    from app.modules.pos import receipt_settings as rs
+    from app.applications.apparel.modules.pos import receipt_settings as rs
 
     assert rs._whole("x", default=7, low=0, high=9) == 7
     assert rs._whole(True, default=7, low=0, high=9) == 7

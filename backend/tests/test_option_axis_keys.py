@@ -16,11 +16,11 @@ import pytest
 from sqlalchemy import select
 
 from app.core.sell_through_report import SellThroughReportService
-from app.modules.catalog.apparel.matrix import color_of, size_of
-from app.modules.catalog.apparel.service import ApparelMatrixService
-from app.modules.catalog.models import ProductVariant
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.catalog.apparel.matrix import color_of, size_of
+from app.applications.apparel.modules.catalog.apparel.service import ApparelMatrixService
+from app.applications.apparel.modules.catalog.models import ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.service import InventoryService
 from tests.test_profit_report import DAY, _sale, _wh
 
 ARABIC = {"المقاس": "M", "اللون": "أسود"}
@@ -95,7 +95,7 @@ async def test_the_matrix_grid_keeps_a_variant_added_with_english_keys(db, tenan
 @pytest.mark.asyncio
 async def test_the_sql_reader_sees_english_keys_too(db, tenant_ctx):
     """Reports select the axis in SQL; a coalesce over both spellings must find it."""
-    from app.modules.catalog.apparel.matrix import size_column
+    from app.applications.apparel.modules.catalog.apparel.matrix import size_column
 
     tid = tenant_ctx.tenant_id
     variant = await _variant_with(db, tid, ENGLISH)

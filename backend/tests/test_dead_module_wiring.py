@@ -10,8 +10,8 @@ tests therefore pin the caller in a way that RUNS locally:
   ``app.modules.platform.dr`` (the §103 health indicator). We assert the import
   edge statically AND drive ``_dr_subsystem`` directly over a fake session with
   a stubbed ``DRService``, so the status mapping is proven without a database.
-* ``app.modules.conversations.gateway.registry`` is the sole caller of
-  ``app.modules.conversations.gateway.email``. We assert ``get_adapter("email")``
+* ``app.applications.apparel.modules.conversations.gateway.registry`` is the sole caller of
+  ``app.applications.apparel.modules.conversations.gateway.email``. We assert ``get_adapter("email")``
   actually returns the registered ``EmailAdapter`` and that it parses an
   inbound payload — the whole point of the adapter — with no network.
 
@@ -95,16 +95,16 @@ async def test_dr_subsystem_maps_health_states(monkeypatch: pytest.MonkeyPatch) 
 def test_gateway_registry_imports_and_registers_email() -> None:
     """The adapter registry is what makes the email channel resolvable."""
     imported = _imported_names(GATEWAY_REGISTRY)
-    assert "app.modules.conversations.gateway.email" in imported, (
+    assert "app.applications.apparel.modules.conversations.gateway.email" in imported, (
         "gateway.registry must import the email adapter — it is email.py's "
         "only caller; an unregistered channel is a silent inbound drop"
     )
-    assert "app.modules.conversations.gateway.email.email_adapter" in imported
+    assert "app.applications.apparel.modules.conversations.gateway.email.email_adapter" in imported
 
 
 def test_get_adapter_resolves_email_channel() -> None:
-    from app.modules.conversations.gateway.email import EmailAdapter
-    from app.modules.conversations.gateway.registry import get_adapter
+    from app.applications.apparel.modules.conversations.gateway.email import EmailAdapter
+    from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
 
     adapter = get_adapter("email")
     assert isinstance(adapter, EmailAdapter)
@@ -114,7 +114,7 @@ def test_get_adapter_resolves_email_channel() -> None:
 
 async def test_email_adapter_parses_inbound_sendgrid_webhook() -> None:
     """The registered adapter normalizes a real SendGrid payload end to end."""
-    from app.modules.conversations.gateway.registry import get_adapter
+    from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
 
     adapter = get_adapter("email")
     assert adapter is not None

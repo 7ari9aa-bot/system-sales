@@ -27,8 +27,8 @@ from app.core.contact_norm import (
     normalize_email,
     normalize_phone,
 )
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService, IdentityMergeService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 EGYPT_CANONICAL = "+201001234567"
@@ -342,7 +342,7 @@ async def test_two_concurrent_merges_of_one_source_admit_exactly_one(
 
     from app.core.db import bind_tenant
     from app.core.errors import ConflictError, NotFoundError
-    from app.modules.customers.service import CustomerService, IdentityMergeService
+    from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
 
     engine = create_async_engine(db_url, connect_args={"statement_cache_size": 0})
     sessions = async_sessionmaker(engine, expire_on_commit=False)

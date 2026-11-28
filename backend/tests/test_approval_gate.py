@@ -18,12 +18,12 @@ import uuid
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.modules.ai.approvals import ApprovalService
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun, AgentTool, ApprovalRequest, ToolCall
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import ToolSpec, register_tool
+from app.applications.apparel.modules.ai.approvals import ApprovalService
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentTool, ApprovalRequest, ToolCall
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.tools import ToolSpec, register_tool
 
 # Records every time the dangerous handler actually ran.
 EXECUTED: list[str] = []
@@ -67,7 +67,7 @@ def _ensure_ops_kind() -> None:
     """The runtime checks the registry's per-kind allowlist BEFORE the
     AgentTool row, so a customer-kind agent could never reach the gate this
     file tests. A test-only kind authorizes exactly the destructive tool."""
-    from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentDefinition, AgentRegistry
 
     if AgentRegistry.get_or_none(OPS_KIND) is None:
         AgentRegistry.register(
@@ -105,8 +105,8 @@ def _request_call() -> ChatCompletionResult:
 async def _conversation(db, tenant_id):
     """A real conversation row — agent_runs.conversation_id is a real FK, so a
     random uuid would fail on insert rather than exercise the gate."""
-    from app.modules.conversations.service import ConversationService
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,

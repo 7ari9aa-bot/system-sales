@@ -47,10 +47,10 @@ from typing import get_type_hints
 import pytest
 from fastapi.encoders import jsonable_encoder
 
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import enforce_budget
-from app.modules.ai.router import usage_summary
-from app.modules.ai.usage import PLATFORM_BUCKET, record_usage
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.gateway import enforce_budget
+from app.applications.apparel.modules.ai.router import usage_summary
+from app.applications.apparel.modules.ai.usage import PLATFORM_BUCKET, record_usage
 from app.workers import message_worker
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")

@@ -20,7 +20,7 @@ import uuid
 
 from _bootstrap import load_settings, session_factory
 
-from app.modules.ai.agents.customer.vision.indexer import index_product_images
+from app.applications.apparel.modules.ai.agents.customer.vision.indexer import index_product_images
 
 
 async def main() -> int:

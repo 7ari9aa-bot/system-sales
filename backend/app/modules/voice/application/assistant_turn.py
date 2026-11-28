@@ -36,9 +36,9 @@ import uuid
 
 from app.core.db import bind_tenant
 from app.core.errors import ValidationError
-from app.modules.ai.assistant.contracts import LIVE_VOICE, AssistantTurnInput, AssistantTurnResult
-from app.modules.ai.assistant.service import AssistantTurnService
-from app.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.assistant.contracts import LIVE_VOICE, AssistantTurnInput, AssistantTurnResult
+from app.applications.apparel.modules.ai.assistant.service import AssistantTurnService
+from app.applications.apparel.modules.ai.chat import service as chat_service
 from app.modules.voice.application import spoken_turns, transcript_sync
 from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.application.spoken_turns import SpokenTurn, TurnLedger

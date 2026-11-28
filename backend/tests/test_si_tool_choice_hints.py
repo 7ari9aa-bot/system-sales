@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.tools import get_tool
 
 T.register_si_tools()
 

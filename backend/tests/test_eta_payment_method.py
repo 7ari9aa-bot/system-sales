@@ -13,10 +13,10 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401
-from app.modules.catalog.service import CatalogService
-from app.modules.pos.eta_adapter import build_context, eta_settings, payment_method_for
-from app.modules.pos.models import PosReceipt
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.pos.eta_adapter import build_context, eta_settings, payment_method_for
+from app.applications.apparel.modules.pos.models import PosReceipt
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests.test_pos_take_payments import _sell, _shop
 
@@ -138,7 +138,7 @@ class TestSplitPayment:
 
 class TestOnlyRealMoneyCounts:
     async def test_a_payment_that_did_not_go_through_is_not_how_they_paid(self, db, tenant_ctx):
-        from app.modules.orders.models import OrderPayment
+        from app.applications.apparel.modules.orders.models import OrderPayment
 
         receipt, _ = await _paid_sale(
             db, tenant_ctx, [{"method": "cash", "amount": "100.00", "tendered": "100.00"}]
@@ -191,7 +191,7 @@ class TestAReturnFollowsTheOriginalPayment:
             customer,
             [{"method": "card", "amount": "100.00", "reference": "A1"}],
         )
-        from app.modules.einvoice.service import EInvoiceService
+        from app.applications.apparel.modules.einvoice.service import EInvoiceService
         from tests.test_eta_db_layer import _ctx, _device
 
         sale_receipt = await _receipt(db, sold)

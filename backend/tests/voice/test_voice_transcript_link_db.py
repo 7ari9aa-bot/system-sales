@@ -20,9 +20,9 @@ import uuid
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.ai.assistant.contracts import AssistantTurnResult
-from app.modules.ai.assistant.service import AssistantTurnService
-from app.modules.ai.models import Agent, AIChatMessage
+from app.applications.apparel.modules.ai.assistant.contracts import AssistantTurnResult
+from app.applications.apparel.modules.ai.assistant.service import AssistantTurnService
+from app.applications.apparel.modules.ai.models import Agent, AIChatMessage
 from app.modules.voice.application import assistant_turn
 from app.modules.voice.application.session_manager import VoiceSessionManager
 from app.modules.voice.domain.models import VoiceSessionRow, VoiceTurnRow

@@ -11,19 +11,19 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import DomainError, ExternalProviderError, NotFoundError
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun, AgentTool, AIUsage, ToolCall
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import (
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentTool, AIUsage, ToolCall
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.tools import (
     _search_catalog,
     get_tool,
     tool_to_openai_schema,
 )
-from app.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import NotFoundError as ModuleNotFoundError
-from app.modules.inventory.models import InventoryBalance, Warehouse
-from app.modules.orders.service import SELLABLE_PRODUCT_STATUSES
+from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
+from app.applications.apparel.modules.orders.service import SELLABLE_PRODUCT_STATUSES
 
 
 def _result(content=None, tool_calls=None, tokens_in=0, tokens_out=0) -> ChatCompletionResult:
@@ -378,8 +378,8 @@ def test_runtime_resolves_aliases_against_the_gateway_set():
     """`gateway.ALIASES` is the single source of truth: the runtime must bind
     the SAME object (not a drifted copy), so adding an alias to the gateway
     needs no second edit anywhere."""
-    from app.modules.ai import gateway as ai_gateway
-    from app.modules.ai import runtime as runtime_module
+    from app.applications.apparel.modules.ai import gateway as ai_gateway
+    from app.applications.apparel.modules.ai import runtime as runtime_module
 
     assert runtime_module.ALIASES is ai_gateway.ALIASES
     assert "omni" in runtime_module.ALIASES

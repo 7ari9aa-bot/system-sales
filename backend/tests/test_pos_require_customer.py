@@ -9,8 +9,8 @@ import pytest
 import sqlalchemy as sa
 
 from app.modules.errors import ValidationError
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_phase6 import _customer, _register, _sellable_variant, _warehouse
 

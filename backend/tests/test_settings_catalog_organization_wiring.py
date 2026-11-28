@@ -23,7 +23,7 @@ pytestmark = pytest.mark.asyncio
 
 async def _product(db: AsyncSession, tenant_ctx) -> uuid.UUID:
     """Create a minimal product and return its id."""
-    from app.modules.catalog.models import Product
+    from app.applications.apparel.modules.catalog.models import Product
 
     product = Product(
         tenant_id=tenant_ctx.tenant_id,
@@ -37,7 +37,7 @@ async def _product(db: AsyncSession, tenant_ctx) -> uuid.UUID:
 
 
 async def _add_variant(db: AsyncSession, tenant_id: uuid.UUID, product_id: uuid.UUID):
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     return await CatalogService.add_variant(
         db,

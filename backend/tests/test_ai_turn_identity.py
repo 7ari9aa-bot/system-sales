@@ -21,11 +21,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.events.schemas import EventEnvelope
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunner, AgentRunResult
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunner, AgentRunResult
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.workers.message_worker import _event_message_id
 
 

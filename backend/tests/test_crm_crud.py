@@ -15,10 +15,10 @@ from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.catalog.router import AddVariantRequest, UpdateVariantRequest
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.router import NoteBody, TagBody
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.router import AddVariantRequest, UpdateVariantRequest
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.router import NoteBody, TagBody
+from app.applications.apparel.modules.customers.service import CustomerService
 
 # --------------------------------------------------------- route mounting -
 

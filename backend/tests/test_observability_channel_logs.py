@@ -54,12 +54,12 @@ def captured(monkeypatch):
 
 def test_a_standard_library_line_is_json_with_level_time_and_request_id(captured):
     lines, _ = captured
-    logging.getLogger("app.modules.customers.meta_oauth").warning("meta_oauth.link_failed")
+    logging.getLogger("app.applications.apparel.modules.customers.meta_oauth").warning("meta_oauth.link_failed")
 
     entry = json.loads(lines[-1])
     assert entry["event"] == "meta_oauth.link_failed"
     assert entry["level"] == "warning"
-    assert entry["logger"] == "app.modules.customers.meta_oauth"
+    assert entry["logger"] == "app.applications.apparel.modules.customers.meta_oauth"
     assert entry["request_id"] == "req-test-1"
     assert entry["timestamp"].endswith("Z")
 

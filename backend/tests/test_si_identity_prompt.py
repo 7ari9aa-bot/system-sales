@@ -15,7 +15,7 @@ the standing rule is that no reply is prepared, so each answer is still written 
 
 from __future__ import annotations
 
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
 
 # phrases that would turn an instruction into a prepared reply the model could copy to the owner
 CANNED = ("أهلا بيك", "أهلاً بيك", "تحت أمرك", "إزاي أقدر أساعدك", "كيف يمكنني مساعدتك")

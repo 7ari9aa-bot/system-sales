@@ -18,7 +18,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.ai.models import Agent, AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.models import Agent, AIChatMessage, AIChatThread
 
 pytestmark = [pytest.mark.usefixtures("db")]
 

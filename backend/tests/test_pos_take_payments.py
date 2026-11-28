@@ -13,10 +13,10 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.orders.models import OrderPayment
-from app.modules.pos.models import PosCashMovement, PosReceipt
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.orders.models import OrderPayment
+from app.applications.apparel.modules.pos.models import PosCashMovement, PosReceipt
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_helpers import start_day, till
 

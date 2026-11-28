@@ -17,8 +17,8 @@ from app.core.errors import ValidationError
 from app.main import create_app
 from app.modules.automation.service import WorkflowService
 from app.modules.privacy.service import DataRequestService
-from app.modules.segments.router import SegmentPreviewRequest, preview_segment
-from app.modules.segments.service import validate_dsl
+from app.applications.apparel.modules.segments.router import SegmentPreviewRequest, preview_segment
+from app.applications.apparel.modules.segments.service import validate_dsl
 
 GOOD_DEFINITION = {
     "all": [

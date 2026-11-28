@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 PATH = VERSIONS / "fe2026111208_si_prompt_sales_means_delivered.py"
@@ -69,7 +69,7 @@ def test_the_prompt_starts_with_delivered_and_no_longer_with_collected() -> None
 
 
 def test_every_metric_the_prompt_names_is_one_a_tool_computes() -> None:
-    from app.modules.analytics import compiler
+    from app.applications.apparel.modules.analytics import compiler
 
     computable = compiler.computable_metric_names()
     for name in ("delivered_revenue", "collected_revenue", "orders_placed"):

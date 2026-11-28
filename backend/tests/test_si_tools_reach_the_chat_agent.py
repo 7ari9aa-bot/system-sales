@@ -14,11 +14,11 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentTool
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from app.modules.settings.service import SettingsService
 
 

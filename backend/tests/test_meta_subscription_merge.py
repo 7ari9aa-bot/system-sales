@@ -12,8 +12,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.base import ExternalProviderError
-from app.modules.customers import meta_oauth
+from app.applications.apparel.modules.conversations.gateway.base import ExternalProviderError
+from app.applications.apparel.modules.customers import meta_oauth
 
 APP_ID = "111"
 OTHER_APP = "222"

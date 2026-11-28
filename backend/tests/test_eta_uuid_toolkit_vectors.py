@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.einvoice.providers.eta import builder
-from app.modules.einvoice.providers.eta.uuid_ import (
+from app.applications.apparel.modules.einvoice.providers.eta import builder
+from app.applications.apparel.modules.einvoice.providers.eta.uuid_ import (
     NORMALIZATION_VERIFIED,
     UnsupportedShape,
     canonical_string,

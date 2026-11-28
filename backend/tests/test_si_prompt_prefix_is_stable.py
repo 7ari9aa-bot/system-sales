@@ -11,11 +11,11 @@ import random
 
 from sqlalchemy import delete
 
-from app.modules.ai.agents.sales_intelligence.dialect import directive_for_shop
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as PROMPT
-from app.modules.ai.agents.sales_intelligence.today import today_context
-from app.modules.ai.models import Agent, AgentTool
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.agents.sales_intelligence.dialect import directive_for_shop
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as PROMPT
+from app.applications.apparel.modules.ai.agents.sales_intelligence.today import today_context
+from app.applications.apparel.modules.ai.models import Agent, AgentTool
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 from tests.test_si_today_context import _at
 
 NAMES = ["si_shop", "si_metric", "si_finance"]

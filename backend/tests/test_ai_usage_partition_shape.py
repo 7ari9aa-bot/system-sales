@@ -15,7 +15,7 @@ What "the right shape" means here, and why each pin exists:
 * monthly RANGE on `period_date`, not `created_at` — `period_date` is the
   business day the rollup is about, it is NOT NULL, and it is already inside
   the natural key `uq_ai_usage_tenant_period_agent`, which is what lets the
-  upsert in `app/modules/ai/usage.py` keep working (see the caveat pin below).
+  upsert in `app/applications/apparel/modules/ai/usage.py` keep working (see the caveat pin below).
 * a DEFAULT partition, so a business write can never fail because a month was
   not pre-created — missing partitions must degrade into a maintenance alarm,
   never into a lost agent reply.
@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import partitioning
 from app.core.model_kit import AI_COST
-from app.modules.ai.models import Agent, AIUsage
+from app.applications.apparel.modules.ai.models import Agent, AIUsage
 
 BACKEND_ROOT = pathlib.Path(partitioning.__file__).resolve().parents[2]
 VERSIONS_DIR = BACKEND_ROOT / "migrations" / "versions"
@@ -525,7 +525,7 @@ async def test_the_daily_upsert_still_converges_on_a_partitioned_table(
     """
     from decimal import Decimal
 
-    from app.modules.ai.usage import record_usage
+    from app.applications.apparel.modules.ai.usage import record_usage
 
     agent = Agent(tenant_id=tenant_ctx.tenant_id, name="Partition Upsert Probe", model="fast")
     db.add(agent)

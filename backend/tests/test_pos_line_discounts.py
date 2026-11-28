@@ -24,7 +24,7 @@ SELL_PATH = "/api/v1/pos/sessions/{session_id}/sell"
 
 def test_line_discount_pct_bounds() -> None:
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     assert PosService._line_discount_pct({}) == Decimal("0.00")
     assert PosService._line_discount_pct({"discount_pct": "12.5"}) == Decimal("12.50")
@@ -37,13 +37,13 @@ def test_line_discount_pct_bounds() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -56,8 +56,8 @@ async def _register(db, tenant_ctx):
 
 
 async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -82,7 +82,7 @@ async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون الخصم", source="pos"
@@ -90,8 +90,8 @@ async def _customer(db, tenant_ctx):
 
 
 async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
-    from app.modules.orders.models import Order, OrderItem
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.models import Order, OrderItem
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -132,7 +132,7 @@ async def test_line_discount_charges_the_net_and_persists(db, tenant_ctx):
 
 
 async def test_quote_composes_line_and_invoice_discounts(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -152,7 +152,7 @@ async def test_quote_composes_line_and_invoice_discounts(db, tenant_ctx):
 
 async def test_line_discount_refuses_out_of_bounds(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -177,7 +177,7 @@ async def test_line_discount_refuses_out_of_bounds(db, tenant_ctx):
 async def test_exchange_of_a_discounted_line_credits_its_net(db, tenant_ctx):
     """A 20%-discounted 25.00 line credits 20.00, not 25.00 — the customer is
     made whole for what they ACTUALLY paid."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -208,7 +208,7 @@ async def test_exchange_of_a_discounted_line_credits_its_net(db, tenant_ctx):
 
 
 async def test_held_cart_carries_the_line_discount(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)

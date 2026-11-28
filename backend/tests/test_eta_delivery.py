@@ -14,19 +14,19 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401  (completes Base.metadata so every FK resolves)
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument, EInvoiceNotification
-from app.modules.einvoice.providers.eta.delivery import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument, EInvoiceNotification
+from app.applications.apparel.modules.einvoice.providers.eta.delivery import (
     apply_device_event,
     apply_receipt_events,
     deliver_device,
 )
-from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
-from app.modules.einvoice.providers.eta.notifications import (
+from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
+from app.applications.apparel.modules.einvoice.providers.eta.notifications import (
     parse_general_notification,
     parse_receipt_notification,
 )
-from app.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
-from app.modules.einvoice.service import EInvoiceService
+from app.applications.apparel.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
+from app.applications.apparel.modules.einvoice.service import EInvoiceService
 from tests.test_eta_db_layer import _ctx, _device
 
 pytestmark = pytest.mark.usefixtures("db")
@@ -101,7 +101,7 @@ class TestSending:
     ):
         """Guards the database query, not just the planner: if the filter widened to accepted
         receipts, only the planner would stand between them and a second send."""
-        import app.modules.einvoice.providers.eta.delivery as mod
+        import app.applications.apparel.modules.einvoice.providers.eta.delivery as mod
 
         tid = tenant_ctx.tenant_id
         dev = await _till(db, tid)
@@ -429,7 +429,7 @@ class TestWholeStoreRun:
         assert RECURRING_JOBS["einvoice.eta_deliver"][0] == timedelta(minutes=1)
 
     async def test_it_delivers_every_till_of_the_store_and_totals_them(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant
 
         tid = tenant_ctx.tenant_id
         for serial in ("POS-MOCK-1", "POS-MOCK-2"):
@@ -446,7 +446,7 @@ class TestWholeStoreRun:
     async def test_one_tills_crash_does_not_stop_the_next(self, db, tenant_ctx, monkeypatch):
         """A till that RAISES (not merely fails) must not stop the rest, and its own database
         changes inside the run must not leak out half-done."""
-        import app.modules.einvoice.providers.eta.delivery as mod
+        import app.applications.apparel.modules.einvoice.providers.eta.delivery as mod
 
         tid = tenant_ctx.tenant_id
         bad = await _till(db, tid, serial="POS-BAD")
@@ -475,14 +475,14 @@ class TestWholeStoreRun:
         by looking at the statement it issues, which RLS cannot mask."""
         import inspect
 
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant
 
         src = inspect.getsource(deliver_tenant)
         assert "EInvoiceDevice.tenant_id == tenant_id" in src
         assert admin_url  # fixture keeps this test honest about needing an owner connection
 
     async def test_suspended_tills_and_other_providers_are_skipped(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant
 
         tid = tenant_ctx.tenant_id
         paused = await _till(db, tid, serial="POS-PAUSED")
@@ -496,7 +496,7 @@ class TestWholeStoreRun:
         assert out["tills"] == 0 and not mock.submissions
 
     async def test_a_store_with_no_ready_till_is_a_quiet_no_op(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant
 
         out = await deliver_tenant(db, tenant_ctx.tenant_id, provider=_provider(MockAuthority()))
         assert out == {
@@ -510,7 +510,7 @@ class TestWholeStoreRun:
         }
 
     async def test_rejections_surface_as_attention_for_the_owner(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant
 
         tid = tenant_ctx.tenant_id
         dev = await _till(db, tid)
@@ -557,14 +557,14 @@ class TestTellingTheOwner:
     """What the owner is told, in plain Arabic, and not more often than once a day."""
 
     def test_nothing_to_say_when_nothing_is_wrong(self):
-        from app.modules.einvoice.providers.eta.delivery import owner_messages
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import owner_messages
 
         assert owner_messages([]) == []
         quiet = {"till": "R1", "needs_correction": [], "window_closing": [], "window_closed": []}
         assert owner_messages([quiet]) == []
 
     def test_each_problem_on_each_till_is_its_own_message_that_says_what_to_do(self):
-        from app.modules.einvoice.providers.eta.delivery import owner_messages
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import owner_messages
 
         a = {
             "till": "R1",
@@ -582,7 +582,7 @@ class TestTellingTheOwner:
             assert not any(c in title + body for c in ("CF3", "ETA-L", "HTTP"))
 
     async def test_a_rejected_receipt_reaches_the_owners_bell_once_a_day(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
         from app.workers.scheduler_worker import _tenant_owner_ids
 
         tid = tenant_ctx.tenant_id

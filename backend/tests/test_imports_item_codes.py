@@ -238,7 +238,7 @@ async def test_a_code_row_lands_on_the_right_variant_as_the_lowercase_catalog_ty
 async def test_a_code_another_variant_took_in_the_meantime_fails_only_its_row(db, tenant_ctx):
     t = tenant_ctx.tenant_id
     _, variant = await _shop_with_sku(db, t)
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     await CatalogService.add_identifier(db, t, variant.id, "egs", "EG-TAKEN")
     s = await _session(db, t)
@@ -275,7 +275,7 @@ async def test_a_skip_row_writes_nothing(db, tenant_ctx):
 async def test_the_lookup_reports_who_holds_a_code_and_what_a_sku_already_carries(db, tenant_ctx):
     t = tenant_ctx.tenant_id
     _, variant = await _shop_with_sku(db, t)
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     await CatalogService.add_identifier(db, t, variant.id, "egs", "EG-7")
 
@@ -292,7 +292,7 @@ async def test_the_whole_file_round_trip_preview_then_a_second_code_for_a_type_i
     """The validator fed by the REAL lookups, the way the service wires it."""
     t = tenant_ctx.tenant_id
     _, variant = await _shop_with_sku(db, t)
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     await CatalogService.add_identifier(db, t, variant.id, "egs", "EG-OLD")
     rows = [

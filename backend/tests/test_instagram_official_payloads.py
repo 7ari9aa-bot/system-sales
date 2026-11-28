@@ -8,7 +8,7 @@ event as ``entry[].changes[].value`` is covered too, so an event is not lost to 
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
 
 adapter = InstagramAdapter()
 

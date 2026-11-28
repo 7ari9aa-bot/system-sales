@@ -23,13 +23,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select
 
 from app.core.db import bind_tenant, get_sessionmaker
-from app.modules.catalog.models import Product, ProductIdentifier, ProductVariant
+from app.applications.apparel.modules.catalog.models import Product, ProductIdentifier, ProductVariant
 from app.modules.identity.models import Tenant, User
 from app.modules.identity.services import auth as auth_service
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.models import PosProfile, PosRegister, PosSession
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.models import PosProfile, PosRegister, PosSession
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 
 EMAIL = "cashier@demo.fihrist.world"
 PASSWORD = "Demo1234!"

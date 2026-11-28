@@ -15,8 +15,8 @@ import json
 import uuid
 from types import SimpleNamespace
 
-from app.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
-from app.modules.ai.gateway import AIGateway, ChatCompletionResult
+from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
+from app.applications.apparel.modules.ai.gateway import AIGateway, ChatCompletionResult
 
 
 class _Session:
@@ -100,7 +100,7 @@ async def test_the_evidence_comes_before_the_instruction_that_refers_to_it(monke
 
 
 async def test_a_wide_analysis_is_capped_and_never_cut_mid_number(monkeypatch):
-    from app.modules.ai.agents.sales_intelligence.coverage import build_evidence_message
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import build_evidence_message
 
     wide = {
         "facts": [{"metric": f"m{i}", "value": f"{i}.55", "pad": "x" * 200} for i in range(400)]
@@ -114,7 +114,7 @@ async def test_a_wide_analysis_is_capped_and_never_cut_mid_number(monkeypatch):
 
 
 async def test_no_evidence_adds_no_block(monkeypatch):
-    from app.modules.ai.agents.sales_intelligence.coverage import build_evidence_message
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import build_evidence_message
 
     assert build_evidence_message({}) == ""
     assert build_evidence_message({"facts": []}) == ""

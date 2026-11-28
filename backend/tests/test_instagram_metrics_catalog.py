@@ -14,7 +14,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
 
 CREDS = {"api_key": "tok", "account_id": "17841400000"}
 

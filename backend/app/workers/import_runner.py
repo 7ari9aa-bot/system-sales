@@ -148,7 +148,7 @@ async def _load_taxonomy(
     Paged to the end: the 200-row default is a page size for a picker, not the truth about how
     many categories a shop owns, and matching against a truncated list is what forked them.
     """
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     maps: dict[str, dict[str, uuid.UUID]] = {"category": {}, "brand": {}}
     listers = (
@@ -208,7 +208,7 @@ async def _taxonomy_id(
 async def _upsert_product(
     session: AsyncSession, tenant_id: uuid.UUID, ref: str, values: dict, action: str
 ) -> uuid.UUID:
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     try:
         product_id = (
@@ -270,7 +270,7 @@ async def _upsert_product(
 async def _upsert_variant(
     session: AsyncSession, tenant_id: uuid.UUID, ref: str, values: dict, action: str
 ) -> uuid.UUID:
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     options = {
         name: str(values[key])
@@ -329,7 +329,7 @@ async def _upsert_variant(
             variant = await CatalogService.update_variant(session, tenant_id, variant_id, **fields)
         level = values.get("reorder_level")
         if level is not None:
-            from app.modules.inventory.stock_view import StockLevelService
+            from app.applications.apparel.modules.inventory.stock_view import StockLevelService
 
             await StockLevelService.set_reorder_level(session, tenant_id, variant.id, int(level))
         barcode = values.get("barcode")
@@ -360,7 +360,7 @@ async def _record_opening_stock(
     quantity: Decimal,
     session_id: uuid.UUID,
 ) -> uuid.UUID | None:
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     variant_id = (
         await session.execute(_VARIANT_BY_SKU, {"t": tenant_id, "sku": sku})
@@ -441,7 +441,7 @@ async def _create_customer(
     through can still lose a race to a customer created a second ago; that is this row's error.
     """
     from app.core.contact_norm import ContactNormalizationError
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     try:
         customer = await CustomerService.create_from_import(
@@ -478,7 +478,7 @@ async def _attach_image(
     import hashlib
 
     from app.core.storage import FetchedMedia, get_storage
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     storage = get_storage()
     if not storage.configured:
@@ -534,7 +534,7 @@ async def _attach_item_code(
     session: AsyncSession, tenant_id: uuid.UUID, sku: str, code_type: str, code: str
 ) -> uuid.UUID:
     """Register the tax item code on the variant, through the catalog (it owns uniqueness)."""
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     variant_id = (
         await session.execute(_VARIANT_BY_SKU, {"t": tenant_id, "sku": sku})

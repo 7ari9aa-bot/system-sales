@@ -19,7 +19,7 @@ from app.core.shop_type import (
     CHOOSABLE_VERTICALS,
     choose_vertical,
 )
-from app.modules.catalog.models import Category
+from app.applications.apparel.modules.catalog.models import Category
 from app.modules.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_choosing_apparel_again_does_not_plant_a_second_tree(db, tenant_ct
 
 
 async def test_a_shop_that_already_has_categories_keeps_them_untouched(db, tenant_ctx) -> None:
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     tid = tenant_ctx.tenant_id
     mine = await CatalogService.create_category(db, tid, name="My own section")
@@ -120,7 +120,7 @@ async def test_a_failure_while_planting_leaves_the_vertical_unchanged(
     The failure is NOT wrapped in a savepoint here: choose_vertical must be atomic on its own,
     or a caller that catches the error would keep a half-planted shop.
     """
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     tid = tenant_ctx.tenant_id
     before = await _vertical(db, tid)

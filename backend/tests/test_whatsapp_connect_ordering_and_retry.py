@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.core.secrets import decrypt_credentials_dict
-from app.modules.customers import meta_whatsapp_signup as signup
+from app.applications.apparel.modules.customers import meta_whatsapp_signup as signup
 from app.modules.platform.models import Integration
 from tests._pos_helpers import ctx_for
 from tests.test_pos_return_audit_and_day_holder import _app

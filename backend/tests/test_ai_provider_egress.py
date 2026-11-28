@@ -27,10 +27,10 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import AIGateway, _contains_nontext_media, _redact_pii
-from app.modules.ai.models import AIProviderPolicy, ModelCall, ModelConfig
-from app.modules.ai.policy import classify_data, decide
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.gateway import AIGateway, _contains_nontext_media, _redact_pii
+from app.applications.apparel.modules.ai.models import AIProviderPolicy, ModelCall, ModelConfig
+from app.applications.apparel.modules.ai.policy import classify_data, decide
 
 # ---------------------------------------------------------------------------
 # Doubles

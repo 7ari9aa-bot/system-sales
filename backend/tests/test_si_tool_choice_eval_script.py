@@ -64,8 +64,8 @@ BY_Q = {c.q: c for c in ev.CASES}
 
 
 def test_every_expected_tool_is_a_real_tool_and_every_required_arg_exists():
-    from app.modules.ai.agents.sales_intelligence import tools as T
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     T.register_si_tools()
     for c in ev.CASES:
@@ -94,8 +94,8 @@ def test_every_read_each_tool_can_run_has_at_least_one_question_in_the_eval():
     """A read no question exercises is a read nobody measured the model's choice for."""
     from typing import get_args
 
-    from app.modules.ai.agents.sales_intelligence import tools as T
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     T.register_si_tools()
     for tool, parameter in (("si_metric", "mode"), ("si_shop", "view"), ("si_finance", "report")):

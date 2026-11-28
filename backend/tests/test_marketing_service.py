@@ -10,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.customers.models import Customer
-from app.modules.marketing.models import Attribution
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.marketing.models import Attribution
+from app.applications.apparel.modules.marketing.service import MarketingService
 
 
 async def _customer(db: AsyncSession, tenant_id: uuid.UUID, name: str) -> Customer:

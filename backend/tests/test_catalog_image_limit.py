@@ -10,9 +10,9 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.modules.catalog.limits import MAX_IMAGES_PER_SKU
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.limits import MAX_IMAGES_PER_SKU
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
 from app.modules.imports.image_zip import MAX_IMAGES_PER_SKU as ZIP_LIMIT
 from app.modules.imports.validation import MAX_IMAGES_PER_SKU as SHEET_LIMIT
@@ -60,7 +60,7 @@ async def test_a_gallery_stops_at_the_shared_limit(db, tenant_ctx):
             variant_id=variant.id,
         )
 
-    from app.modules.catalog.models import ProductImage
+    from app.applications.apparel.modules.catalog.models import ProductImage
 
     count = (
         await db.execute(

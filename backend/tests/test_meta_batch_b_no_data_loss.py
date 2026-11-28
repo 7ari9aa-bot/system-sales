@@ -18,7 +18,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.security import create_oauth_state_token
-from app.modules.customers import meta_oauth
+from app.applications.apparel.modules.customers import meta_oauth
 from app.modules.platform.models import Integration
 from app.workers import meta_token_refresh as refresh
 from tests.test_meta_oauth import (

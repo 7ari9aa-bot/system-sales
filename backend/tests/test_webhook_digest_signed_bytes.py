@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from app.modules.conversations.routers.webhooks import _batch_part_digest, _delivery_digest
+from app.applications.apparel.modules.conversations.routers.webhooks import _batch_part_digest, _delivery_digest
 
 
 def _old_digest(part: dict) -> str:

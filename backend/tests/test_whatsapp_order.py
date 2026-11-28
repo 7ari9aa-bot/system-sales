@@ -8,8 +8,8 @@ import math
 
 import pytest
 
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.gateway.whatsapp_order import (
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp_order import (
     MAX_ID,
     MAX_ITEMS,
     MAX_QUANTITY,

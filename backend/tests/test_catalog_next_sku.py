@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.deps import get_db, get_tenant_ctx
 from tests._pos_helpers import _warehouse, ctx_for
 

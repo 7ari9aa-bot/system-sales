@@ -3,7 +3,7 @@
 Three measured gaps from ``docs/GAP_REGISTER.md``:
 
 * **P8** — "~45 of 62 routes untyped (no ``response_model``)". Every one of the
-  19 routes in ``app/modules/customers/router.py`` is in that set: ZERO declared
+  19 routes in ``app/applications/apparel/modules/customers/router.py`` is in that set: ZERO declared
   ``response_model``, so the OpenAPI document describes an empty ``{}`` for the
   whole CRM surface and a generated client produces a contract with no fields.
   Money sits inside that hole: ``lifetime_value`` and the 360's order/payment
@@ -49,11 +49,11 @@ from sqlalchemy.dialects import postgresql
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.customers.models import Address, Customer, CustomerIdentity, Note, Tag
-from app.modules.customers.router import platform_router
-from app.modules.customers.router import router as customers_router
-from app.modules.customers.service import CustomerService
-from app.modules.customers.timeline import Customer360Service
+from app.applications.apparel.modules.customers.models import Address, Customer, CustomerIdentity, Note, Tag
+from app.applications.apparel.modules.customers.router import platform_router
+from app.applications.apparel.modules.customers.router import router as customers_router
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.timeline import Customer360Service
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from app.modules.platform.models import Integration
 
@@ -1038,7 +1038,7 @@ def _cursor_for(created_at: datetime, row_id: uuid.UUID) -> str:
 
 
 async def _rows_at(db: Any, tenant_id: uuid.UUID, *, created_at: datetime, n: int) -> list[Any]:
-    from app.modules.customers.models import Customer as CustomerRow
+    from app.applications.apparel.modules.customers.models import Customer as CustomerRow
 
     rows = []
     for i in range(n):

@@ -45,7 +45,7 @@ Pairs covered, and why each is worth a permanent test:
    of tables app code never SELECTs, so a new one cannot join silently.
 
 Type-preservation: the envelope pair preserves the Python types a real
-producer sends. ``app/modules/orders/service.py`` publishes ``grand_total`` as a
+producer sends. ``app/applications/apparel/modules/orders/service.py`` publishes ``grand_total`` as a
 ``Decimal`` on ``order.created``, and ``serialize``/``deserialize`` tag
 JSON-unrepresentable values so ``deserialize(serialize(x)) == x`` holds for a
 ``Decimal`` / ``datetime`` / ``UUID`` — money never arrives at a consumer as a

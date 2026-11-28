@@ -24,8 +24,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.errors import DomainError, build_error_body
 from app.core.idempotency import IDEMPOTENT_PATHS, IdempotencyMiddleware
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.pos.router import router as pos_router
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.router import router as pos_router
+from app.applications.apparel.modules.pos.service import PosService
 from tests.test_order_idempotency import MemoryStore
 
 KEY_HEADER = "Idempotency-Key"
@@ -207,8 +207,8 @@ async def test_a_retried_sale_is_recorded_once_against_the_database(db, tenant_c
     """The cashier-visible promise: tap Save twice, the sale is recorded ONCE."""
     import sqlalchemy as sa
 
-    from app.modules.inventory.service import InventoryService
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.orders.models import Order
     from tests._pos_helpers import start_day
     from tests.test_order_idempotency import SessionStore
     from tests.test_pos_flow import _register, _sellable_variant

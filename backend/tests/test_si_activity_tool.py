@@ -13,9 +13,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.tools import get_tool
+from app.applications.apparel.modules.customers.models import Customer
 
 OLD = ("si_customer_activity", "si_channel_activity", "si_social_comments")
 VIEWS = ("customers", "channels", "comments")
@@ -122,7 +122,7 @@ async def test_an_unknown_view_is_refused_with_the_valid_ones(db, tenant_ctx):
 
 
 async def _talk(db, tenant_id):
-    from app.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
 
     talker = Customer(tenant_id=tenant_id, name="عميل بتكلم")
     quiet = Customer(tenant_id=tenant_id, name="عميل فتح بس")
@@ -155,7 +155,7 @@ async def _talk(db, tenant_id):
 
 
 async def _comments(db, tenant_id, n=8):
-    from app.modules.conversations.models import SocialComment
+    from app.applications.apparel.modules.conversations.models import SocialComment
 
     now = datetime.now(UTC)
     db.add_all(
@@ -208,7 +208,7 @@ async def test_the_limit_is_passed_through_not_fixed(db, tenant_ctx):
 
 
 async def test_the_window_is_passed_through_not_fixed_at_30(db, tenant_ctx):
-    from app.modules.conversations.models import SocialComment
+    from app.applications.apparel.modules.conversations.models import SocialComment
 
     now = datetime.now(UTC)
     db.add(
@@ -233,7 +233,7 @@ async def test_the_window_is_passed_through_not_fixed_at_30(db, tenant_ctx):
 async def test_an_injected_comment_body_is_still_withheld_through_the_merged_tool(db, tenant_ctx):
     """A public comment is written by ANYONE and rides the model context. The screening must hold
     on the path the model now uses, not only on the handler behind it."""
-    from app.modules.conversations.models import SocialComment
+    from app.applications.apparel.modules.conversations.models import SocialComment
 
     now = datetime.now(UTC)
     db.add_all(
@@ -313,7 +313,7 @@ def test_no_registered_description_points_at_a_removed_tool():
 
 async def _conversations(db, tenant_id, *, n, days_ago, channel, tag):
     """``n`` customers who each opened one conversation ``days_ago`` days back on ``channel``."""
-    from app.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
 
     for i in range(n):
         c = Customer(tenant_id=tenant_id, name=f"{tag}-{i}")

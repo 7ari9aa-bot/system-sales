@@ -12,10 +12,10 @@ import uuid
 import pytest
 import sqlalchemy as sa
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
-from app.modules.inventory.service import InventoryService
-from app.modules.inventory.services import StocktakeService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.services import StocktakeService
 from tests import test_purchasing_concurrency as pc
 from tests.test_purchasing_concurrency import (  # noqa: F401  (fixtures are used by name)
     _in_tx,

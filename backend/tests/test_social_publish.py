@@ -8,9 +8,9 @@ import uuid
 import pytest
 
 from app.core.errors import ConflictError, ExternalProviderError, ValidationError
-from app.modules.conversations import social_service as ss
-from app.modules.conversations.routers.social import _decode_picture
-from app.modules.conversations.social_service import SocialService
+from app.applications.apparel.modules.conversations import social_service as ss
+from app.applications.apparel.modules.conversations.routers.social import _decode_picture
+from app.applications.apparel.modules.conversations.social_service import SocialService
 
 CREDS = {"api_key": "t", "account_id": "ig1"}
 JPEG = b"\xff\xd8\xff\xe0" + b"x" * 64

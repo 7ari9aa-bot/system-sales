@@ -22,8 +22,8 @@ import pytest
 from sqlalchemy import select
 
 from app.core.events.schemas import EVENT_TYPES
-from app.modules.marketing.campaign import CampaignExecutionService, CampaignRunStatus
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.marketing.campaign import CampaignExecutionService, CampaignRunStatus
+from app.applications.apparel.modules.marketing.service import MarketingService
 from app.modules.platform.models import OutboxEvent
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
@@ -119,7 +119,7 @@ async def _campaign(db, tenant_id, name="Fairness Camp"):
 
 
 async def _customer(db, tenant_id, phone: str):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.get_or_create_by_identity(
         db, tenant_id, channel="whatsapp", external_id=phone
@@ -143,7 +143,7 @@ async def _grant_marketing(db, tenant_id, customer_id) -> None:
 
 
 async def _segment_all(db, tenant_id):
-    from app.modules.segments.service import Segment
+    from app.applications.apparel.modules.segments.service import Segment
 
     segment = Segment(
         tenant_id=tenant_id,

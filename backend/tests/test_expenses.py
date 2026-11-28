@@ -11,9 +11,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.main import create_app
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.expenses.service import ExpenseService, NumberingService, exact_money
-from app.modules.pos.models import PosCashMovement
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.expenses.service import ExpenseService, NumberingService, exact_money
+from app.applications.apparel.modules.pos.models import PosCashMovement
+from app.applications.apparel.modules.pos.service import PosService
 
 
 def test_expense_routes_are_mounted_and_guarded_against_double_submit() -> None:
@@ -59,7 +59,7 @@ async def _must_fail(db, sql, params) -> None:
 
 
 async def _open_shift(db, tenant_ctx, opening="100.00"):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     wh = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     reg = await PosService.create_register(
@@ -194,7 +194,7 @@ async def test_a_cash_expense_leaves_the_drawer_it_was_paid_from(db, tenant_ctx)
     )
     assert expense.session_id == shift.id
 
-    from app.modules.pos.models import PosCashMovement
+    from app.applications.apparel.modules.pos.models import PosCashMovement
 
     rows = (
         (
@@ -249,7 +249,7 @@ async def test_voiding_a_cash_expense_puts_the_money_back(db, tenant_ctx) -> Non
     # The 50 goes back in, and the original payout row is still there: 50 in, 50 out.
     assert await _drawer(db, tenant_ctx, shift.id) == (Decimal("50.00"), Decimal("50.00"))
 
-    from app.modules.pos.models import PosCashMovement
+    from app.applications.apparel.modules.pos.models import PosCashMovement
 
     rows = (
         (

@@ -15,13 +15,13 @@ from decimal import Decimal as D
 import httpx
 import pytest
 
-from app.modules.einvoice.providers.eta.builder import build_receipt, dumps
-from app.modules.einvoice.providers.eta.calc import (
+from app.applications.apparel.modules.einvoice.providers.eta.builder import build_receipt, dumps
+from app.applications.apparel.modules.einvoice.providers.eta.calc import (
     compute_line,
     compute_totals,
     price_excluding_vat,
 )
-from app.modules.einvoice.providers.eta.client import (
+from app.applications.apparel.modules.einvoice.providers.eta.client import (
     EtaAuthError,
     EtaClient,
     EtaCredentials,
@@ -29,14 +29,14 @@ from app.modules.einvoice.providers.eta.client import (
     EtaPermanentError,
     EtaTransientError,
 )
-from app.modules.einvoice.providers.eta.codes import (
+from app.applications.apparel.modules.einvoice.providers.eta.codes import (
     BuyerType,
     PaymentMethod,
     ReceiptType,
     payment_method_for_tender,
 )
-from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
-from app.modules.einvoice.providers.eta.models import (
+from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
+from app.applications.apparel.modules.einvoice.providers.eta.models import (
     BranchAddress,
     BuyerProfile,
     DiscountSpec,
@@ -45,12 +45,12 @@ from app.modules.einvoice.providers.eta.models import (
     ItemTax,
     SellerProfile,
 )
-from app.modules.einvoice.providers.eta.qr import build_qr_payload
-from app.modules.einvoice.providers.eta.uuid_ import (
+from app.applications.apparel.modules.einvoice.providers.eta.qr import build_qr_payload
+from app.applications.apparel.modules.einvoice.providers.eta.uuid_ import (
     compute_receipt_uuid,
     is_valid_uuid_shape,
 )
-from app.modules.einvoice.providers.eta.validator import (
+from app.applications.apparel.modules.einvoice.providers.eta.validator import (
     check_document_consistency,
     validate_receipt,
 )
@@ -226,7 +226,7 @@ def test_uuid_depends_on_content_and_on_previous_uuid():
 
 def test_uuid_ignores_the_uuid_field_itself():
     doc = build_receipt(_receipt())
-    from app.modules.einvoice.providers.eta.builder import _jsonable
+    from app.applications.apparel.modules.einvoice.providers.eta.builder import _jsonable
 
     j = _jsonable(doc)
     assert compute_receipt_uuid(j) == doc["header"]["uuid"]

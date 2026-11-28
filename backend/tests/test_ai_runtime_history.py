@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 
 
 def _result(content=None, tool_calls=None, tokens_in=0, tokens_out=0) -> ChatCompletionResult:

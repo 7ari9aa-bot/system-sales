@@ -9,7 +9,7 @@ import pytest
 
 from app.core.circuit_breaker import reset_breakers
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.conversations.gateway import whatsapp_templates as wt
+from app.applications.apparel.modules.conversations.gateway import whatsapp_templates as wt
 
 CREDS = {"access_token": "tok", "waba_id": "555"}
 

@@ -7,11 +7,11 @@ from decimal import Decimal
 
 import pytest
 
-import app.modules.purchasing.models  # noqa: F401 - registers purchasing models in metadata
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.tools import TOOLS
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import (
+import app.applications.apparel.modules.purchasing.models  # noqa: F401 - registers purchasing models in metadata
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import (
     InventoryBalance,
     InventoryCostLayer,
     InventoryLot,
@@ -23,7 +23,7 @@ from app.modules.inventory.models import (
 
 @pytest.fixture(autouse=True)
 def _register_tools():
-    from app.modules.ai.agents.sales_intelligence import tools as T
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
 
     TOOLS.pop("si_shop", None)
     T.register_si_tools()

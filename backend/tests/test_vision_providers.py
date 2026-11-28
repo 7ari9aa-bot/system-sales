@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.providers import (
+from app.applications.apparel.modules.ai.providers import (
     MultimodalContent,
     MultimodalEmbeddingProvider,
     RerankerProvider,

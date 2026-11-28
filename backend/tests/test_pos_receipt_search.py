@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 from app.modules.errors import ValidationError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 

@@ -23,16 +23,16 @@ import inspect
 import pytest
 from sqlalchemy import select
 
-from app.modules.ai.core.registry import (
+from app.applications.apparel.modules.ai.core.registry import (
     AgentDefinition,
     AgentRegistry,
     resolve_definition_hook,
     validate_registry,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.ai.runtime import AgentRunner, AgentRunResult
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.runtime import AgentRunner, AgentRunResult
 
 #: The dotted-path prefix of THIS test module — hook targets live here so a
 #: test kind can point at a real, importable async callable.
@@ -138,7 +138,7 @@ def test_unimportable_hook_path_fails_registry_naming_the_kind(registered_kind) 
     registered_kind(
         _definition(
             "hooks_probe_bad_path",
-            post_run_hook="app.modules.ai.agents.no_such_module:missing_hook",
+            post_run_hook="app.applications.apparel.modules.ai.agents.no_such_module:missing_hook",
         )
     )
     with pytest.raises(RuntimeError, match="hooks_probe_bad_path"):

@@ -12,8 +12,8 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
 from app.modules.platform.models import WebhookEvent
 
 FIELD = "message_template_status_update"
@@ -90,7 +90,7 @@ def test_malformed_or_unattributed_envelopes_are_never_placed(payload):
 async def test_a_template_event_is_queued_under_the_store_that_owns_the_account(
     db, tenant_ctx, monkeypatch
 ):
-    import app.modules.conversations.routers.webhooks as hooks
+    import app.applications.apparel.modules.conversations.routers.webhooks as hooks
 
     seen: dict = {}
 
@@ -128,7 +128,7 @@ async def test_a_template_event_is_queued_under_the_store_that_owns_the_account(
 async def test_a_template_event_for_an_unknown_or_ambiguous_account_is_acked_and_dropped(
     db, tenant_ctx, monkeypatch
 ):
-    import app.modules.conversations.routers.webhooks as hooks
+    import app.applications.apparel.modules.conversations.routers.webhooks as hooks
 
     async def _nobody(*_args):
         return None
@@ -152,7 +152,7 @@ async def test_a_template_event_for_an_unknown_or_ambiguous_account_is_acked_and
 
 async def test_a_message_delivery_never_asks_for_an_account_lookup(db, tenant_ctx, monkeypatch):
     """An ordinary message resolves by phone number; the account lookup stays out of its way."""
-    import app.modules.conversations.routers.webhooks as hooks
+    import app.applications.apparel.modules.conversations.routers.webhooks as hooks
 
     async def _by_phone(*_args):
         return tenant_ctx.tenant_id
@@ -191,7 +191,7 @@ async def _event(db, tenant_id, payload) -> WebhookEvent:
 
 
 def _patch_sync(monkeypatch, *, creds, calls, raises=None):
-    import app.modules.conversations.templates as templates
+    import app.applications.apparel.modules.conversations.templates as templates
     import app.modules.platform.services.channel_access as access
 
     async def _creds(_session, tenant_id, provider):
@@ -238,7 +238,7 @@ async def test_processing_a_template_event_re_reads_the_templates_from_meta(
 
 async def test_the_event_s_own_claims_are_never_written(db, tenant_ctx, monkeypatch):
     """A forged 'APPROVED' must change nothing by itself: only Meta's own list can."""
-    from app.modules.conversations.templates import TemplateService
+    from app.applications.apparel.modules.conversations.templates import TemplateService
 
     calls: dict = {}
     _patch_sync(monkeypatch, creds={"access_token": "tok"}, calls=calls)

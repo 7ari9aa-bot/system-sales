@@ -11,10 +11,10 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell
 
 pytestmark = pytest.mark.asyncio
@@ -170,8 +170,8 @@ async def test_an_explicit_customer_pick_wins_over_a_typed_phone(db, tenant_ctx)
 
 async def test_the_agent_finds_the_invoice_of_a_phone_typed_at_the_till(db, tenant_ctx) -> None:
     """End to end: till phone -> WhatsApp chat of that number -> the agent opens the invoice."""
-    from app.modules.ai.tools import get_tool
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     till, items = await _till(db, tenant_ctx.tenant_id)
     sold = await sell(db, tenant_ctx.tenant_id, till.id, items=items, customer_phone="01012345678")

@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.assistant.contracts import LIVE_VOICE
+from app.applications.apparel.modules.ai.assistant.contracts import LIVE_VOICE
 from app.modules.voice.application import assistant_turn
 from app.modules.voice.application.transcript_sync import (
     DELIVERED,
@@ -137,7 +137,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(assistant_turn.transcript_sync, "complete_turn", fake_complete_turn)
     monkeypatch.setattr(assistant_turn, "_session_manager", lambda session: _Manager(seen))
     monkeypatch.setattr(assistant_turn, "bind_tenant", fake_bind)
-    monkeypatch.setattr("app.modules.ai.chat.turns.run_chat_turn", fake_run_chat_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.chat.turns.run_chat_turn", fake_run_chat_turn)
     return seen
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.inventory.services.screens import SCREEN_SWITCHES, decide, visible_screens
+from app.applications.apparel.modules.inventory.services.screens import SCREEN_SWITCHES, decide, visible_screens
 from app.modules.settings.registry import get_definition
 from app.modules.settings.service import SettingsService
 
@@ -72,7 +72,7 @@ async def test_one_shop_hiding_a_screen_does_not_hide_it_for_another(db, tenant_
 
 
 def test_the_route_is_read_only_and_open_to_any_member_so_the_till_can_use_it() -> None:
-    from app.modules.inventory.router import router
+    from app.applications.apparel.modules.inventory.router import router
 
     route = next(r for r in router.routes if getattr(r, "path", "") == "/inventory/screens")
     assert route.methods == {"GET"}

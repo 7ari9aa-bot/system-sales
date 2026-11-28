@@ -10,9 +10,9 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import Agent, AgentVersion, Deployment
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.versions import AIAgentVersionService, filter_agent_tools_by_policy
+from app.applications.apparel.modules.ai.models import Agent, AgentVersion, Deployment
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.versions import AIAgentVersionService, filter_agent_tools_by_policy
 
 pytestmark = pytest.mark.usefixtures("db")
 

@@ -27,7 +27,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.marketing.attribution_service import AttributionService
+from app.applications.apparel.modules.marketing.attribution_service import AttributionService
 
 _CAMPAIGN = uuid.UUID("22222222-2222-2222-2222-222222222222")
 

@@ -6,8 +6,8 @@ note on the field: the count may include deleted and invisible shares, so it is 
 
 from types import SimpleNamespace
 
-from app.modules.conversations.facebook_service import _shares
-from app.modules.conversations.routers.facebook_pages import _post_out
+from app.applications.apparel.modules.conversations.facebook_service import _shares
+from app.applications.apparel.modules.conversations.routers.facebook_pages import _post_out
 
 
 def test_the_share_count_is_read_from_the_shares_object() -> None:

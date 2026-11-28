@@ -75,13 +75,13 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from app.main import create_app
-from app.modules.analytics import retention
-from app.modules.analytics import router as analytics_router
+from app.applications.apparel.modules.analytics import retention
+from app.applications.apparel.modules.analytics import router as analytics_router
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.marketing import analytics as marketing_analytics
-from app.modules.marketing import router as marketing_router
-from app.modules.marketing.attribution_service import AttributionService
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.marketing import analytics as marketing_analytics
+from app.applications.apparel.modules.marketing import router as marketing_router
+from app.applications.apparel.modules.marketing.attribution_service import AttributionService
+from app.applications.apparel.modules.marketing.service import MarketingService
 
 TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
 CAMPAIGN = uuid.UUID("33333333-3333-3333-3333-333333333333")

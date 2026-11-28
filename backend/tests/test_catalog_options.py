@@ -15,13 +15,13 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.modules.catalog.models import (
+from app.applications.apparel.modules.catalog.models import (
     ProductOption,
     ProductOptionValue,
     ProductVariant,
     ProductVariantOptionValue,
 )
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
 
 

@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, patch
 
 async def test_gate_automation_outage_core_still_works(db, tenant_ctx):
     """Order creation and message ingestion survive a workflow outage."""
-    from app.modules.conversations.service import ConversationService
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     # Simulate the workflow/automation engine being down: every call to the
     # workflow service raises, as if n8n or the internal engine is unreachable.
@@ -54,7 +54,7 @@ async def test_gate_automation_not_on_message_path():
     """
     import inspect
 
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     source = inspect.getsource(ConversationService.add_message)
     assert "WorkflowService" not in source

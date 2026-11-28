@@ -21,8 +21,8 @@ import textwrap
 
 import pytest
 
-import app.modules.ai.agents.sales_intelligence.tools as si
-from app.modules.ai.tools import TOOLS
+import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
+from app.applications.apparel.modules.ai.tools import TOOLS
 
 si.register_si_tools()
 

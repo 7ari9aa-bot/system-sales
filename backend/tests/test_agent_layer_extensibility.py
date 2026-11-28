@@ -2,7 +2,7 @@
 
 The layer ships two canonical agents with completely different mandates (a
 customer-facing service agent and an owner-facing analyst) and more are coming.
-This file proves the promise ``app/modules/ai/agents/__init__.py`` makes: adding
+This file proves the promise ``app/applications/apparel/modules/ai/agents/__init__.py`` makes: adding
 a kind needs a new ``definition.py`` and NOTHING else — registration, discovery,
 provisioning, tool authorization and the guardrail routing all pick it up
 without a single edit to shared code, and the two existing agents cannot reach
@@ -15,7 +15,7 @@ import inspect
 
 import pytest
 
-from app.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
+from app.applications.apparel.modules.ai.core.registry import AgentCapability, AgentDefinition, AgentRegistry
 
 THIRD_KIND = "inventory_ops"
 # A tool the CUSTOMER agent owns — the third kind must NOT be able to use it.
@@ -71,7 +71,7 @@ def test_a_third_kind_needs_only_its_definition(third_kind) -> None:
 def test_discovery_is_idempotent_and_keeps_the_third_kind(third_kind) -> None:
     """`discover_agents` re-imports CACHED definition modules, so a second call
     neither re-registers the shipped kinds nor drops the newcomer."""
-    from app.modules.ai.core.registry import discover_agents
+    from app.applications.apparel.modules.ai.core.registry import discover_agents
 
     discover_agents()
     assert AgentRegistry.has(THIRD_KIND)
@@ -104,7 +104,7 @@ def test_an_unknown_kind_authorizes_nothing_and_is_not_served() -> None:
 def test_provisioning_is_kind_agnostic() -> None:
     """Provisioning iterates the registry and filters on the POLICY flags —
     never on a hard-coded kind name."""
-    from app.modules.ai.core import provisioning
+    from app.applications.apparel.modules.ai.core import provisioning
 
     source = inspect.getsource(provisioning.provision_canonical_agents)
     assert "AgentRegistry.get_all()" in source
@@ -133,7 +133,7 @@ def test_the_messaging_gateway_names_its_agent_deliberately() -> None:
     """`hooks.py` is the CUSTOMER-messaging path; its kind is a documented
     decision, not an accident — a non-customer kind reaches the runtime through
     its own routes instead."""
-    from app.modules.ai import hooks
+    from app.applications.apparel.modules.ai import hooks
 
     source = inspect.getsource(hooks._do_auto_reply)
     assert 'resolve_agent_by_kind_optional(session, tenant_id, "customer")' in source
@@ -141,7 +141,7 @@ def test_the_messaging_gateway_names_its_agent_deliberately() -> None:
 
 def test_an_unregistered_kind_fails_closed_at_the_guardrail() -> None:
     """A kind with no definition must never run unsupervised."""
-    from app.modules.ai import runtime
+    from app.applications.apparel.modules.ai import runtime
 
     source = inspect.getsource(runtime.AgentRunner)
     assert "unknown_agent_kind" in source
@@ -160,7 +160,7 @@ async def test_a_third_kind_declares_hooks_with_zero_core_edits(third_kind) -> N
     The hook target lives in THIS test module (a real, importable async
     callable); a real kind would point into its own package.
     """
-    from app.modules.ai.core.registry import resolve_definition_hook
+    from app.applications.apparel.modules.ai.core.registry import resolve_definition_hook
 
     calls: list[str] = []
 
@@ -202,8 +202,8 @@ async def test_a_third_kind_declares_hooks_with_zero_core_edits(third_kind) -> N
             assert inspect.iscoroutinefunction(resolve_definition_hook(hooked, "post_run_hook"))
             # And the runtime invokes them through the shared stage helpers —
             # the same code path every kind uses, no kind if-statements.
-            from app.modules.ai.models import AgentRun
-            from app.modules.ai.runtime import AgentRunner
+            from app.applications.apparel.modules.ai.models import AgentRun
+            from app.applications.apparel.modules.ai.runtime import AgentRunner
 
             run_ctx = {"run_id": None, "conversation_id": None, "context_lines": None}
             outcome = await AgentRunner()._run_pre_stage(
@@ -236,9 +236,9 @@ async def test_a_third_canonical_kind_is_provisioned_automatically(db, tenant_ct
     """
     from sqlalchemy import select
 
-    from app.modules.ai.agents.customer.definition import CUSTOMER_TOOLS
-    from app.modules.ai.core.provisioning import provision_canonical_agents
-    from app.modules.ai.models import AgentTool
+    from app.applications.apparel.modules.ai.agents.customer.definition import CUSTOMER_TOOLS
+    from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
+    from app.applications.apparel.modules.ai.models import AgentTool
 
     third_kind = _third_definition()
     AgentRegistry.register(third_kind)

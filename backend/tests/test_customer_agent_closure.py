@@ -19,13 +19,13 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.modules.ai.handover import request_human_takeover
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, AIHandover
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.handover import request_human_takeover
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, AIHandover
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.notifications.models import Notification
 
 

@@ -10,11 +10,11 @@ import uuid
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent
-from app.modules.ai.owner_memory import OwnerMemoryService
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from app.modules.settings.registry import Scope
 from app.modules.settings.service import SettingsService
 
@@ -143,7 +143,7 @@ async def test_a_hostile_note_that_got_in_anyway_is_still_only_a_quoted_line(
 ):
     """Defence in depth: even a row inserted past the service (a migration, an import) is rendered
     as one inert line, never as an instruction block."""
-    from app.modules.ai.models import OwnerMemory
+    from app.applications.apparel.modules.ai.models import OwnerMemory
 
     seen = _record(monkeypatch)
     agent = await _agent(db, tenant_ctx.tenant_id)

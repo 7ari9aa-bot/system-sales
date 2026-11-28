@@ -20,11 +20,11 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-import app.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
+import app.applications.apparel.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
 from app.core.db import bind_tenant
-from app.modules.ai.models import Agent, AgentRun, AIUsage, BudgetPolicy
-from app.modules.ai.spend_read import monthly_spend_rows
-from app.modules.ai.usage import record_usage
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AIUsage, BudgetPolicy
+from app.applications.apparel.modules.ai.spend_read import monthly_spend_rows
+from app.applications.apparel.modules.ai.usage import record_usage
 
 
 async def _seed_agent(db, tenant_id: uuid.UUID) -> Agent:
@@ -65,7 +65,7 @@ async def test_month_spend_and_tenant_policy_cap(db, tenant_ctx) -> None:
 
 
 async def test_no_policy_falls_back_to_the_default_cap(db, tenant_ctx) -> None:
-    from app.modules.ai.budget import _default_cap
+    from app.applications.apparel.modules.ai.budget import _default_cap
 
     tenant_id = tenant_ctx.tenant_id
     rows = await monthly_spend_rows(db, [tenant_id])

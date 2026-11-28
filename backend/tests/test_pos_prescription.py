@@ -10,11 +10,11 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.modules.catalog.models import Product
-from app.modules.inventory.models import InventoryBalance
-from app.modules.orders.models import Order
-from app.modules.pos.prescription import clean_reference, is_prescription_only
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.catalog.models import Product
+from app.applications.apparel.modules.inventory.models import InventoryBalance
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.pos.prescription import clean_reference, is_prescription_only
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_helpers import ctx_for, start_day, till
 from tests.test_pos_sale_http import _post

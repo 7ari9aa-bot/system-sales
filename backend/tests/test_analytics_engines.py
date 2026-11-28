@@ -10,11 +10,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.modules.analytics.capabilities import (
+from app.applications.apparel.modules.analytics.capabilities import (
     analyze_customers,
     analyze_fulfillment,
 )
-from app.modules.analytics.engines import (
+from app.applications.apparel.modules.analytics.engines import (
     customer_split,
     seasonality_explains,
     weekday_profile,

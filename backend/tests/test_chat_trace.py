@@ -11,13 +11,13 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.chat import trace as trace_module
-from app.modules.ai.chat.progress import with_progress
-from app.modules.ai.chat.trace import REASONING_MAX_CHARS, clip_reasoning, explain
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AIChatMessage, AIChatThread
-from app.modules.ai.providers import _answer_text, _reasoning_text
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.chat import trace as trace_module
+from app.applications.apparel.modules.ai.chat.progress import with_progress
+from app.applications.apparel.modules.ai.chat.trace import REASONING_MAX_CHARS, clip_reasoning, explain
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.providers import _answer_text, _reasoning_text
 from tests.test_si_agent import _seed
 
 # ── the thinking is read, and never becomes the answer ────────────────────────────────────────────
@@ -374,8 +374,8 @@ async def test_a_rewrite_and_a_fill_are_labelled_where_the_real_functions_call_t
     import uuid
     from types import SimpleNamespace
 
-    from app.modules.ai.agents.sales_intelligence import coverage
-    from app.modules.ai.providers import ChatCompletionResult
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import coverage
+    from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 
     agent = SimpleNamespace(
         id=uuid.uuid4(),
@@ -432,7 +432,7 @@ async def test_a_rewrite_and_a_fill_are_labelled_where_the_real_functions_call_t
 
 
 def test_each_reason_carries_its_code_in_the_same_order():
-    from app.modules.ai.chat.trace import CODE_TEXT
+    from app.applications.apparel.modules.ai.chat.trace import CODE_TEXT
 
     ev = (
         _tool(1, 2500, args={"d": 1})
@@ -474,7 +474,7 @@ def _summary(total, model=0, rounds=1, codes=(), reasons=()):
 
 
 def test_the_report_counts_causes_per_answer_and_lists_the_slowest_first():
-    from app.modules.ai.chat.trace import report
+    from app.applications.apparel.modules.ai.chat.trace import report
 
     r = report(
         [
@@ -499,7 +499,7 @@ def test_the_report_counts_causes_per_answer_and_lists_the_slowest_first():
 
 
 def test_an_empty_report_is_zeros_not_an_error():
-    from app.modules.ai.chat.trace import report
+    from app.applications.apparel.modules.ai.chat.trace import report
 
     r = report([])
     assert (
@@ -510,7 +510,7 @@ def test_an_empty_report_is_zeros_not_an_error():
 async def test_the_report_reads_only_what_the_caller_may_see(db, tenant_ctx):
     import uuid
 
-    from app.modules.ai.chat import service
+    from app.applications.apparel.modules.ai.chat import service
     from app.modules.identity.models import User
 
     agent = await _seed(db, tenant_ctx.tenant_id)
@@ -561,7 +561,7 @@ async def test_the_report_reads_only_what_the_caller_may_see(db, tenant_ctx):
         is_owner = False
         permission_codes = {"analytics:read"}
 
-    from app.modules.ai.chat import service as svc
+    from app.applications.apparel.modules.ai.chat import service as svc
 
     original = svc._is_tenant_owner
     try:
@@ -584,8 +584,8 @@ async def test_both_rewrites_send_the_question_between_the_history_and_the_draft
     import uuid
     from types import SimpleNamespace
 
-    from app.modules.ai.agents.sales_intelligence import coverage
-    from app.modules.ai.providers import ChatCompletionResult
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import coverage
+    from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 
     agent = SimpleNamespace(
         id=uuid.uuid4(),
@@ -648,6 +648,6 @@ async def test_both_rewrites_send_the_question_between_the_history_and_the_draft
 
 
 def test_an_empty_question_adds_no_empty_turn():
-    from app.modules.ai.agents.sales_intelligence.coverage import _turn_so_far
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import _turn_so_far
 
     assert _turn_so_far(None, "  ", "d") == [{"role": "assistant", "content": "d"}]

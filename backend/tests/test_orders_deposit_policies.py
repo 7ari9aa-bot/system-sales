@@ -39,20 +39,20 @@ from app.core.db import bind_tenant
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import NotFoundError, ValidationError
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from app.modules.identity.models import Tenant
-from app.modules.orders.deposit import (
+from app.applications.apparel.modules.orders.deposit import (
     BASE_GRAND_TOTAL,
     BASE_ITEMS_AFTER_DISCOUNTS,
     TYPE_FIXED,
     TYPE_NONE,
     TYPE_PERCENTAGE,
 )
-from app.modules.orders.deposit_service import DepositService
-from app.modules.orders.models import DepositPolicy, Order
-from app.modules.orders.router import router as orders_router
+from app.applications.apparel.modules.orders.deposit_service import DepositService
+from app.applications.apparel.modules.orders.models import DepositPolicy, Order
+from app.applications.apparel.modules.orders.router import router as orders_router
 
 API = "/api/v1/orders"
 
@@ -573,7 +573,7 @@ async def test_preview_prices_the_spec_example_from_the_order_row(
 async def test_preview_balance_reads_existing_collections(
     db, tenant_ctx, status, refund_status, refund_amount, expected
 ):
-    from app.modules.orders.models import OrderPayment, Refund
+    from app.applications.apparel.modules.orders.models import OrderPayment, Refund
 
     order = await _order(db, tenant_ctx.tenant_id)
     payment = OrderPayment(

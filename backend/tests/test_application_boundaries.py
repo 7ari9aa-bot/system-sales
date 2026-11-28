@@ -18,6 +18,13 @@ from pathlib import Path
 from app.core.ownership import APPAREL_MODULES, PLATFORM_MODULES, layer_of
 
 MODULES_ROOT = Path(__file__).resolve().parents[1] / "app" / "modules"
+#: Where module packages live after the restructuring: platform infrastructure
+#: stays under app/modules, the sector application's modules moved under its own
+#: package. The guard scans both, so a moved module is still covered.
+APPAREL_MODULES_ROOT = (
+    Path(__file__).resolve().parents[1] / "app" / "applications" / "apparel" / "modules"
+)
+MODULES_ROOTS = (MODULES_ROOT, APPAREL_MODULES_ROOT)
 
 #: Platform modules that still reach into an application, one entry per
 #: (source file, application module) pair. This is debt, not permission: the
@@ -38,13 +45,19 @@ KNOWN_PLATFORM_TO_APPAREL_LEAKS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-_ABSOLUTE = re.compile(r"^\s*from\s+app\.modules\.([A-Za-z_]\w*)")
-_ABSOLUTE_IMPORT = re.compile(r"^\s*import\s+app\.modules\.([A-Za-z_]\w*)")
+_ABSOLUTE = re.compile(
+    r"^\s*from\s+app\.(?:applications\.apparel\.)?modules\.([A-Za-z_]\w*)"
+)
+_ABSOLUTE_IMPORT = re.compile(
+    r"^\s*import\s+app\.(?:applications\.apparel\.)?modules\.([A-Za-z_]\w*)"
+)
 _RELATIVE = re.compile(r"^\s*from\s+(\.{2,})([A-Za-z_]\w*)")
 
 
 def _module_dirs() -> list[Path]:
-    return sorted(p for p in MODULES_ROOT.iterdir() if p.is_dir() and (p / "__init__.py").exists())
+    return sorted(
+        d for root in MODULES_ROOTS if root.exists() for d in root.iterdir() if d.is_dir() and (d / "__init__.py").exists()
+    )
 
 
 def _known_modules() -> set[str]:

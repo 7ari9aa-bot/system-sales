@@ -16,7 +16,7 @@ from decimal import Decimal
 import pytest
 import sqlalchemy as sa
 
-from app.modules.pos.refund import Tender, allocate, allocate_by_method, plan_for
+from app.applications.apparel.modules.pos.refund import Tender, allocate, allocate_by_method, plan_for
 
 RETURNS_PATH = "/api/v1/pos/sessions/{session_id}/returns"
 EXCHANGES_PATH = "/api/v1/pos/sessions/{session_id}/exchanges"
@@ -100,8 +100,8 @@ def test_returns_and_exchanges_are_idempotency_guarded() -> None:
 
 async def _paid_till(db, tenant_ctx, *, methods=("cash",), opening="0.00"):
     """A till that takes payments, an open day, and a sellable 100.00 variant."""
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
     from tests.test_pos_returns import _customer, _register, _sellable_variant, _warehouse
 
@@ -125,7 +125,7 @@ async def _paid_till(db, tenant_ctx, *, methods=("cash",), opening="0.00"):
 
 
 async def _sale(db, tenant_ctx, shift, variant, customer, *, quantity=1, payments):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     return await PosService.record_sale(
         db,
@@ -138,7 +138,7 @@ async def _sale(db, tenant_ctx, shift, variant, customer, *, quantity=1, payment
 
 
 async def _refund_rows(db, tenant_ctx):
-    from app.modules.orders.models import Refund
+    from app.applications.apparel.modules.orders.models import Refund
 
     return list(
         (await db.execute(sa.select(Refund).where(Refund.tenant_id == tenant_ctx.tenant_id)))
@@ -148,7 +148,7 @@ async def _refund_rows(db, tenant_ctx):
 
 
 async def _cash_rows(db, tenant_ctx, session_id):
-    from app.modules.pos.models import PosCashMovement
+    from app.applications.apparel.modules.pos.models import PosCashMovement
 
     return list(
         (
@@ -166,7 +166,7 @@ async def _cash_rows(db, tenant_ctx, session_id):
 
 async def test_cash_sale_then_cash_return_refunds_and_lowers_the_drawer(db, tenant_ctx):
     """The report's first closure test: a 500 cash sale, a 100 return, the drawer drops 100."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -208,7 +208,7 @@ async def test_cash_sale_then_cash_return_refunds_and_lowers_the_drawer(db, tena
 
 async def test_split_tender_return_is_split_across_the_original_methods(db, tenant_ctx):
     """200 cash + 300 card, a 250 return: 200 comes out of the drawer, 50 reverses the card."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -265,8 +265,8 @@ async def test_successive_partial_refunds_on_one_tender_keep_working(db, tenant_
     The first partial refund flips the payment to ``partially_refunded``. While the lookup matched
     ``captured`` only, the second return found no tender and reported the money as never collected.
     """
-    from app.modules.orders.models import OrderPayment
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.models import OrderPayment
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -309,8 +309,8 @@ async def test_successive_partial_refunds_on_one_tender_keep_working(db, tenant_
 
 async def test_a_card_refund_waits_for_the_terminal_reference(db, tenant_ctx):
     """A card reversal happens on the terminal, so writing the row is not the money going back."""
-    from app.modules.orders.models import OrderPayment
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.models import OrderPayment
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -360,7 +360,7 @@ async def test_a_card_refund_waits_for_the_terminal_reference(db, tenant_ctx):
 
 
 async def test_a_reference_typed_up_front_never_leaves_a_pending_row(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -386,7 +386,7 @@ async def test_a_reference_typed_up_front_never_leaves_a_pending_row(db, tenant_
 
 async def test_confirming_a_refund_needs_a_reference_and_happens_once(db, tenant_ctx):
     from app.modules.errors import ConflictError, ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -414,7 +414,7 @@ async def test_confirming_a_refund_needs_a_reference_and_happens_once(db, tenant
 
 async def test_a_cash_only_shop_reports_the_card_reversal_instead_of_recording_it(db, tenant_ctx):
     """A shop that starts cash-only cannot reverse a card, so the till must not pretend it did."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
@@ -446,7 +446,7 @@ async def test_a_cash_only_shop_reports_the_card_reversal_instead_of_recording_i
 
 async def test_a_second_return_cannot_refund_the_same_piece_twice(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -473,7 +473,7 @@ async def test_a_second_return_cannot_refund_the_same_piece_twice(db, tenant_ctx
 
 async def test_exchange_for_a_dearer_item_collects_the_difference(db, tenant_ctx):
     """A 100 shirt swapped for a 130 one: 30 is collected and lands in the drawer."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _sellable_variant
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -500,7 +500,7 @@ async def test_exchange_for_a_dearer_item_collects_the_difference(db, tenant_ctx
 
 
 async def test_exchange_for_a_cheaper_item_refunds_the_difference(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _sellable_variant
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -525,7 +525,7 @@ async def test_exchange_for_a_cheaper_item_refunds_the_difference(db, tenant_ctx
 
 
 async def test_an_even_exchange_moves_no_money_and_says_so(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -550,7 +550,7 @@ async def test_an_even_exchange_moves_no_money_and_says_so(db, tenant_ctx):
 async def test_a_dearer_exchange_without_a_payment_is_refused(db, tenant_ctx):
     """The old behaviour (report the difference, collect nothing) is now a 422."""
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _sellable_variant
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -572,8 +572,8 @@ async def test_a_dearer_exchange_without_a_payment_is_refused(db, tenant_ctx):
 
 async def test_close_settles_every_method_the_day_collected(db, tenant_ctx):
     """Card is counted like cash: expected vs counted vs the difference, one row per method."""
-    from app.modules.pos.models import PosSessionReconciliation
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosSessionReconciliation
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await _sale(
@@ -621,8 +621,8 @@ async def test_the_close_route_carries_the_method_counts(db, tenant_ctx):
     """The report's §2.3: the service settled every method, but the route could not receive them."""
     import sqlalchemy as sa
 
-    from app.modules.pos.models import PosSessionReconciliation
-    from app.modules.pos.router import CloseSessionRequest, close_session
+    from app.applications.apparel.modules.pos.models import PosSessionReconciliation
+    from app.applications.apparel.modules.pos.router import CloseSessionRequest, close_session
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     await _sale(
@@ -675,7 +675,7 @@ async def test_the_close_route_carries_the_method_counts(db, tenant_ctx):
 
 async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
@@ -698,8 +698,8 @@ async def test_close_refuses_to_skip_an_uncounted_card_when_the_shop_requires_it
 
 async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
     """The drawer is counted at the hand-off, and the shortage is pinned on that moment."""
-    from app.modules.pos.models import PosSessionHandover
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosSessionHandover
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, opening="100.00")
     await _sale(
@@ -734,7 +734,7 @@ async def test_handover_records_a_custody_snapshot_per_cashier(db, tenant_ctx):
 
 async def test_handover_refuses_to_move_a_drawer_nobody_counted(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, _variant, _customer_row = await _paid_till(db, tenant_ctx)
     with pytest.raises(ValidationError):
@@ -763,7 +763,7 @@ async def _apparel_shop_that_skipped_setup(db, tenant_ctx):
 async def test_an_apparel_shop_that_skipped_setup_cannot_sell_without_collecting(db, tenant_ctx):
     """§2.3: the sale that looks normal and records no money is refused."""
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     await _apparel_shop_that_skipped_setup(db, tenant_ctx)
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -795,7 +795,7 @@ async def test_record_only_selling_is_allowed_once_the_owner_says_so(db, tenant_
 
 async def test_a_shop_on_another_vertical_is_not_blocked(db, tenant_ctx):
     """The guard is for the apparel shop that never chose record-only, not a blanket rule."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     await SettingsService(db, tenant_ctx.tenant_id).set("business.vertical", "general")
@@ -814,9 +814,9 @@ async def test_a_shop_on_another_vertical_is_not_blocked(db, tenant_ctx):
 
 async def test_a_confirmed_sale_can_be_voided_and_nothing_is_deleted(db, tenant_ctx):
     """§5.1: wrong size rung up. Stock back, money back, a POS-VOID- document, history intact."""
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.models import PosCashMovement, PosReceipt
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.models import PosCashMovement, PosReceipt
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, opening="0.00")
     sold = await _sale(
@@ -872,7 +872,7 @@ async def test_a_voided_sale_is_not_counted_in_the_shift_or_the_day(db, tenant_c
     receipt" made the Z report and the daily row still include a sale the shop had just voided -
     the owner's takings would be higher than the drawer and the bank.
     """
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, opening="0.00")
     sold = await _sale(
@@ -902,8 +902,8 @@ async def test_a_voided_sale_is_not_counted_in_the_shift_or_the_day(db, tenant_c
     await db.flush()
 
     # The day's projection is rebuilt from the ledgers; the voided sale must not be in it.
-    from app.modules.analytics.timekit import merchant_day
-    from app.modules.pos.models import PosDailySales
+    from app.applications.apparel.modules.analytics.timekit import merchant_day
+    from app.applications.apparel.modules.pos.models import PosDailySales
 
     day = merchant_day(closed.closed_at, await PosService._shop_timezone(db, tenant_ctx.tenant_id))
     assert (
@@ -920,7 +920,7 @@ async def test_a_voided_sale_is_not_counted_in_the_shift_or_the_day(db, tenant_c
 
 async def test_a_void_needs_a_manager_override(db, tenant_ctx):
     from app.modules.errors import PermissionDeniedError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -939,7 +939,7 @@ async def test_a_void_needs_a_manager_override(db, tenant_ctx):
 
 async def test_a_void_needs_a_reason(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -959,7 +959,7 @@ async def test_a_void_needs_a_reason(db, tenant_ctx):
 
 async def test_a_sale_cannot_be_voided_twice(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -988,7 +988,7 @@ async def test_a_sale_cannot_be_voided_twice(db, tenant_ctx):
 
 async def test_a_partly_returned_sale_is_finished_as_a_return_not_a_void(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -1029,7 +1029,7 @@ def test_the_void_route_is_mounted() -> None:
 
 
 async def _balance(db, tenant_ctx, variant, warehouse_id):
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     return (
         await db.execute(
@@ -1043,7 +1043,7 @@ async def _balance(db, tenant_ctx, variant, warehouse_id):
 
 
 async def test_a_sellable_return_goes_back_on_the_shelf(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _warehouse
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -1065,7 +1065,7 @@ async def test_a_sellable_return_goes_back_on_the_shelf(db, tenant_ctx):
 
 async def test_a_damaged_return_is_in_the_shop_but_never_offered_to_a_customer(db, tenant_ctx):
     """§7.1: the torn dress is physically back, and availability must not count it."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _warehouse
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -1088,7 +1088,7 @@ async def test_a_damaged_return_is_in_the_shop_but_never_offered_to_a_customer(d
 
 
 async def test_a_written_off_return_is_not_stock_at_all(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _warehouse
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -1110,8 +1110,8 @@ async def test_a_written_off_return_is_not_stock_at_all(db, tenant_ctx):
 
 
 async def test_a_supplier_return_is_not_stock_and_keeps_the_condition_on_the_line(db, tenant_ctx):
-    from app.modules.pos.models import PosReturnLine
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosReturnLine
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_returns import _warehouse
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -1138,7 +1138,7 @@ async def test_a_supplier_return_is_not_stock_and_keeps_the_condition_on_the_lin
 
 async def test_an_unknown_condition_is_refused(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -1161,8 +1161,8 @@ async def test_an_unknown_condition_is_refused(db, tenant_ctx):
 async def test_a_void_gives_the_cost_layer_back_so_the_shelf_is_worth_something(db, tenant_ctx):
     """The sale consumed a FIFO layer. A void that only adds quantity leaves stock worth zero,
     and the next sale books a cost of nothing - so the layer comes back at the sold unit cost."""
-    from app.modules.inventory.services.valuation import ValuationService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.inventory.services.valuation import ValuationService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     # Stock that arrived at 40.00 a piece: the layer the sale will consume.
@@ -1214,7 +1214,7 @@ async def test_a_void_gives_the_cost_layer_back_so_the_shelf_is_worth_something(
 
 
 async def _warehouse_of(db, tenant_ctx, shift):
-    from app.modules.pos.models import PosRegister
+    from app.applications.apparel.modules.pos.models import PosRegister
 
     register = (
         await db.execute(sa.select(PosRegister).where(PosRegister.id == shift.register_id))
@@ -1225,7 +1225,7 @@ async def _warehouse_of(db, tenant_ctx, shift):
 @pytest.mark.asyncio
 async def test_a_voided_sale_leaves_the_days_sales_and_the_shift_report(db, tenant_ctx):
     """Revenue the shop never kept must not appear as revenue, and the void is its own document."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sale = await _sale(
@@ -1263,7 +1263,7 @@ async def test_a_voided_sale_leaves_the_days_sales_and_the_shift_report(db, tena
 @pytest.mark.asyncio
 async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
     """Profit is revenue minus cost. A reversed sale contributes neither."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sale = await _sale(
@@ -1285,7 +1285,7 @@ async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
         shift_override=True,
     )
 
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
 
     status = (await db.execute(sa.select(Order.status).where(Order.id == order_id))).scalar_one()
     # The profit report excludes cancelled orders, so the reversal reaches it through the status.
@@ -1299,7 +1299,7 @@ async def test_a_voided_sale_is_not_profit(db, tenant_ctx):
 
 
 async def _payment_rows(db, tenant_ctx, order_id):
-    from app.modules.orders.models import OrderPayment
+    from app.applications.apparel.modules.orders.models import OrderPayment
 
     return list(
         (
@@ -1316,7 +1316,7 @@ async def _payment_rows(db, tenant_ctx, order_id):
 
 
 async def _customer_worth(db, tenant_ctx, customer_id):
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     await db.flush()
     return Decimal(
@@ -1334,7 +1334,7 @@ async def _customer_worth(db, tenant_ctx, customer_id):
 
 
 async def _order_status(db, tenant_ctx, order_id):
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
 
     await db.flush()
     return (
@@ -1351,7 +1351,7 @@ async def test_a_partial_return_marks_the_payment_partially_refunded_and_lowers_
     db, tenant_ctx
 ):
     """2 pieces sold for 200 cash, 1 came back: the payment is partially refunded, worth 100."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -1384,7 +1384,7 @@ async def test_a_partial_return_marks_the_payment_partially_refunded_and_lowers_
 @pytest.mark.asyncio
 async def test_returning_the_whole_sale_refunds_the_payment_and_the_order(db, tenant_ctx):
     """The whole 200 came back: the payment reads refunded and the sale is no longer "completed"."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     sold = await _sale(
@@ -1417,7 +1417,7 @@ async def test_returning_the_whole_sale_refunds_the_payment_and_the_order(db, te
 @pytest.mark.asyncio
 async def test_a_cheaper_exchange_refunds_its_difference_on_the_customer_too(db, tenant_ctx):
     """A cheaper replacement gives back the difference: the payment and the worth follow it."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
     cheap = await _sellable_variant_of(db, tenant_ctx, price="60.00", stock=20)
@@ -1461,8 +1461,8 @@ async def test_the_confirm_route_records_the_terminal_reference(db, tenant_ctx) 
     """The endpoint the returns screen calls after the cashier reverses on the machine."""
     from pydantic import ValidationError as ModelValidationError
 
-    from app.modules.pos.router import ConfirmRefundRequest, confirm_refund
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.router import ConfirmRefundRequest, confirm_refund
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1512,8 +1512,8 @@ async def test_a_partly_refunded_sale_is_not_marked_fully_refunded(db, tenant_ct
     A 1,000 sale (100 cash + 900 card) whose 100 cash comes back still holds 900. Calling the sale
     "refunded" dropped it out of revenue with the card money unaccounted for.
     """
-    from app.modules.orders.models import Order, OrderPayment, Refund
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
+    from app.applications.apparel.modules.orders.service import OrderService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1583,7 +1583,7 @@ async def test_cash_only_shop_is_told_this_refunds_card_part_not_the_whole_card(
 
     100 on card, a 30 return: the cashier has to reverse 30 on the machine, not 100.
     """
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
@@ -1615,7 +1615,7 @@ async def test_cash_only_shop_is_told_this_refunds_card_part_not_the_whole_card(
 @pytest.mark.asyncio
 async def test_a_pending_reversal_survives_a_page_reload(db, tenant_ctx) -> None:
     """The report's blocker 2: the promise lived in useState, so a refresh lost the money."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1650,7 +1650,7 @@ async def test_a_pending_reversal_survives_a_page_reload(db, tenant_ctx) -> None
 @pytest.mark.asyncio
 async def test_a_void_reports_the_card_reversal_it_left_pending(db, tenant_ctx) -> None:
     """The report's blocker 2, void path: the answer did not carry awaiting_confirmation."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1683,8 +1683,8 @@ async def test_a_pending_reversal_does_not_lower_the_customer_value(db, tenant_c
     1,000 on card, a 300 return the machine has not confirmed: the customer still paid 1,000 and
     ``refund_position`` must not call the invoice refunded.
     """
-    from app.modules.orders.service import OrderService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.service import OrderService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1733,8 +1733,8 @@ async def test_a_pending_reversal_does_not_lower_the_customer_value(db, tenant_c
 @pytest.mark.asyncio
 async def test_cash_only_records_the_manual_reversal_as_a_pending_row(db, tenant_ctx) -> None:
     """The report's blocker 3: terminal_only was described in the answer and recorded nowhere."""
-    from app.modules.orders.service import OrderService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.service import OrderService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
@@ -1777,8 +1777,8 @@ async def test_cash_only_records_the_manual_reversal_as_a_pending_row(db, tenant
 async def test_a_declined_reversal_is_rejected_and_the_room_comes_back(db, tenant_ctx) -> None:
     """The report's follow-up: a declined card had no way out, and its hold blocked a retry."""
     from app.modules.errors import ConflictError
-    from app.modules.orders.service import OrderService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.service import OrderService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1829,8 +1829,8 @@ async def test_a_declined_reversal_is_rejected_and_the_room_comes_back(db, tenan
 @pytest.mark.asyncio
 async def test_a_rejected_reversal_can_be_refunded_on_another_tender(db, tenant_ctx) -> None:
     """Cash instead of the declined card: a new row, never a second claim on the same money."""
-    from app.modules.orders.service import OrderService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.service import OrderService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1872,7 +1872,7 @@ async def test_a_rejected_reversal_can_be_refunded_on_another_tender(db, tenant_
 
 
 async def _cash_out(db, tenant_ctx, session_id):
-    from app.modules.pos.models import PosCashMovement
+    from app.applications.apparel.modules.pos.models import PosCashMovement
 
     await db.flush()
     return (
@@ -1894,8 +1894,8 @@ async def _cash_out(db, tenant_ctx, session_id):
 @pytest.mark.asyncio
 async def test_a_cash_replacement_leaves_the_drawer_and_moves_the_payment(db, tenant_ctx) -> None:
     """Blocker 1: the replacement was ``processed`` on paper only: no movement, no derived state."""
-    from app.modules.orders.models import OrderPayment
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.models import OrderPayment
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1947,7 +1947,7 @@ async def test_a_cash_replacement_leaves_the_drawer_and_moves_the_payment(db, te
 async def test_a_replacement_that_cannot_cover_the_whole_amount_is_refused(db, tenant_ctx) -> None:
     """Blocker 1b: 60 of 100 recorded as done left a 40 nobody was chasing."""
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
     sold = await _sale(
@@ -1988,8 +1988,8 @@ async def test_a_replacement_that_cannot_cover_the_whole_amount_is_refused(db, t
 @pytest.mark.asyncio
 async def test_cash_only_on_two_card_payments_records_the_amount_once(db, tenant_ctx) -> None:
     """Blocker 2: the method total was repeated per payment, so 30 was recorded twice as 60."""
-    from app.modules.orders.service import OrderService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.orders.service import OrderService
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx, methods=("cash", "card"))
@@ -2031,7 +2031,7 @@ async def test_confirm_and_reject_both_lock_the_refund_row(db, tenant_ctx) -> No
     """Blocker 3: a plain read let confirm and reject both see ``pending`` and both win."""
     import inspect
 
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     for fn in (PosService.confirm_refund, PosService.reject_refund):
         assert "with_for_update()" in inspect.getsource(fn), fn.__name__
@@ -2060,8 +2060,8 @@ def test_a_manual_refund_reports_only_its_own_uncovered_part() -> None:
 async def test_a_fully_unpaid_sale_stops_being_owed_when_the_goods_come_back(
     db, tenant_ctx
 ) -> None:
-    from app.modules.customer_accounts.service import CustomerAccountService as Accounts
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -2095,8 +2095,8 @@ async def test_a_fully_unpaid_sale_stops_being_owed_when_the_goods_come_back(
 @pytest.mark.asyncio
 async def test_the_credit_cancels_only_the_invoice_that_came_back(db, tenant_ctx) -> None:
     """Two credit invoices for one customer: returning the first must not pay off the second."""
-    from app.modules.customer_accounts.service import CustomerAccountService as Accounts
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
+    from app.applications.apparel.modules.pos.service import PosService
     from app.modules.settings.service import SettingsService
 
     shift, variant, customer = await _paid_till(db, tenant_ctx)
@@ -2168,7 +2168,7 @@ async def test_a_cashier_cannot_reject_a_refund_from_another_drawer(db, tenant_c
     from app.core.security import hash_password
     from app.modules.identity.deps import AuthedUser, TenantContext
     from app.modules.identity.models import Role, TenantUser, User
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests._pos_helpers import ctx_for
 
     owner_ctx = await ctx_for(db, tenant_ctx, "owner")

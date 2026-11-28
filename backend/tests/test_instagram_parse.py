@@ -6,9 +6,9 @@ import uuid
 
 import pytest
 
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.instagram import REACTION_REMOVED, InstagramAdapter
-from app.modules.conversations.gateway.instagram_limits import InstagramLimitError
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.instagram import REACTION_REMOVED, InstagramAdapter
+from app.applications.apparel.modules.conversations.gateway.instagram_limits import InstagramLimitError
 
 A = InstagramAdapter()
 
@@ -417,7 +417,7 @@ def test_a_delivery_for_one_account_is_returned_untouched():
 def test_heart_and_share_request_fields_default_off_and_cap_the_post_id():
     from pydantic import ValidationError
 
-    from app.modules.conversations.routers._deps import SendMessageRequest
+    from app.applications.apparel.modules.conversations.routers._deps import SendMessageRequest
 
     plain = SendMessageRequest(body="hi")
     assert plain.instagram_heart is False and plain.instagram_share_post_id is None
@@ -436,7 +436,7 @@ def test_a_shared_post_without_an_id_is_not_sent_as_text():
 def test_quick_replies_field_is_off_by_default_and_capped_at_13():
     from pydantic import ValidationError
 
-    from app.modules.conversations.routers._deps import SendMessageRequest
+    from app.applications.apparel.modules.conversations.routers._deps import SendMessageRequest
 
     assert SendMessageRequest(body="hi").instagram_quick_replies is None
     assert SendMessageRequest(body="hi", instagram_quick_replies=["a", "b"]).instagram_quick_replies

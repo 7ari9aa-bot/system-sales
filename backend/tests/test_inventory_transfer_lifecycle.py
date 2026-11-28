@@ -12,10 +12,10 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID, name: str = "WH") -> Warehouse:

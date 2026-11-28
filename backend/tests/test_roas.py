@@ -27,10 +27,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.marketing import analytics
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.marketing import analytics
+from app.applications.apparel.modules.marketing.service import MarketingService
 
 _ID = uuid.uuid4()
 

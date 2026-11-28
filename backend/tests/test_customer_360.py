@@ -19,13 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.customers.models import CustomerEvent
-from app.modules.customers.service import CustomerService
-from app.modules.customers.timeline import Customer360Service
+from app.applications.apparel.modules.customers.models import CustomerEvent
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.timeline import Customer360Service
 from app.modules.errors import NotFoundError
 from app.modules.operations.models import Task
-from app.modules.orders.models import Order, OrderPayment, Refund
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.orders.service import OrderService
 
 BASE = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
 

@@ -15,8 +15,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenancy import current_scope
-from app.modules.catalog.models import Category
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.models import Category
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ValidationError
 from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
 from app.modules.settings.service import SettingsService

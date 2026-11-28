@@ -120,7 +120,7 @@ def install_signal_handlers(stop: asyncio.Event) -> None:
 
 async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
     stop = stop or asyncio.Event()
-    from app.modules.ai.core.registry import discover_agents, validate_registry
+    from app.applications.apparel.modules.ai.core.registry import discover_agents, validate_registry
 
     discover_agents()
     validate_registry()
@@ -129,7 +129,7 @@ async def main(pools: list[str], *, stop: asyncio.Event | None = None) -> None:
     # that is off in this process fails closed invisibly unless the startup
     # log says exactly what is off and which env var turns it on.
     from app.core.config import get_settings
-    from app.modules.ai.readiness import multimodal_readiness
+    from app.applications.apparel.modules.ai.readiness import multimodal_readiness
 
     _, worker_warnings = multimodal_readiness(get_settings())
     for _warning in worker_warnings:

@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from app.modules.customers.meta_oauth import _popup_response
+from app.applications.apparel.modules.customers.meta_oauth import _popup_response
 
 ORIGIN = "https://fihrist.world"
 RESULT_JS = Path(__file__).resolve().parents[2] / "frontend" / "public" / "meta-oauth-result.js"

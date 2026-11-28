@@ -13,7 +13,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES, MAX_MEMORY_CHARS, OwnerMemoryService
+from app.applications.apparel.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES, MAX_MEMORY_CHARS, OwnerMemoryService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.identity.models import User
 
@@ -200,7 +200,7 @@ async def test_editing_a_note_that_does_not_exist_is_a_404(db, tenant_ctx):
 async def test_deleting_one_note_removes_only_that_note_and_its_words(db, tenant_ctx):
     import sqlalchemy as sa
 
-    from app.modules.ai.models import OwnerMemory
+    from app.applications.apparel.modules.ai.models import OwnerMemory
 
     svc = _svc(db, tenant_ctx)
     keep = await svc.remember("خليها", source="explicit")

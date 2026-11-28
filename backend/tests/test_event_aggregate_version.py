@@ -15,13 +15,13 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import OutboxEvent
 from app.modules.privacy.service import DeletionService
 

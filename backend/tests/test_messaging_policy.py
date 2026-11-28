@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from app.core.errors import DomainError
-from app.modules.conversations.policy import (
+from app.applications.apparel.modules.conversations.policy import (
     CHANNEL_POLICIES,
     MessagingPolicyService,
     OutboundBlockedError,

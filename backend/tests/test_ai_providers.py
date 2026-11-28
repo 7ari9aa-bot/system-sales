@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.ai.providers import AIProvider, EmbeddingProvider
+from app.applications.apparel.modules.ai.providers import AIProvider, EmbeddingProvider
 
 BASE_URL = "https://api.test/v1"
 
@@ -262,7 +262,7 @@ async def test_embed_refuses_non_public_base_url(bad_url):
 
 @pytest.mark.parametrize("bad_url", _BAD_URLS)
 async def test_vision_transports_refuse_non_public_base_url(bad_url):
-    from app.modules.ai.providers import (
+    from app.applications.apparel.modules.ai.providers import (
         MultimodalContent,
         MultimodalEmbeddingProvider,
         RerankerProvider,

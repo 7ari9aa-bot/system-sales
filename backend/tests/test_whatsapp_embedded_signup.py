@@ -19,7 +19,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.customers import meta_whatsapp_signup as signup
+from app.applications.apparel.modules.customers import meta_whatsapp_signup as signup
 
 _START = "/api/v1/integrations/whatsapp/embedded-signup/start"
 _COMPLETE = "/api/v1/integrations/whatsapp/embedded-signup/complete"
@@ -49,7 +49,7 @@ def test_start_refuses_loudly_when_unconfigured(monkeypatch) -> None:
 
 
 def test_completion_payload_is_validated_before_any_provider_call() -> None:
-    from app.modules.customers.meta_whatsapp_signup import WhatsAppSignupCompleteBody
+    from app.applications.apparel.modules.customers.meta_whatsapp_signup import WhatsAppSignupCompleteBody
 
     with pytest.raises(ValueError):
         WhatsAppSignupCompleteBody(code="short", waba_id="1", phone_number_id="2")
@@ -278,7 +278,7 @@ async def test_a_network_failure_reading_the_display_name_does_not_fail_the_sign
     """The name is cosmetic; the owner already finished Meta's popup."""
     import httpx
 
-    from app.modules.customers.meta_whatsapp_signup import _phone_display_name
+    from app.applications.apparel.modules.customers.meta_whatsapp_signup import _phone_display_name
 
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down")

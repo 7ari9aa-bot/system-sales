@@ -9,14 +9,14 @@ from sqlalchemy import select
 
 from app.core.errors import ExternalProviderError
 from app.core.storage import FetchedMedia, StoredMedia
-from app.modules.conversations import customer_profile as cp
-from app.modules.conversations.customer_profile import (
+from app.applications.apparel.modules.conversations import customer_profile as cp
+from app.applications.apparel.modules.conversations.customer_profile import (
     CustomerProfileService,
     looks_like_an_id,
     needs_refresh,
 )
-from app.modules.customers.models import CustomerIdentity
-from app.modules.customers.services.customer import CustomerService
+from app.applications.apparel.modules.customers.models import CustomerIdentity
+from app.applications.apparel.modules.customers.services.customer import CustomerService
 
 CREDS = {"api_key": "t", "account_id": "ig1"}
 T0 = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
@@ -218,7 +218,7 @@ async def test_the_real_gateway_accepts_what_the_service_passes(
     """No fake adapter: the service swallows errors, so prove the real call works."""
     import httpx
 
-    from app.modules.conversations.gateway.instagram import InstagramAdapter
+    from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
 
     t = tenant_ctx.tenant_id
     seen: list[httpx.Request] = []

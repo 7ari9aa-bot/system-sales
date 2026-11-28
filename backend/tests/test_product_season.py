@@ -10,7 +10,7 @@ import uuid
 
 import pytest
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 
 pytestmark = pytest.mark.asyncio
 
@@ -91,7 +91,7 @@ async def test_another_shops_season_is_never_returned(db, tenant_ctx) -> None:
 
 
 async def test_the_product_the_api_returns_carries_its_season(db, tenant_ctx) -> None:
-    from app.modules.catalog.routers._deps import _product_out
+    from app.applications.apparel.modules.catalog.routers._deps import _product_out
 
     p = await _product(db, tenant_ctx.tenant_id, season="SS26")
     assert _product_out(p, [])["season"] == "SS26"

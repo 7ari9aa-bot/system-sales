@@ -59,9 +59,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ValidationError
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.segments.router import _segment_dict
-from app.modules.segments.router import router as segments_router
-from app.modules.segments.service import (
+from app.applications.apparel.modules.segments.router import _segment_dict
+from app.applications.apparel.modules.segments.router import router as segments_router
+from app.applications.apparel.modules.segments.service import (
     Segment,
     SegmentService,
     _compile_where,
@@ -512,7 +512,7 @@ async def test_an_in_rule_selects_exactly_the_matching_customers(
     the unblocked one, and ``IN (false, true)`` both — so dropping the dead
     whole-list binding removes noise, never a match.
     """
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     blocked = Customer(
         tenant_id=tenant_ctx.tenant_id, name="Blocked", is_blocked=True, email="b@example.test"

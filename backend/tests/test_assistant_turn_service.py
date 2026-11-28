@@ -16,8 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.assistant.contracts import LIVE_VOICE, TEXT, AssistantTurnInput
-from app.modules.ai.assistant.service import AssistantTurnService
+from app.applications.apparel.modules.ai.assistant.contracts import LIVE_VOICE, TEXT, AssistantTurnInput
+from app.applications.apparel.modules.ai.assistant.service import AssistantTurnService
 
 TENANT = uuid.uuid4()
 AGENT = uuid.uuid4()
@@ -48,7 +48,7 @@ def runtime(monkeypatch):
             status="completed",
         )
 
-    monkeypatch.setattr("app.modules.ai.chat.turns.run_chat_turn", fake_run_chat_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.chat.turns.run_chat_turn", fake_run_chat_turn)
     return calls
 
 

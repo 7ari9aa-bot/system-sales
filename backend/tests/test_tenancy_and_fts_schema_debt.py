@@ -460,11 +460,11 @@ def test_gin_index_sits_on_every_search_column(table_name: str) -> None:
 @pytest.mark.parametrize(
     ("table_name", "import_path", "attr", "columns"),
     [
-        ("customers", "app.modules.customers.models", "Customer", ["name", "email", "phone"]),
-        ("products", "app.modules.catalog.models", "Product", ["title", "description"]),
+        ("customers", "app.applications.apparel.modules.customers.models", "Customer", ["name", "email", "phone"]),
+        ("products", "app.applications.apparel.modules.catalog.models", "Product", ["title", "description"]),
         (
             "knowledge_items",
-            "app.modules.ai.models",
+            "app.applications.apparel.modules.ai.models",
             "KnowledgeItem",
             ["title", "content"],
         ),
@@ -652,7 +652,7 @@ def test_segments_table_exists_and_is_registered_despite_the_empty_revision() ->
     segments table.
     """
     from app.core.model_registry import Base
-    from app.modules.segments.service import Segment
+    from app.applications.apparel.modules.segments.service import Segment
 
     assert "segments" in Base.metadata.tables
     assert Segment.__tablename__ == "segments"

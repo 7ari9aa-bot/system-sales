@@ -13,8 +13,8 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.pos.models import PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.models import PosSession
+from app.applications.apparel.modules.pos.service import PosService
 
 pytestmark = pytest.mark.asyncio
 

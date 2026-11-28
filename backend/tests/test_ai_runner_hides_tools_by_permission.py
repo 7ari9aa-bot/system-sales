@@ -11,12 +11,12 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool, ToolCall
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import TOOLS, ToolSpec, register_tool
+from app.applications.apparel.modules.ai.core.registry import AgentDefinition, AgentRegistry
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentTool, ToolCall
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.tools import TOOLS, ToolSpec, register_tool
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -156,7 +156,7 @@ async def test_an_agent_tool_with_no_registered_spec_is_left_alone(
     agent = await _agent(db, tenant_ctx.tenant_id)
     db.add(AgentTool(tenant_id=tenant_ctx.tenant_id, agent_id=agent.id, name="zz_ghost", policy={}))
     await db.flush()
-    from app.modules.ai.runtime import _tools_the_asker_may_use
+    from app.applications.apparel.modules.ai.runtime import _tools_the_asker_may_use
 
     rows = (
         (await db.execute(select(AgentTool).where(AgentTool.agent_id == agent.id))).scalars().all()

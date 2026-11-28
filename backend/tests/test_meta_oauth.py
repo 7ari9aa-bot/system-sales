@@ -21,7 +21,7 @@ from app.core.errors import ExternalProviderError
 from app.core.secrets import decrypt_credentials_dict
 from app.core.security import create_oauth_state_token, decode_token
 from app.main import create_app
-from app.modules.customers import meta_oauth
+from app.applications.apparel.modules.customers import meta_oauth
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.platform.models import Integration
 
@@ -732,7 +732,7 @@ async def test_messenger_connect_does_not_need_the_page_permissions(
 async def test_a_refused_page_subscription_fails_the_connect() -> None:
     """A Page Meta will not deliver webhooks for must not be stored as connected."""
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def refuse(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"error": {"message": "(#200) Permissions error"}})
@@ -744,7 +744,7 @@ async def test_a_refused_page_subscription_fails_the_connect() -> None:
 
 async def test_a_subscription_that_does_not_say_success_fails_the_connect() -> None:
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def odd(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"success": False})
@@ -756,7 +756,7 @@ async def test_a_subscription_that_does_not_say_success_fails_the_connect() -> N
 
 async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -> None:
     from app.core.errors import ExternalProviderError
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down")
@@ -771,7 +771,7 @@ async def test_a_unreachable_meta_during_subscription_is_a_retryable_failure() -
     [("facebook", "feed"), ("instagram", "messages"), ("messenger", "messages")],
 )
 async def test_the_subscription_asks_for_the_channels_own_fields(provider, field) -> None:
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     seen: dict[str, str] = {}
 
@@ -791,7 +791,7 @@ async def test_the_subscription_asks_for_the_channels_own_fields(provider, field
 async def test_a_subscription_that_cannot_be_read_is_never_overwritten() -> None:
     """The read failing is not "nothing subscribed": writing then would replace a working
     subscription (another channel's fields) with a guess, silently cutting its webhooks."""
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     posts: list[httpx.Request] = []
 
@@ -812,7 +812,7 @@ async def test_a_subscription_that_cannot_be_read_is_never_overwritten() -> None
 async def test_linking_a_second_capability_keeps_the_first_ones_fields() -> None:
     """Messenger already on the Page, then Facebook linked: the POST must still carry Messenger's
     fields, or linking Facebook would cut Messenger's webhooks."""
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app, subscribed_fields
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app, subscribed_fields
 
     sent: dict[str, str] = {}
 
@@ -832,7 +832,7 @@ async def test_linking_a_second_capability_keeps_the_first_ones_fields() -> None
 
 
 async def test_a_facebook_only_link_asks_for_no_messenger_fields() -> None:
-    from app.modules.customers.meta_oauth import _subscribe_page_to_app
+    from app.applications.apparel.modules.customers.meta_oauth import _subscribe_page_to_app
 
     sent: dict[str, str] = {}
 
@@ -909,7 +909,7 @@ async def test_when_it_cannot_tell_the_subscription_is_kept() -> None:
 async def test_the_page_lock_is_skipped_off_postgres_and_taken_on_it() -> None:
     from types import SimpleNamespace
 
-    from app.modules.customers.meta_linking import lock_page_subscription
+    from app.applications.apparel.modules.customers.meta_linking import lock_page_subscription
 
     calls: list[str] = []
 

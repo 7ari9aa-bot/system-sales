@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from app.modules.customers import meta_whatsapp_signup as signup
+from app.applications.apparel.modules.customers import meta_whatsapp_signup as signup
 from app.modules.platform.services import audit as audit_module
 
 TENANT = uuid.uuid4()
@@ -85,7 +85,7 @@ def harness(monkeypatch):
     async def no_sync(*_a, **_k):
         return {}
 
-    monkeypatch.setattr("app.modules.conversations.whatsapp_sync.request_all", no_sync)
+    monkeypatch.setattr("app.applications.apparel.modules.conversations.whatsapp_sync.request_all", no_sync)
     monkeypatch.setattr(
         "app.modules.platform.integration_verifier.verify_channel_credentials", verify
     )

@@ -14,7 +14,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import event
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 
 
 async def _product_with_variants(db, tenant_id, n_variants):
@@ -82,7 +82,7 @@ async def test_the_query_count_does_not_grow_with_the_number_of_products(db, ten
 
 @pytest.mark.asyncio
 async def test_the_products_route_issues_one_variant_query_for_the_whole_page(db, tenant_ctx):
-    from app.modules.catalog.routers.products import list_products
+    from app.applications.apparel.modules.catalog.routers.products import list_products
 
     tid = tenant_ctx.tenant_id
     for _ in range(15):

@@ -16,10 +16,10 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway.base import InboundMessage
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.customers.models import CustomerIdentity
+from app.applications.apparel.modules.conversations.gateway.base import InboundMessage
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.customers.models import CustomerIdentity
 
 pytestmark = pytest.mark.asyncio
 

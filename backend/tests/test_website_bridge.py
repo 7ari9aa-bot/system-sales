@@ -17,8 +17,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.config import get_settings
-from app.modules.catalog import website_platform as bridge
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog import website_platform as bridge
+from app.applications.apparel.modules.catalog.service import CatalogService
 
 
 async def test_an_unknown_bridge_key_is_unauthorized(monkeypatch) -> None:

@@ -24,10 +24,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.core.model_registry  # noqa: F401  (loads every model so foreign keys resolve alone)
-import app.modules.ai.budget as budget_module
+import app.applications.apparel.modules.ai.budget as budget_module
 from app.core.tenancy import dispatch_tenant_reactivated_hooks, tenant_reactivated_hooks
-from app.modules.ai.budget import AIBudgetExhaustedError, lift_hard_stop, reserve_budget
-from app.modules.ai.models import BudgetPolicy
+from app.applications.apparel.modules.ai.budget import AIBudgetExhaustedError, lift_hard_stop, reserve_budget
+from app.applications.apparel.modules.ai.models import BudgetPolicy
 from app.modules.notifications.models import Notification
 
 
@@ -110,7 +110,7 @@ async def test_an_agent_scoped_policy_never_raises_the_tenant_soft_warning(
 ):
     """The soft tier is a subscription story: an agent-scoped cap (which
     governs one agent's own spend) must not page the tenant's owners."""
-    from app.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.models import Agent
 
     tenant_id = tenant_ctx.tenant_id
     agent = Agent(
@@ -203,7 +203,7 @@ async def test_lift_with_no_stop_is_a_honest_no(db: AsyncSession, tenant_ctx) ->
 
 async def test_reactivation_dispatch_lifts_the_stop(db: AsyncSession, tenant_ctx) -> None:
     """The registered reactivation hook is the automatic 'renewal' moment."""
-    import app.modules.ai.core.provisioning  # noqa: F401 — registers the hook
+    import app.applications.apparel.modules.ai.core.provisioning  # noqa: F401 — registers the hook
 
     assert tenant_reactivated_hooks(), "no reactivation hook is registered by the ai module"
 
@@ -226,7 +226,7 @@ def test_the_fallback_retry_catches_a_second_budget_refusal() -> None:
     import ast
     import pathlib
 
-    import app.modules.ai.runtime as runtime_module
+    import app.applications.apparel.modules.ai.runtime as runtime_module
 
     tree = ast.parse(pathlib.Path(runtime_module.__file__).read_text(encoding="utf-8"))
     for node in ast.walk(tree):

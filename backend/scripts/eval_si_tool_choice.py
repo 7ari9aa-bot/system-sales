@@ -101,15 +101,15 @@ CASES: tuple[Case, ...] = (
 
 
 def _tools() -> list[dict]:
-    from app.modules.ai.agents.sales_intelligence import tools as T
-    from app.modules.ai.tools import get_tool, tool_to_openai_schema
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+    from app.applications.apparel.modules.ai.tools import get_tool, tool_to_openai_schema
 
     T.register_si_tools()
     return [tool_to_openai_schema(get_tool(n)) for n in T.SI_TOOLS]
 
 
 def _system() -> str:
-    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
     return SI_SYSTEM_PROMPT
 

@@ -13,7 +13,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
 from tests._pos_helpers import purge_test_tenant as _purge_test_tenant
@@ -44,8 +44,8 @@ async def _a_shop(factory, tenant_id):
     """Tenant A: an open shift, one variant with 10 units, one finished sale of 1."""
 
     async def setup(s):
-        from app.modules.catalog.service import CatalogService
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.catalog.service import CatalogService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, tenant_id)
         reg = await PosService.create_register(
@@ -185,7 +185,7 @@ async def test_a_forged_tenant_id_is_refused_by_the_database(two_tenants) -> Non
     await _a_shop(fa, ta)
 
     async def forge(s):
-        from app.modules.catalog.models import Product
+        from app.applications.apparel.modules.catalog.models import Product
 
         s.add(
             Product(tenant_id=ta, title="forged", slug=f"f-{uuid.uuid4().hex[:8]}", status="active")

@@ -15,8 +15,8 @@ from httpx import ASGITransport, AsyncClient
 import app.core.model_registry  # noqa: F401
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
-from app.modules.einvoice.providers.eta.notifications import key_hash
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
+from app.applications.apparel.modules.einvoice.providers.eta.notifications import key_hash
 from tests.test_eta_db_layer import _ctx, _device, _other_tenant
 
 pytestmark = pytest.mark.usefixtures("db")
@@ -45,7 +45,7 @@ def _auth(key: str = KEY) -> dict[str, str]:
 
 
 async def _till_with_receipt(db, tid, *, serial="POS-HTTP-1", key=KEY, number="R-1"):
-    from app.modules.einvoice.service import EInvoiceService
+    from app.applications.apparel.modules.einvoice.service import EInvoiceService
 
     dev = await _device(db, tid, serial=serial, key=key)
     doc = await EInvoiceService.issue_einvoice(db, tid, _ctx(tid, number), device_id=dev.id)

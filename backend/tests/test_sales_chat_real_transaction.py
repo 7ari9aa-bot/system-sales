@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult
-from app.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult
+from app.applications.apparel.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
 from app.modules.identity.deps import AuthedUser, get_current_user
 from tests._pos_helpers import make_tenant, purge_test_tenant
 
@@ -134,7 +134,7 @@ async def test_send_message_answers_on_a_real_request_transaction(shop, monkeypa
     async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         return _result()
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
 
     async with _client(shop) as client:
         res = await client.post(
@@ -158,7 +158,7 @@ async def test_replaying_the_same_key_returns_the_saved_answer_without_a_second_
         runs["n"] += 1
         return _result()
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
     url = f"/api/v1/ai/sales-chat/threads/{shop['thread_id']}/messages"
     body = {"content": "أحسن المنتجات؟", "idempotency_key": "real-2"}
 
@@ -181,7 +181,7 @@ async def test_a_failed_analysis_leaves_a_failed_row_that_can_be_retried(shop, m
             raise RuntimeError("model unreachable")
         return _result()
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
     url = f"/api/v1/ai/sales-chat/threads/{shop['thread_id']}/messages"
 
     async with _client(shop) as client:

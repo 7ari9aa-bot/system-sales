@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.agents.customer import turn as turn_module
-from app.modules.ai.agents.customer.state import apply_patch
-from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
-from app.modules.ai.agents.customer.vision.schemas import Confidence, MatchResult
-from app.modules.ai.runtime import AgentRunResult
+from app.applications.apparel.modules.ai.agents.customer import turn as turn_module
+from app.applications.apparel.modules.ai.agents.customer.state import apply_patch
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.agents.customer.vision.schemas import Confidence, MatchResult
+from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
 PRODUCT_A = str(uuid.uuid4())
 PRODUCT_B = str(uuid.uuid4())
@@ -61,8 +61,8 @@ def _vision(candidates: list[dict], confidence=Confidence.MEDIUM) -> MatchResult
 
 async def _conversation(db, tenant_ctx) -> uuid.UUID:
     """A real customer + conversation row: state patches satisfy the FK."""
-    from app.modules.conversations.models import Conversation
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Turn Customer")
     db.add(customer)
@@ -97,7 +97,7 @@ async def test_empty_turn_short_circuits_without_calling_the_runner(db, tenant_c
 
 
 async def _photo_classifier(session, tid, url):
-    from app.modules.ai.agents.customer.vision.schemas import ImageKind
+    from app.applications.apparel.modules.ai.agents.customer.vision.schemas import ImageKind
 
     return ImageKind.PRODUCT
 
@@ -413,7 +413,7 @@ async def test_state_patch_appends_and_dedupes_across_turns(db, tenant_ctx):
         runner=second,
     )
     assert outcome.state_version == 2  # the second turn ADDED something
-    from app.modules.ai.agents.customer.state import load_state
+    from app.applications.apparel.modules.ai.agents.customer.state import load_state
 
     state = await load_state(db, tenant_ctx.tenant_id, conversation_id)
     assert state.shown_items == [PRODUCT_A, PRODUCT_B]
@@ -429,7 +429,7 @@ async def test_deadline_exceeded_is_surfaced(db, tenant_ctx):
 
 
 def test_unsourced_numerals_allows_zero_and_the_customers_own_numbers() -> None:
-    from app.modules.ai.agents.customer.grounding import check_unsourced_numerals
+    from app.applications.apparel.modules.ai.agents.customer.grounding import check_unsourced_numerals
 
     assert check_unsourced_numerals("ملقتش حاجة، 0 نتيجة.", "عندكم بنطلون؟") is None
     assert check_unsourced_numerals("تمام، 2 تيشرت", "عايز 2 تيشرت") is None
@@ -448,8 +448,8 @@ def test_voice_echo_constants_are_shared_between_turn_and_runtime() -> None:
     Both sides must reference the same constant objects — a duplicated
     literal edited on one side would silently break the echo-dedup.
     """
-    from app.modules.ai import runtime as runtime_module
-    from app.modules.ai.constants import (
+    from app.applications.apparel.modules.ai import runtime as runtime_module
+    from app.applications.apparel.modules.ai.constants import (
         VOICE_ECHO_SENTINEL,
         VOICE_NO_TRANSCRIPT_MARKER_PREFIX,
         VOICE_TURN_MARKER_PREFIX,

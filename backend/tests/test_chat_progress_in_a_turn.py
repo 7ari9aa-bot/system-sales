@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as si_tools
-from app.modules.ai.chat import progress as progress_module
-from app.modules.ai.chat import turns
-from app.modules.ai.chat.progress import STEP_TEXT
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AIChatMessage, AIChatThread
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si_tools
+from app.applications.apparel.modules.ai.chat import progress as progress_module
+from app.applications.apparel.modules.ai.chat import turns
+from app.applications.apparel.modules.ai.chat.progress import STEP_TEXT
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.test_si_agent import _seed
 
 QUESTION = "كام مبيعات الشهر ده؟"
@@ -150,7 +150,7 @@ async def test_the_step_is_on_the_row_while_the_tool_runs_and_the_answer_is_unch
         return await real(*args, **kwargs)
 
     monkeypatch.setattr(si_tools, "_si_metric", spy)
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     TOOLS.pop("si_metric", None)
     si_tools.register_si_tools()
@@ -173,7 +173,7 @@ async def test_two_tools_show_two_steps_in_the_order_they_started(
         ("si_metric", {"mode": "value", "metric_name": "orders_placed", "days": 30}),
         ("si_shop", {"view": "stock"}),
     )
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     for name in ("si_metric", "si_shop"):
         TOOLS.pop(name, None)
@@ -199,7 +199,7 @@ async def test_a_writer_that_cannot_write_never_changes_the_answer(
         raise RuntimeError("database refused the step")
 
     monkeypatch.setattr(progress_module.core_db, "get_sessionmaker", broken)
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     TOOLS.pop("si_metric", None)
     si_tools.register_si_tools()

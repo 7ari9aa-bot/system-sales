@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.ai.providers import AIProvider
+from app.applications.apparel.modules.ai.providers import AIProvider
 
 BASE_URL = "https://api.test/v1"
 

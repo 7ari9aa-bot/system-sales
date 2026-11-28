@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
 from app.core.db import bind_tenant
-from app.modules.customers.models import Customer, CustomerIdentity
+from app.applications.apparel.modules.customers.models import Customer, CustomerIdentity
 from app.modules.identity.deps import get_db
 from app.modules.identity.models import Tenant
 from app.modules.privacy.meta_deletion import (

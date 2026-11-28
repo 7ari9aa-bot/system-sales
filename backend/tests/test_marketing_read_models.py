@@ -35,11 +35,11 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.analytics import service as analytics_service
-from app.modules.customers.service import CustomerService
-from app.modules.marketing import analytics
-from app.modules.marketing import router as marketing_router
-from app.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.analytics import service as analytics_service
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.marketing import analytics
+from app.applications.apparel.modules.marketing import router as marketing_router
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
 from app.modules.platform.metrics import MetricRegistry
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -68,7 +68,7 @@ _MONEY_KEYS_DAILY = ("gross_revenue", "refunded_amount", "net_revenue", "refund_
 class _NoSqlSession:
     """Any query from these read models means marketing re-derived the rule.
 
-    The canonical implementations live in ``app/modules/analytics/service.py``;
+    The canonical implementations live in ``app/applications/apparel/modules/analytics/service.py``;
     a session that refuses to answer proves marketing asked for nothing.
     """
 
@@ -569,8 +569,8 @@ async def test_an_order_refunded_wholesale_still_shows_its_captured_money(
 async def test_dashboard_separates_an_empty_shelf_from_a_low_one(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.models import InventoryBalance, Warehouse
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
 
     tid = tenant_ctx.tenant_id
     warehouse = Warehouse(

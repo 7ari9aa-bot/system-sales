@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 import pytest
 
 from app.modules.errors import ConflictError
-from app.modules.pos.models import PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.models import PosSession
+from app.applications.apparel.modules.pos.service import PosService
 
 CAIRO = "Africa/Cairo"
 

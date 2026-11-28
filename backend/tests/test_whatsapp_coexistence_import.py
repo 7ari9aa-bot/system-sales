@@ -19,16 +19,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.conversations import whatsapp_sync
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.models import (
+from app.applications.apparel.modules.conversations import whatsapp_sync
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.models import (
     Conversation,
     Message,
     WhatsAppContactTombstone,
     WhatsAppSyncRun,
 )
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.platform.models import Integration, OutboxEvent
 
 pytestmark = pytest.mark.asyncio
@@ -283,7 +283,7 @@ async def test_our_own_send_echoed_back_does_not_take_the_thread(tenant_ctx) -> 
     Meta echoes messages this system sent too. If a duplicate echo took the thread every time, the
     agent would silence itself with its own reply.
     """
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
@@ -324,7 +324,7 @@ async def test_our_own_send_echoed_back_does_not_take_the_thread(tenant_ctx) -> 
 
 
 async def test_a_replayed_echo_creates_one_handover(tenant_ctx) -> None:
-    from app.modules.ai.models import AIHandover
+    from app.applications.apparel.modules.ai.models import AIHandover
 
     session, tenant_id = tenant_ctx.session, tenant_ctx.tenant_id
     await _connected_channel(session, tenant_id)
@@ -340,7 +340,7 @@ async def test_a_handover_failure_fails_the_batch_so_it_is_retried(tenant_ctx, m
     Raising fails the webhook event, which Meta retries; the retry is safe because the message row
     is already deduped by wamid.
     """
-    import app.modules.ai.handover as handover
+    import app.applications.apparel.modules.ai.handover as handover
 
     async def explode(*_args, **_kwargs):  # noqa: ANN002, ANN003
         raise RuntimeError("handover store unavailable")

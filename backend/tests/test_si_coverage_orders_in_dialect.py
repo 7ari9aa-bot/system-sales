@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.coverage import coverage_gaps
+from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import coverage_gaps
 
 EVIDENCE = {"facts": [{"metric": "orders_placed", "value": "0", "source": "orders"}]}
 QUESTION = "قارن الطلبات والفلوس والإيراد آخر 15 يوم"

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.agents.customer.vision.retrieval import retrieve_candidates
-from app.modules.ai.models import ProductEmbedding
-from app.modules.catalog.models import Product, ProductImage
+from app.applications.apparel.modules.ai.agents.customer.vision.retrieval import retrieve_candidates
+from app.applications.apparel.modules.ai.models import ProductEmbedding
+from app.applications.apparel.modules.catalog.models import Product, ProductImage
 
 
 def _unit(dim: int, value: float = 1.0) -> list[float]:

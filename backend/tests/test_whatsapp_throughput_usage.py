@@ -8,7 +8,7 @@ idle number and an unmonitored one are different facts.
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway import whatsapp_throughput as tp
+from app.applications.apparel.modules.conversations.gateway import whatsapp_throughput as tp
 
 
 class _FakeRedis:

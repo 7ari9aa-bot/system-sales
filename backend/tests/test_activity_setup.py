@@ -24,7 +24,7 @@ from app.core.activity_setup import (
     skip_setup,
 )
 from app.core.errors import ValidationError
-from app.modules.catalog.models import Category
+from app.applications.apparel.modules.catalog.models import Category
 from app.modules.settings.presets import PRESETS
 from app.modules.settings.service import SettingsService
 

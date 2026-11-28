@@ -22,12 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import TextClause
 
 from app.core.errors import DomainError, ValidationError
-from app.modules.ai.models import AIHandover
-from app.modules.ai.tools import ToolSpec, get_tool, requires_approval, tool_to_openai_schema
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.conversations.models import Conversation
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.models import AIHandover
+from app.applications.apparel.modules.ai.tools import ToolSpec, get_tool, requires_approval, tool_to_openai_schema
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 # The language-only tool surface (scope cut, 2026-10-18).
 NEW_TOOLS = (
@@ -184,7 +184,7 @@ async def test_search_knowledge_requests_customer_facing_visibility(monkeypatch)
     regression) the staff-only hit would come back and both assertions below
     would fail.
     """
-    from app.modules.ai import knowledge
+    from app.applications.apparel.modules.ai import knowledge
 
     calls: list[dict] = []
 
@@ -238,7 +238,7 @@ async def test_search_knowledge_surfaces_a_misconfigured_embedding_model(
     fail loudly — the runtime records the failed call and the model receives
     an explicit error.
     """
-    from app.modules.ai import knowledge
+    from app.applications.apparel.modules.ai import knowledge
 
     async def _no_model(session, tenant_id, query, *, limit=5, visibility="customer_facing"):
         raise ValidationError("no model configured for alias embedding")
@@ -270,7 +270,7 @@ async def test_malformed_binding_is_a_controlled_tool_error() -> None:
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID:
-    from app.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.models import Warehouse
 
     warehouse = Warehouse(
         tenant_id=tenant_id,
@@ -321,7 +321,7 @@ async def _variant(
 
 
 async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> None:
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -349,8 +349,8 @@ async def test_search_catalog_returns_price_and_availability(db, tenant_ctx) -> 
 
 async def test_search_catalog_counts_only_the_shelf_the_cashier_sells_from(db, tenant_ctx) -> None:
     """A back-store warehouse must not make the agent say "متوفر" for goods the till lacks."""
-    from app.modules.inventory.models import InventoryBalance
-    from app.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -381,7 +381,7 @@ async def test_search_catalog_counts_only_the_shelf_the_cashier_sells_from(db, t
 
 async def test_search_catalog_sums_every_warehouse_when_no_till_exists(db, tenant_ctx) -> None:
     """A shop that has not set up a cashier yet keeps the all-warehouses behaviour."""
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -406,7 +406,7 @@ async def test_search_catalog_sums_every_warehouse_when_no_till_exists(db, tenan
 async def test_agent_quotes_the_same_unit_price_as_the_cashier(db, tenant_ctx) -> None:
     """The price ladder the till uses for qty 1 is the price the agent quotes."""
     from app.core.tenancy import resolve_tenant_currency
-    from app.modules.catalog.models import ProductPrice
+    from app.applications.apparel.modules.catalog.models import ProductPrice
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)  # base price 25.50
@@ -434,8 +434,8 @@ async def test_agent_quotes_the_same_unit_price_as_the_cashier(db, tenant_ctx) -
 async def test_search_catalog_reports_restock_when_empty(db, tenant_ctx) -> None:
     from datetime import date
 
-    from app.modules.ai.models import IncomingStock
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.ai.models import IncomingStock
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -475,8 +475,8 @@ async def test_search_catalog_hides_restock_from_an_in_stock_variant(db, tenant_
     a future shipment for something the customer can buy today."""
     from datetime import date
 
-    from app.modules.ai.models import IncomingStock
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.ai.models import IncomingStock
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -507,7 +507,7 @@ async def test_search_catalog_hides_restock_from_an_in_stock_variant(db, tenant_
 
 
 async def test_search_catalog_reports_sold_out_without_restock(db, tenant_ctx) -> None:
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -530,7 +530,7 @@ async def test_search_catalog_reports_sold_out_without_restock(db, tenant_ctx) -
 
 
 async def test_search_catalog_marks_the_low_band(db, tenant_ctx) -> None:
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _variant(db, tenant_id)
@@ -604,7 +604,7 @@ async def test_get_product_details_refuses_another_tenant(db, tenant_ctx) -> Non
 async def test_get_store_info_stops_at_the_token_budget(db, tenant_ctx) -> None:
     """Merchant content is unbounded Text: the pull stops at the budget
     instead of flooding the model's context with one prolific store."""
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     for i in range(40):
@@ -627,7 +627,7 @@ async def test_get_store_info_stops_at_the_token_budget(db, tenant_ctx) -> None:
 
 
 async def test_get_store_info_reads_customer_facing_items_only(db, tenant_ctx) -> None:
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -661,8 +661,8 @@ async def test_get_store_info_says_how_old_each_item_is(db, tenant_ctx) -> None:
     """The model cannot hedge a stale hours/policy answer if it cannot see
     its age. ISO + a `*_at` key: the fact ledger skips it, so the timestamp is
     visible to the model without becoming a numeral it may quote."""
-    from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.agents.customer.ledger import facts_from_tool_calls
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -687,7 +687,7 @@ async def test_get_store_info_says_how_old_each_item_is(db, tenant_ctx) -> None:
 async def test_get_store_info_reports_when_the_list_is_not_the_whole_store(db, tenant_ctx) -> None:
     """Silence about a policy must not read as "the store has none": a cut-off
     pull says so, whether the item cap or the token budget did the cutting."""
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     for i in range(40):
@@ -706,7 +706,7 @@ async def test_get_store_info_reports_when_the_list_is_not_the_whole_store(db, t
 
 
 async def test_get_store_info_is_not_truncated_when_everything_fits(db, tenant_ctx) -> None:
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     for i in range(3):
@@ -726,7 +726,7 @@ async def test_get_store_info_is_not_truncated_when_everything_fits(db, tenant_c
 
 
 async def _knowledge(db, tenant_id, titles, *, content="قصير"):
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     items = []
     for title in titles:
@@ -748,7 +748,7 @@ async def test_get_store_info_ranks_by_the_question_when_retrieval_works(
 ) -> None:
     """The relevant item is the LAST one by age and the budget would cut it:
     ranking has to happen before the cut, or the question changes nothing."""
-    from app.modules.ai import knowledge
+    from app.applications.apparel.modules.ai import knowledge
 
     tenant_id = tenant_ctx.tenant_id
     filler = await _knowledge(db, tenant_id, [f"بند {i}" for i in range(35)], content="ا" * 400)
@@ -780,7 +780,7 @@ async def test_get_store_info_still_answers_when_retrieval_is_down(
     """Hours and returns must not depend on an embedding vendor, and the outage
     must not be swallowed either: the items come back AND the result says the
     ranking was unavailable."""
-    from app.modules.ai import knowledge
+    from app.applications.apparel.modules.ai import knowledge
 
     tenant_id = tenant_ctx.tenant_id
     await _knowledge(db, tenant_id, ["مواعيد العمل"])
@@ -798,7 +798,7 @@ async def test_get_store_info_still_answers_when_retrieval_is_down(
 async def test_get_store_info_without_a_question_never_touches_retrieval(
     db, tenant_ctx, monkeypatch
 ) -> None:
-    from app.modules.ai import knowledge
+    from app.applications.apparel.modules.ai import knowledge
 
     tenant_id = tenant_ctx.tenant_id
     await _knowledge(db, tenant_id, ["مواعيد العمل"])
@@ -818,8 +818,8 @@ async def test_get_store_info_ranked_items_never_leak_hidden_visibility(
 ) -> None:
     """Even if retrieval returned a staff-only item id, the pull re-applies the
     customer_facing filter — ranking reorders, it never widens."""
-    from app.modules.ai import knowledge
-    from app.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai import knowledge
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
 
     tenant_id = tenant_ctx.tenant_id
     secret = KnowledgeItem(
@@ -955,7 +955,7 @@ def _search_patterns(query: str) -> tuple[str, list[str]]:
 
     from sqlalchemy.dialects import postgresql
 
-    from app.modules.ai.tools import _search_catalog
+    from app.applications.apparel.modules.ai.tools import _search_catalog
 
     session = _CapturingSession()
     asyncio.run(_search_catalog(session, uuid.uuid4(), query=query, limit=5))
@@ -1013,7 +1013,7 @@ def _search_sql(**kwargs: object) -> str:
 
     from sqlalchemy.dialects import postgresql
 
-    from app.modules.ai.tools import _search_catalog
+    from app.applications.apparel.modules.ai.tools import _search_catalog
 
     session = _CapturingSession()
     asyncio.run(_search_catalog(session, uuid.uuid4(), **kwargs))
@@ -1053,7 +1053,7 @@ def test_search_catalog_strips_the_article_and_matches_past_the_hamza() -> None:
     as its tail, and "احمر"'s tail "حمر" sits inside "أحمر" either way."""
     import asyncio
 
-    from app.modules.ai.tools import _search_catalog
+    from app.applications.apparel.modules.ai.tools import _search_catalog
 
     class _CapturingMulti:
         def __init__(self) -> None:
@@ -1081,7 +1081,7 @@ def test_search_catalog_reports_zero_matches_with_a_retry_hint() -> None:
     it does not invent a product."""
     import asyncio
 
-    from app.modules.ai.tools import _search_catalog
+    from app.applications.apparel.modules.ai.tools import _search_catalog
 
     session = _CapturingSession()
     result = asyncio.run(_search_catalog(session, uuid.uuid4(), query="حاجة مش موجودة"))
@@ -1119,7 +1119,7 @@ def test_search_catalog_keeps_the_sellable_gate() -> None:
 
 def test_the_search_tool_advertises_the_structured_specs() -> None:
     """The model can only pass a filter the tool's schema declares."""
-    from app.modules.ai.tools import SearchCatalogArgs
+    from app.applications.apparel.modules.ai.tools import SearchCatalogArgs
 
     fields = SearchCatalogArgs.model_fields
     assert "attributes" in fields
@@ -1247,7 +1247,7 @@ def test_get_my_orders_takes_no_customer_argument() -> None:
 
 
 async def _stocked_variant(db, tenant_id):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     variant = await _variant(db, tenant_id)
     warehouse = await InventoryService.get_default_warehouse(db, tenant_id)
@@ -1259,10 +1259,10 @@ async def _stocked_variant(db, tenant_id):
 
 async def _till_sale(db, tenant_id, *, phone: str | None, name="زبون الكاشير", qty=2):
     """A real till sale booked on a customer carrying ``phone`` (or a walk-in)."""
-    from app.modules.catalog.service import CatalogService
-    from app.modules.customers.service import CustomerService
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests._pos_sell import sell as pos_sell
 
     warehouse = await InventoryService.get_default_warehouse(db, tenant_id)
@@ -1298,7 +1298,7 @@ async def _till_sale(db, tenant_id, *, phone: str | None, name="زبون الك�
 
 async def _chat(db, tenant_id, *, channel: str, external_id: str):
     """A conversation on ``channel`` whose sender id is ``external_id``."""
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db, tenant_id, channel, external_id, name="عميل الشات"
@@ -1347,7 +1347,7 @@ async def test_a_till_invoice_opens_for_the_verified_whatsapp_phone(db, tenant_c
 
 
 async def test_the_returns_of_a_till_invoice_are_reported(db, tenant_ctx) -> None:
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     tenant_id = tenant_ctx.tenant_id
     sold, till, variant = await _till_sale(db, tenant_id, phone="01012345678")
@@ -1369,7 +1369,7 @@ async def test_the_returns_of_a_till_invoice_are_reported(db, tenant_ctx) -> Non
 
 
 async def test_a_chat_customer_opens_their_own_invoice_on_any_channel(db, tenant_ctx) -> None:
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     tenant_id = tenant_ctx.tenant_id
     variant = await _stocked_variant(db, tenant_id)
@@ -1412,10 +1412,10 @@ async def test_exchange_flow_open_the_invoice_then_offer_the_other_sizes(db, ten
     """The ground-shop exchange: the customer bought size M, asks for another
     size. Invoice number -> the invoice names the product -> the product's own
     variants show which sizes the till can actually hand over."""
-    from app.modules.catalog.service import CatalogService
-    from app.modules.customers.service import CustomerService
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests._pos_sell import sell as pos_sell
 
     tenant_id = tenant_ctx.tenant_id
@@ -1484,7 +1484,7 @@ async def test_exchange_flow_open_the_invoice_then_offer_the_other_sizes(db, ten
 def test_there_is_no_handover_reason_for_a_plain_purchase_or_question() -> None:
     """A browsing or buying customer is the agent's job. Handover reasons are
     only an unsolved problem or an explicit request for a person."""
-    from app.modules.ai.agents.customer.tools import HandoverToHumanArgs
+    from app.applications.apparel.modules.ai.agents.customer.tools import HandoverToHumanArgs
 
     allowed = set(HandoverToHumanArgs.model_fields["reason"].annotation.__args__)
     assert allowed == {"complex_problem", "missing_data", "customer_request", "complaint"}
@@ -1493,7 +1493,7 @@ def test_there_is_no_handover_reason_for_a_plain_purchase_or_question() -> None:
 
 
 def test_the_handover_tool_and_prompt_say_it_is_a_last_resort() -> None:
-    from app.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT
+    from app.applications.apparel.modules.ai.agents.customer.prompts import CUSTOMER_SYSTEM_PROMPT
 
     description = get_tool("handover_to_human").description
     assert "LAST resort" in description

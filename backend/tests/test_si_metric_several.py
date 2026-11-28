@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
 from tests.test_si_metric_tool import _orders, _same
 
 pytestmark = pytest.mark.usefixtures("db")
@@ -83,7 +83,7 @@ async def test_one_unknown_name_fails_the_whole_call_with_the_reads_own_message(
 async def test_the_merged_result_is_read_by_the_evidence_collector_like_any_other(db, tenant_ctx):
     """The runner rebuilds the evidence the number gate checks from each tool result's own lists.
     Both metrics' figures must be in it, or the model's second number would be refused."""
-    from app.modules.ai.agents.sales_intelligence.agent import _rebuild_evidence
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import _rebuild_evidence
 
     await _orders(db, tenant_ctx.tenant_id, n=4, days_ago=3, total="50.00", tag="e")
     result = await T._si_metric(db, tenant_ctx.tenant_id, mode="value", metric_name=TWO, days=30)

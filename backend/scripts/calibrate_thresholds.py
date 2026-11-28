@@ -29,15 +29,15 @@ from pathlib import Path
 from _bootstrap import load_settings, session_factory
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.agents.customer.evaluation.metrics import (
+from app.applications.apparel.modules.ai.agents.customer.evaluation.metrics import (
     CaseResult,
     confident_wrong_rate,
     hit_at_k,
     out_of_catalog_honesty,
     propose_thresholds,
 )
-from app.modules.ai.agents.customer.vision.reranker import rerank_candidates
-from app.modules.ai.agents.customer.vision.retrieval import retrieve_candidates
+from app.applications.apparel.modules.ai.agents.customer.vision.reranker import rerank_candidates
+from app.applications.apparel.modules.ai.agents.customer.vision.retrieval import retrieve_candidates
 
 MIME_BY_SUFFIX = {
     ".jpg": "image/jpeg",

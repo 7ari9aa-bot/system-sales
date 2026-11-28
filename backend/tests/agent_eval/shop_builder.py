@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select, text
 
-from app.modules.ai.models import KnowledgeItem, SupportPlaybook
-from app.modules.ai.policies import save_policy
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.ai.models import KnowledgeItem, SupportPlaybook
+from app.applications.apparel.modules.ai.policies import save_policy
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell
 from tests.agent_eval.case_schema import StoreFixture
 

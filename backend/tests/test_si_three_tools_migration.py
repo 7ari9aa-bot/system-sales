@@ -65,7 +65,7 @@ def test_the_migration_sits_after_the_current_head_and_names_every_old_tool() ->
 
 
 def test_the_old_names_match_what_the_code_no_longer_offers() -> None:
-    from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
 
     assert not set(OLD) & set(SI_TOOLS)
     # si_cashier arrived after this migration, so the three are a subset of today's set

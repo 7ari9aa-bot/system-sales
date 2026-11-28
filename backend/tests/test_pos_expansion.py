@@ -51,7 +51,7 @@ def test_close_counts_a_drawer_only_as_an_optional_body() -> None:
     body at all, exactly as before. The reconciliation route stays gone: the count rides on the
     close itself. ``test_pos_take_payments`` proves the three cases (required, refused, absent).
     """
-    import app.modules.pos.router as router
+    import app.applications.apparel.modules.pos.router as router
 
     model = router.CloseSessionRequest
     assert model.model_fields["counted_cash"].default is None
@@ -70,8 +70,8 @@ def _profile_payload(warehouse_id):
 
 
 async def test_profile_created_and_listed(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
 
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     profile = await PosProfileService.create(
@@ -87,8 +87,8 @@ async def test_profile_created_and_listed(db, tenant_ctx):
 
 
 async def test_duplicate_profile_code_is_refused(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
 
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     code = f"P-{uuid.uuid4().hex[:6]}"
@@ -104,9 +104,9 @@ async def test_duplicate_profile_code_is_refused(db, tenant_ctx):
 async def test_scan_resolves_a_registered_identifier(db, tenant_ctx):
     import uuid as _uuid
 
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     product = await CatalogService.create_product(

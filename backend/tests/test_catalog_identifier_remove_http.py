@@ -80,7 +80,7 @@ async def test_a_cashier_cannot_delete_a_scan_code(db, tenant_ctx):
 
 
 async def test_the_wrong_variant_in_the_url_deletes_nothing(db, tenant_ctx):
-    from app.modules.catalog.services import CatalogService
+    from app.applications.apparel.modules.catalog.services import CatalogService
 
     _shift, variant, _ = await till(db, tenant_ctx)
     owner = await ctx_for(db, tenant_ctx, "owner")

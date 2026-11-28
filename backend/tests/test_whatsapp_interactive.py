@@ -12,10 +12,10 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway import whatsapp_interactive as wi
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
-from app.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
+from app.applications.apparel.modules.conversations.gateway import whatsapp_interactive as wi
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
 
 
 def _buttons(**over) -> dict:

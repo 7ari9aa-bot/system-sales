@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway.messenger_profile import MessengerProfile
+from app.applications.apparel.modules.conversations.gateway.messenger_profile import MessengerProfile
 
 TOKEN = "page-token"
 

@@ -7,7 +7,7 @@ is exactly the value the dedupe check skips, so Meta resending the event stored 
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.instagram import instagram_adapter as A
+from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter as A
 
 
 def _reaction(action: str = "react", emoji: str = "love", ts: int = 1700000000000) -> dict:

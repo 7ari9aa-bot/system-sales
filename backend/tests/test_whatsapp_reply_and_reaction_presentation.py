@@ -13,11 +13,11 @@ import uuid
 
 import sqlalchemy as sa
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.models import Message
-from app.modules.conversations.routers.inbox import _present_messages
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.routers.inbox import _present_messages
+from app.applications.apparel.modules.conversations.service import ConversationService
 
 adapter = WhatsAppAdapter()
 # WhatsApp stamps each event with epoch seconds; a later event has a larger one.

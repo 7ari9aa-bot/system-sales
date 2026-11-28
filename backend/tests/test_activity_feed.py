@@ -12,13 +12,13 @@ from sqlalchemy import text
 from app.core.db import bind_tenant
 from app.main import create_app
 from app.modules.activity.service import KINDS, ActivityService, Cursor
-from app.modules.expenses.service import ExpenseService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.expenses.service import ExpenseService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 
 
 async def _shift(db, tenant_ctx, opening="100.00"):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     wh = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     reg = await PosService.create_register(

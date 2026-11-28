@@ -26,9 +26,9 @@ from app.core.security import (
     create_visitor_token,
     decode_visitor_token,
 )
-from app.modules.conversations.gateway.base import InboundMessage
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.webchat import webchat_adapter
+from app.applications.apparel.modules.conversations.gateway.base import InboundMessage
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.webchat import webchat_adapter
 
 # --- S6: SSRF guard ----------------------------------------------------------
 
@@ -325,7 +325,7 @@ async def test_webchat_list_messages_polling_success(monkeypatch) -> None:
     from httpx import ASGITransport, AsyncClient
 
     from app.main import create_app
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     app = create_app()
     tenant_id = uuid.uuid4()

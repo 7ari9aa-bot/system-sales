@@ -29,13 +29,13 @@ def test_browse_and_report_routes_are_mounted() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -48,8 +48,8 @@ async def _register(db, tenant_ctx):
 
 
 async def _sellable_variant(db, tenant_ctx, title="كوباية", price="25.00", stock=7):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -74,7 +74,7 @@ async def _sellable_variant(db, tenant_ctx, title="كوباية", price="25.00",
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون", source="pos"
@@ -82,7 +82,7 @@ async def _customer(db, tenant_ctx):
 
 
 async def test_browse_shows_price_and_stock(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -96,8 +96,8 @@ async def test_browse_shows_price_and_stock(db, tenant_ctx):
 
 
 async def test_browse_searches_by_title_and_skips_unsellable(db, tenant_ctx):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -119,7 +119,7 @@ async def test_browse_searches_by_title_and_skips_unsellable(db, tenant_ctx):
 
 
 async def test_report_reconciles_the_day(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(

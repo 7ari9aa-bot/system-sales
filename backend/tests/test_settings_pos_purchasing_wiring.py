@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import update
 
-import app.modules.customers.models  # noqa: F401  (pos_held_carts has an FK to customers)
+import app.applications.apparel.modules.customers.models  # noqa: F401  (pos_held_carts has an FK to customers)
 from app.modules.errors import ConflictError, ValidationError
 from app.modules.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
@@ -20,7 +20,7 @@ from tests.test_pos_line_discounts import _customer, _register, _sellable_varian
 
 
 async def _open_day(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     return await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -30,7 +30,7 @@ async def _open_day(db, tenant_ctx):
 
 
 async def test_a_cart_can_be_held_by_default(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant = await _sellable_variant(db, tenant_ctx)
@@ -44,7 +44,7 @@ async def test_a_cart_can_be_held_by_default(db, tenant_ctx):
 
 
 async def test_turning_hold_off_refuses_the_hold(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant = await _sellable_variant(db, tenant_ctx)
@@ -75,7 +75,7 @@ async def _sold_order(db, tenant_ctx, pos_session):
 
 
 async def _age_receipt(db, order_id, days):
-    from app.modules.pos.models import PosReceipt
+    from app.applications.apparel.modules.pos.models import PosReceipt
 
     await db.execute(
         update(PosReceipt)
@@ -86,7 +86,7 @@ async def _age_receipt(db, order_id, days):
 
 
 async def test_a_return_inside_the_window_is_accepted(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
@@ -102,7 +102,7 @@ async def test_a_return_inside_the_window_is_accepted(db, tenant_ctx):
 
 
 async def test_a_return_past_the_default_window_is_refused(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
@@ -118,7 +118,7 @@ async def test_a_return_past_the_default_window_is_refused(db, tenant_ctx):
 
 
 async def test_widening_the_window_accepts_the_same_old_sale(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
@@ -140,9 +140,9 @@ async def test_widening_the_window_accepts_the_same_old_sale(db, tenant_ctx):
 async def _po_and_line(db, tenant_ctx, quantity="10"):
     from decimal import Decimal
 
-    from app.modules.catalog.models import Product, ProductVariant
-    from app.modules.inventory.models import Warehouse
-    from app.modules.purchasing.service import PurchaseService, SupplierService
+    from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+    from app.applications.apparel.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.purchasing.service import PurchaseService, SupplierService
 
     tid = tenant_ctx.tenant_id
     wh = Warehouse(tenant_id=tid, name="WH-OR", code=f"OR{uuid.uuid4().hex[:5]}", is_active=True)
@@ -181,7 +181,7 @@ def _receipt_line(line, var, qty):
 
 
 async def test_over_receipt_is_refused_by_default(db, tenant_ctx):
-    from app.modules.purchasing.service import GoodsReceiptService
+    from app.applications.apparel.modules.purchasing.service import GoodsReceiptService
 
     po, line, var = await _po_and_line(db, tenant_ctx, "10")
     with pytest.raises(ValidationError, match="remain on the PO line"):
@@ -191,7 +191,7 @@ async def test_over_receipt_is_refused_by_default(db, tenant_ctx):
 
 
 async def test_allowing_over_receipt_accepts_the_extra_units(db, tenant_ctx):
-    from app.modules.purchasing.service import GoodsReceiptService
+    from app.applications.apparel.modules.purchasing.service import GoodsReceiptService
 
     po, line, var = await _po_and_line(db, tenant_ctx, "10")
     await SettingsService(db, tenant_ctx.tenant_id).set("purchasing.allow_over_receipt", True)
@@ -205,7 +205,7 @@ async def test_allowing_over_receipt_accepts_the_extra_units(db, tenant_ctx):
 
 
 async def test_a_partial_receipt_is_accepted_by_default(db, tenant_ctx):
-    from app.modules.purchasing.service import GoodsReceiptService
+    from app.applications.apparel.modules.purchasing.service import GoodsReceiptService
 
     po, line, var = await _po_and_line(db, tenant_ctx, "10")
     receipt = await GoodsReceiptService.create(
@@ -215,7 +215,7 @@ async def test_a_partial_receipt_is_accepted_by_default(db, tenant_ctx):
 
 
 async def test_turning_partial_receipt_off_demands_the_full_remainder(db, tenant_ctx):
-    from app.modules.purchasing.service import GoodsReceiptService
+    from app.applications.apparel.modules.purchasing.service import GoodsReceiptService
 
     po, line, var = await _po_and_line(db, tenant_ctx, "10")
     await SettingsService(db, tenant_ctx.tenant_id).set("purchasing.allow_partial_receipt", False)
@@ -257,10 +257,10 @@ async def test_the_shop_wide_setting_makes_a_named_customer_mandatory(db, tenant
 
 
 async def _policy(db, tenant_ctx, **kw):
-    from app.modules.inventory.services.replenishment import ReplenishmentService
+    from app.applications.apparel.modules.inventory.services.replenishment import ReplenishmentService
 
     variant = await _sellable_variant(db, tenant_ctx)
-    from app.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.models import Warehouse
 
     wh = Warehouse(
         tenant_id=tenant_ctx.tenant_id,
@@ -294,7 +294,7 @@ async def test_an_explicit_safety_stock_beats_the_shop_default(db, tenant_ctx):
 
 
 async def _exchange(db, tenant_ctx, pos_session, order_id, variant, **kw):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     replacement = await _sellable_variant(db, tenant_ctx)
     return await PosService.exchange(
@@ -324,7 +324,7 @@ async def test_a_longer_exchange_window_lets_an_old_sale_be_exchanged(db, tenant
 
 
 async def test_the_exchange_window_does_not_loosen_the_return_window(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
@@ -346,7 +346,7 @@ async def test_the_exchange_window_does_not_loosen_the_return_window(db, tenant_
 async def _on_hand(db, tenant_ctx, variant):
     from sqlalchemy import func, select
 
-    from app.modules.inventory.models import InventoryMovement
+    from app.applications.apparel.modules.inventory.models import InventoryMovement
 
     return int(
         (
@@ -361,7 +361,7 @@ async def _on_hand(db, tenant_ctx, variant):
 
 
 async def _return_one(db, tenant_ctx, pos_session, order_id, variant, **kw):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     return await PosService.return_sale(
         db,
@@ -405,7 +405,7 @@ async def test_the_cashiers_explicit_choice_beats_the_shop_default(db, tenant_ct
 async def _saved_reason(db, order_id):
     from sqlalchemy import select
 
-    from app.modules.pos.models import PosReturnLine
+    from app.applications.apparel.modules.pos.models import PosReturnLine
 
     return (
         await db.execute(
@@ -417,7 +417,7 @@ async def _saved_reason(db, order_id):
 async def test_a_return_reason_from_the_shops_list_is_saved_on_the_line(db, tenant_ctx):
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     await PosService.return_sale(
         db,
@@ -437,7 +437,7 @@ async def test_a_return_without_a_reason_is_still_accepted(db, tenant_ctx):
 
 
 async def test_a_reason_the_shop_did_not_list_is_refused(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     variant, order_id = await _sold_order(db, tenant_ctx, pos_session)
@@ -452,7 +452,7 @@ async def test_a_reason_the_shop_did_not_list_is_refused(db, tenant_ctx):
 
 
 async def test_the_owner_can_replace_the_reason_list(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     await SettingsService(db, tenant_ctx.tenant_id).set("pos.return_reasons", ["too_small"])
     pos_session = await _open_day(db, tenant_ctx)
@@ -471,7 +471,7 @@ async def test_the_owner_can_replace_the_reason_list(db, tenant_ctx):
 
 
 async def test_return_policy_reports_the_shops_choices(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     settings = SettingsService(db, tenant_ctx.tenant_id)
     await settings.set("pos.return_restock_default", False)
@@ -485,7 +485,7 @@ async def test_return_policy_reports_the_shops_choices(db, tenant_ctx):
 
 
 async def test_return_policy_resolves_exchange_zero_to_the_return_window(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     settings = SettingsService(db, tenant_ctx.tenant_id)
     await settings.set("pos.return_max_days", 21)
@@ -520,7 +520,7 @@ async def _sold_two(db, tenant_ctx, pos_session):
 
 
 async def _return_lines(db, tenant_ctx, pos_session, order_id, lines, **kw):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     return await PosService.return_sale(
         db,
@@ -610,7 +610,7 @@ async def test_a_piece_kept_off_the_shelf_can_still_be_shelved_by_a_later_return
 
 
 async def test_two_lines_for_one_piece_with_different_decisions_are_refused(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     jacket, _shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)
@@ -630,7 +630,7 @@ async def test_two_lines_for_one_piece_with_different_decisions_are_refused(db, 
 
 
 async def test_an_exchange_decides_the_shelf_piece_by_piece_too(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     pos_session = await _open_day(db, tenant_ctx)
     jacket, shirt, order_id = await _sold_two(db, tenant_ctx, pos_session)

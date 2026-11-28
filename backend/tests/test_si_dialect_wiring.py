@@ -10,12 +10,12 @@ from __future__ import annotations
 import pytest
 import sqlalchemy as sa
 
-from app.modules.ai.agents.sales_intelligence import dialect
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent
-from app.modules.ai.owner_memory import OwnerMemoryService
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from app.modules.identity.models import Tenant
 from app.modules.settings.registry import Scope
 from app.modules.settings.service import SettingsService
@@ -117,7 +117,7 @@ async def test_the_directive_comes_after_the_rules_and_the_persona(db, tenant_ct
 
 async def test_the_customer_agent_never_gets_a_dialect_directive(db, tenant_ctx, monkeypatch):
     """The customer agent runs through the same runner. It must read exactly what it read before."""
-    from app.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     seen = _record(monkeypatch)
     await _shop(db, tenant_ctx.tenant_id, currency="EGP", chosen="gulf")

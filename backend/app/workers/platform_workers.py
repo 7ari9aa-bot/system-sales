@@ -227,8 +227,8 @@ async def retry_failed_webhook_events(
     failed/dead).
     """
     from app.core.config import get_settings
-    from app.modules.conversations.gateway.ingest import IngestService
-    from app.modules.conversations.gateway.registry import get_adapter
+    from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+    from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
 
     stmt = (
         select(WebhookEvent)
@@ -295,8 +295,8 @@ async def ingest_queued_webhook_event(
     Returns 1 if the row was handled (processed or quarantined), 0 if it was
     already terminal (no-op).
     """
-    from app.modules.conversations.gateway.ingest import IngestService
-    from app.modules.conversations.gateway.registry import get_adapter
+    from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+    from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
 
     # isolation twice: explicit tenant filter + the bound GUC on FORCE-RLS.
     row = (

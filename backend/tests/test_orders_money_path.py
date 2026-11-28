@@ -39,21 +39,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.schemas import deserialize
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import service as orders_service
-from app.modules.orders.models import Order, OrderPayment, Refund
-from app.modules.orders.money import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import service as orders_service
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.orders.money import (
     net_collected,
     order_balance,
     positive_money,
     reconciliation_refusal,
     to_money,
 )
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import OutboxEvent
 
 SERVICE_TREE = ast.parse(pathlib.Path(orders_service.__file__).read_text(encoding="utf-8"))
@@ -225,7 +225,7 @@ def test_the_money_rules_are_reached_from_the_real_service_methods() -> None:
 def test_the_orders_service_imports_the_money_module() -> None:
     """The rules live in ``orders.money`` and are imported, not re-implemented."""
     assert any(
-        isinstance(node, ast.ImportFrom) and node.module == "app.modules.orders.money"
+        isinstance(node, ast.ImportFrom) and node.module == "app.applications.apparel.modules.orders.money"
         for node in SERVICE_TREE.body
     )
 

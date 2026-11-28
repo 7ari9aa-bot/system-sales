@@ -29,7 +29,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.modules.ai.agents.customer.vision.indexer import (
+from app.applications.apparel.modules.ai.agents.customer.vision.indexer import (
     sweep_unindexed_product_images,
 )
 
@@ -172,7 +172,7 @@ def sweep_sessions(monkeypatch, sessions):
 
 @pytest.fixture()
 def fake_gateway(monkeypatch):
-    from app.modules.ai import gateway as gateway_mod
+    from app.applications.apparel.modules.ai import gateway as gateway_mod
 
     fake = _ScriptedGateway()
     monkeypatch.setattr(gateway_mod.AIGateway, "embed_vision", fake.embed_vision)

@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.conversations.instagram_insights import (
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.instagram_insights import (
     StoryInsightsService,
     is_below_threshold,
 )

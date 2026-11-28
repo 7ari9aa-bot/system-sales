@@ -35,8 +35,8 @@ from app.main import create_app
 from app.modules.automation.models import Workflow
 from app.modules.automation.service import WorkflowService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.orders.models import Order
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.orders.service import OrderService
 
 # ---------------------------------------------------------------------------
 # Doubles
@@ -369,7 +369,7 @@ async def test_workflow_conditional_writes_against_the_database(
 async def test_order_status_if_match_round_trip_against_the_database(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,

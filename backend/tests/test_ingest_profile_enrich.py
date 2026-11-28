@@ -10,7 +10,7 @@ import uuid
 
 import pytest
 
-from app.modules.conversations.gateway import ingest as ingest_module
+from app.applications.apparel.modules.conversations.gateway import ingest as ingest_module
 
 
 class _Scheduled:

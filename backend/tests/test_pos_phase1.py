@@ -36,7 +36,7 @@ def test_phase1_routes_are_mounted() -> None:
 
 
 def test_profile_wire_accepts_default_method() -> None:
-    from app.modules.pos.router import CreateProfileRequest
+    from app.applications.apparel.modules.pos.router import CreateProfileRequest
 
     body = CreateProfileRequest(
         name="Till",
@@ -50,7 +50,7 @@ def test_profile_wire_accepts_default_method() -> None:
 def test_profile_wire_refuses_unknown_default_method() -> None:
     from pydantic import ValidationError as PydanticValidationError
 
-    from app.modules.pos.router import CreateProfileRequest
+    from app.applications.apparel.modules.pos.router import CreateProfileRequest
 
     with pytest.raises(PydanticValidationError):
         CreateProfileRequest(
@@ -63,8 +63,8 @@ def test_profile_wire_refuses_unknown_default_method() -> None:
 
 def test_stale_session_is_refused_fresh_one_is_not() -> None:
     from app.modules.errors import ConflictError
-    from app.modules.pos.models import PosSession
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosSession
+    from app.applications.apparel.modules.pos.service import PosService
 
     fresh = PosSession(register_id=uuid.uuid4(), opened_at=datetime.now(UTC))
     PosService._ensure_session_current(fresh)
@@ -78,13 +78,13 @@ def test_stale_session_is_refused_fresh_one_is_not() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx, **kwargs):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -98,8 +98,8 @@ async def _register(db, tenant_ctx, **kwargs):
 
 
 async def _sellable_variant(db, tenant_ctx, price="25.00"):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -124,7 +124,7 @@ async def _sellable_variant(db, tenant_ctx, price="25.00"):
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون نقدي", source="pos"
@@ -133,7 +133,7 @@ async def _customer(db, tenant_ctx):
 
 async def test_one_open_drawer_per_user(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register_a = await _register(db, tenant_ctx)
     register_b = await _register(db, tenant_ctx)
@@ -159,9 +159,9 @@ async def test_one_open_drawer_per_user(db, tenant_ctx):
 
 async def test_per_method_floats_are_written_and_cash_mirrors(db, tenant_ctx):
 
-    from app.modules.pos.models import PosSessionFloat
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosSessionFloat
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     profile = await PosProfileService.create(
@@ -196,8 +196,8 @@ async def test_per_method_floats_are_written_and_cash_mirrors(db, tenant_ctx):
 
 async def test_float_method_outside_profile_is_refused(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     profile = await PosProfileService.create(
@@ -221,7 +221,7 @@ async def test_float_method_outside_profile_is_refused(db, tenant_ctx):
 
 async def test_stale_session_refuses_to_sell(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -245,7 +245,7 @@ async def test_stale_session_refuses_to_sell(db, tenant_ctx):
 
 
 async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(
@@ -278,8 +278,8 @@ async def test_close_preview_shows_the_days_figures_and_closing_balance(db, tena
 
 async def test_profile_cannot_be_disabled_with_open_session(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     profile = await PosProfileService.create(
@@ -320,7 +320,7 @@ async def test_closing_a_shift_clears_its_parked_carts_and_only_its_own(db, tena
     Another drawer's carts are not touched.
     """
     from app.modules.errors import NotFoundError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     other_register = await _register(db, tenant_ctx)

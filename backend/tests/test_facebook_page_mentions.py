@@ -7,7 +7,7 @@ pin the mention shape, its idempotency key and that ordinary feed comments still
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.facebook import FacebookPageAdapter
+from app.applications.apparel.modules.conversations.gateway.facebook import FacebookPageAdapter
 
 
 def _payload(*changes: dict) -> dict:

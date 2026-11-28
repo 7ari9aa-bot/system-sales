@@ -20,10 +20,10 @@ from app.core.middleware import (
     MAX_FACEBOOK_VIDEO_UPLOAD_BYTES,
     BodySizeLimitMiddleware,
 )
-from app.modules.conversations import facebook_service as fs
-from app.modules.conversations.facebook_service import FacebookService
-from app.modules.conversations.gateway import facebook_pages as fp
-from app.modules.conversations.gateway import facebook_video as fv
+from app.applications.apparel.modules.conversations import facebook_service as fs
+from app.applications.apparel.modules.conversations.facebook_service import FacebookService
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_video as fv
 
 FIX = Path(__file__).parent / "fixtures"
 CREDS = {"api_key": "page-token", "account_id": "111"}
@@ -597,7 +597,7 @@ async def test_no_other_facebook_route_gets_the_larger_body(method, path):
 
 
 def test_the_two_routes_exist_and_read_the_raw_file():
-    from app.modules.conversations.routers import facebook_pages as r
+    from app.applications.apparel.modules.conversations.routers import facebook_pages as r
 
     routes = {(m, x.path) for x in r.router.routes for m in x.methods}
     for want in (

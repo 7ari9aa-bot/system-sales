@@ -12,7 +12,7 @@ from datetime import timedelta
 import pytest
 
 from app.core.profit_report import ProfitReportService
-from app.modules.catalog.models import Brand, Product
+from app.applications.apparel.modules.catalog.models import Brand, Product
 from tests.test_profit_report import DAY, _sale, _variant, _wh
 
 pytestmark = pytest.mark.asyncio

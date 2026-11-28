@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.pos import receipt_settings as rs
+from app.applications.apparel.modules.pos import receipt_settings as rs
 from app.modules.settings import registry as reg
 
 _DEFAULTS = {"print.copies": 1, "print.paper_width": "80mm", "pos.exchange_max_days": 0}

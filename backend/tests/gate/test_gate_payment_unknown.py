@@ -40,9 +40,9 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ConflictError
-from app.modules.customers.service import CustomerService
-from app.modules.orders.models import Order, OrderPayment
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment
+from app.applications.apparel.modules.orders.service import OrderService
 
 pytestmark = [pytest.mark.gate]
 

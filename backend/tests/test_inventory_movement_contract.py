@@ -36,9 +36,9 @@ import uuid
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from app.modules.inventory import service as inventory_service
-from app.modules.inventory.router import MovementRequest
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory import service as inventory_service
+from app.applications.apparel.modules.inventory.router import MovementRequest
+from app.applications.apparel.modules.inventory.service import InventoryService
 
 # Reasons every writer in the codebase passes today, plus the two hold reasons.
 PHYSICAL_REASONS = {
@@ -95,7 +95,7 @@ def test_service_only_reasons_are_not_accepted_from_the_api() -> None:
     """A hand-typed supplier return would fake goods leaving that no document claims."""
     import re
 
-    from app.modules.inventory.services._common import MOVEMENT_REASON_PATTERN
+    from app.applications.apparel.modules.inventory.services._common import MOVEMENT_REASON_PATTERN
 
     for reason in PHYSICAL_REASONS - SERVICE_ONLY_REASONS:
         assert re.match(MOVEMENT_REASON_PATTERN, reason), reason

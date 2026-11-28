@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 
 from app.core.audit import write_audit_row
 from app.core.errors import ConflictError, PayloadTooLargeError, ValidationError
-from app.modules.catalog.models import ProductVariant as Variant
+from app.applications.apparel.modules.catalog.models import ProductVariant as Variant
 from app.modules.identity.deps import TenantContext, require_permission
 from app.modules.imports import service
 from app.modules.imports.models import ImportSession
@@ -143,7 +143,7 @@ async def upload_image_zip(ctx: Ctx, request: Request, filename: str = "images.z
     import zipfile
 
     from app.core.storage import FetchedMedia, get_storage
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
     from app.modules.imports.image_zip import (
         MAX_ENTRIES,
         MAX_IMAGES_PER_SKU,

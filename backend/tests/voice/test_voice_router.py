@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.chat import service as chat_service
 from app.modules.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,

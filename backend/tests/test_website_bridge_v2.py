@@ -17,10 +17,10 @@ from __future__ import annotations
 import uuid
 
 from app.core.config import get_settings
-from app.modules.catalog import website_platform as bridge
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.catalog import website_platform as bridge
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
 
 
 async def _warehouse(db, tenant_id) -> Warehouse:

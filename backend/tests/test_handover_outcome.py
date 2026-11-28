@@ -21,14 +21,14 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.ai.handover import OPEN_HANDOVER_STATUSES, request_human_takeover
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, AIHandover
-from app.modules.ai.router import resolve_handover
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Conversation, Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.handover import OPEN_HANDOVER_STATUSES, request_human_takeover
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, AIHandover
+from app.applications.apparel.modules.ai.router import resolve_handover
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.models import Conversation, Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
 
 # ------------------------------------------------------------- the intake ----
@@ -68,7 +68,7 @@ async def _inbound(db: AsyncSession, tenant_id: uuid.UUID, body: str):
 
 async def test_the_model_escalation_tool_creates_the_handover(db, tenant_ctx) -> None:
     """The reason vocabulary now has a MODEL producer: handover_to_human."""
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     tenant_id = tenant_ctx.tenant_id
     await _customer_agent(db, tenant_id)
@@ -114,7 +114,7 @@ async def test_an_ordinary_question_does_not_hand_over(db, tenant_ctx, monkeypat
     _customer, conversation, _message = await _inbound(db, tenant_id, "عايز أعرف السعر")
 
     async def answered(self, session, tenant_id_, **kwargs):
-        from app.modules.ai.runtime import AgentRunResult
+        from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
         # A price is a figure, so it needs a tool result behind it — the turn
         # withholds an unsourced number (and that withholding IS a handover).
@@ -289,7 +289,7 @@ async def test_a_dead_handover_does_not_jail_the_conversation_forever(db, tenant
     await _set_status(db, tenant_id, conversation.id, "waiting_human")
 
     async def answered(self, session, tenant_id_, **kwargs):
-        from app.modules.ai.runtime import AgentRunResult
+        from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
         return AgentRunResult(content="أهلاً بيك!", guardrail_decision="allow")
 
@@ -372,7 +372,7 @@ async def test_a_staff_reply_keeps_the_human_commitment(db, tenant_ctx, monkeypa
 
     async def counted_run(self, session, tenant_id_, **kwargs):
         ai_calls.append(kwargs.get("user_message"))
-        from app.modules.ai.runtime import AgentRunResult
+        from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
         return AgentRunResult(content="should not happen", guardrail_decision="allow")
 
@@ -412,7 +412,7 @@ async def test_an_resolved_handover_releases_the_conversation(db, tenant_ctx, mo
     await db.flush()
 
     async def answered(self, session, tenant_id_, **kwargs):
-        from app.modules.ai.runtime import AgentRunResult
+        from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
         return AgentRunResult(content="رجعنا ليك", guardrail_decision="allow")
 

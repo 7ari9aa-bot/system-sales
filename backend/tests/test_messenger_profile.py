@@ -11,8 +11,8 @@ import uuid
 
 import httpx
 
-from app.modules.conversations.gateway.base import ProviderCredentials
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.base import ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
 CREDS = ProviderCredentials(config={"api_key": "PAGE-TOKEN"})
 
@@ -57,7 +57,7 @@ async def test_no_token_means_no_call():
 
 
 async def test_the_service_names_the_customer_and_keeps_a_manual_name(monkeypatch):
-    from app.modules.conversations import customer_profile as cp
+    from app.applications.apparel.modules.conversations import customer_profile as cp
 
     class _Customer:
         def __init__(self, name):
@@ -103,7 +103,7 @@ async def test_the_service_names_the_customer_and_keeps_a_manual_name(monkeypatc
 
 
 async def test_a_refusal_is_recorded_so_it_is_not_retried_on_every_message(monkeypatch):
-    from app.modules.conversations import customer_profile as cp
+    from app.applications.apparel.modules.conversations import customer_profile as cp
 
     class _Customer:
         id = uuid.uuid4()

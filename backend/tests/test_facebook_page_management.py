@@ -1,6 +1,6 @@
 """Facebook Page management: the field matrix, and the Graph call behind each control.
 
-Verified against the real client (app/modules/conversations/gateway/facebook_pages.py), not taken
+Verified against the real client (app/applications/apparel/modules/conversations/gateway/facebook_pages.py), not taken
 from the audit: posts, Reels, Stories, video, comments and insights already existed, while the Page
 itself could not be edited and a post could not be pinned or hidden.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.facebook_pages import (
+from app.applications.apparel.modules.conversations.gateway.facebook_pages import (
     EDITABLE_PAGE_FIELDS,
     PAGE_FIELD_MATRIX,
     FacebookPagesClient,

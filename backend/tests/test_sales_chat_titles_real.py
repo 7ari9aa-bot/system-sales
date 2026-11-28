@@ -10,8 +10,8 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.ai.chat.titles import TITLE_LIMIT
-from app.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.chat.titles import TITLE_LIMIT
+from app.applications.apparel.modules.ai.gateway import AIGateway
 from tests import test_sales_chat_real_transaction as _real
 
 ANSWER, _client, _result = _real.ANSWER, _real._client, _real._result
@@ -34,7 +34,7 @@ def _analysis(monkeypatch):
     async def fake(session, tenant_id, *, agent_id, question, runner=None, history=None, **_):
         return _result()
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
 
 
 def _model(monkeypatch, reply=None, *, boom=False):

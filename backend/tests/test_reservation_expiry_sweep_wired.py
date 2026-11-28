@@ -35,15 +35,15 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.models import (
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.models import (
     InventoryMovement,
     InventoryReservation,
     Warehouse,
 )
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 

@@ -30,9 +30,9 @@ from app.core.guardrails import (
     default_guardrail,
     screen_inbound,
 )
-from app.modules.ai.models import Agent, AgentRun
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.models import Agent, AgentRun
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 
 TENANT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000a2")
 CLEAN_REPLY = "Your order is on the way and should arrive tomorrow."

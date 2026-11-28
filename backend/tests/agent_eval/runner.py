@@ -14,12 +14,12 @@ from dataclasses import dataclass
 
 from sqlalchemy import select, text
 
-from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
-from app.modules.ai.core.provisioning import provision_canonical_agents
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunner
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.customers.models import Customer
 from tests.agent_eval.case_schema import Case
 from tests.agent_eval.graders import CaseResult, Observed, canonical_number, grade, numerals
 from tests.agent_eval.shop_builder import BuiltShop, build_shop
@@ -67,7 +67,7 @@ async def _apply_production_exit(db, tenant_id, conversation_id, outcome) -> Non
     handover (hooks.py, "no silence" rule). A harness that skipped this would record a blocked
     reply as "not handed over" and misreport a rule that production enforces.
     """
-    from app.modules.ai.handover import request_human_takeover
+    from app.applications.apparel.modules.ai.handover import request_human_takeover
 
     reason = note = None
     if outcome.blocked_reason == "empty_turn":
@@ -116,7 +116,7 @@ async def run_case(
     ).scalar_one()
     built: BuiltShop = await build_shop(db, tenant_id, case.store)
 
-    from app.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.conversations.models import Conversation
 
     customer = Customer(tenant_id=tenant_id, name="عميل الشات")
     db.add(customer)

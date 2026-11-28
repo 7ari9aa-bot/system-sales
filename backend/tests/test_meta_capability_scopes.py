@@ -16,8 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.customers import meta_oauth
-from app.modules.customers.meta_scopes import (
+from app.applications.apparel.modules.customers import meta_oauth
+from app.applications.apparel.modules.customers.meta_scopes import (
     FACEBOOK_PAGE_SCOPES,
     FACEBOOK_SCOPES,
     MESSENGER_SCOPES,
@@ -49,8 +49,8 @@ def test_the_private_reply_is_the_one_facebook_feature_that_needs_the_inbox_gran
     It is reported as `needs_permission` until the Messenger connection on the same Page grants
     `pages_messaging`, instead of being smuggled into the Page dialog.
     """
-    from app.modules.customers.capability_states import _CAPABILITIES
-    from app.modules.customers.meta_scopes import (
+    from app.applications.apparel.modules.customers.capability_states import _CAPABILITIES
+    from app.applications.apparel.modules.customers.meta_scopes import (
         FACEBOOK_PRIVATE_REPLY_SCOPES,
         missing_private_reply_scopes,
     )

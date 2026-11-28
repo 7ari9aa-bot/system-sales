@@ -12,8 +12,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.orders.models import Order, OrderItem
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 
@@ -172,7 +172,7 @@ async def test_returning_one_line_at_a_time_never_exceeds_the_invoice(db, tenant
 
 
 def test_line_title_names_the_product_and_adds_the_variant_only_when_it_says_something() -> None:
-    from app.modules.orders.service import line_title
+    from app.applications.apparel.modules.orders.service import line_title
 
     assert line_title("قميص قطن", "عادي") == "قميص قطن"  # the default variant adds nothing
     assert line_title("قميص قطن", "") == "قميص قطن"
@@ -184,7 +184,7 @@ def test_line_title_names_the_product_and_adds_the_variant_only_when_it_says_som
 
 
 def test_line_title_uses_size_and_colour_when_the_variant_has_no_title_of_its_own() -> None:
-    from app.modules.orders.service import line_title
+    from app.applications.apparel.modules.orders.service import line_title
 
     # What the add-product screen stores: no variant title, the choice lives in option_values.
     options = {"size": "M", "color": "أسود"}
@@ -204,7 +204,7 @@ def test_line_title_uses_size_and_colour_when_the_variant_has_no_title_of_its_ow
 async def test_the_stored_invoice_line_carries_the_product_name(db, tenant_ctx) -> None:
     from sqlalchemy import select
 
-    from app.modules.orders.models import OrderItem
+    from app.applications.apparel.modules.orders.models import OrderItem
 
     pos_session, sold, variants = await _three_items_one_cent_discount(db, tenant_ctx)
     items = (

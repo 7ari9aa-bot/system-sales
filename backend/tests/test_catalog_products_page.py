@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from tests._pos_helpers import ctx_for
 from tests.test_catalog_product_intake import _call
 

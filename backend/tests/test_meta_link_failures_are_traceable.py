@@ -17,7 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core import meta_diagnostics
 from app.core.errors import ValidationError
 from app.core.security import create_access_token, create_oauth_state_token
-from app.modules.customers import meta_oauth as mo
+from app.applications.apparel.modules.customers import meta_oauth as mo
 from tests.test_meta_oauth import _app, _config_patch, _popup_result
 
 pytestmark = pytest.mark.asyncio

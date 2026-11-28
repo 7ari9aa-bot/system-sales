@@ -3,7 +3,7 @@
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.outbound_media import (
+from app.applications.apparel.modules.conversations.outbound_media import (
     CAPTION_MAX,
     MAX_BYTES,
     MB,

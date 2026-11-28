@@ -10,7 +10,7 @@ changing app/modules/conversations/gateway/whatsapp_interactive.py:
 import json
 from pathlib import Path
 
-from app.modules.conversations.gateway.whatsapp_interactive import build_interactive
+from app.applications.apparel.modules.conversations.gateway.whatsapp_interactive import build_interactive
 
 OUT = (
     Path(__file__).resolve().parents[2]

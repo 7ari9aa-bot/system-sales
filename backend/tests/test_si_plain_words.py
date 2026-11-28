@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.plain_words import KNOWN, plain_words
+from app.applications.apparel.modules.ai.agents.sales_intelligence.plain_words import KNOWN, plain_words
 
 
 def test_a_known_name_in_brackets_after_its_word_is_dropped_not_doubled():
@@ -78,14 +78,14 @@ def test_it_is_idempotent():
 
 
 def test_every_registered_metric_has_a_shop_word():
-    from app.modules.analytics.semantic import all_metrics
+    from app.applications.apparel.modules.analytics.semantic import all_metrics
 
     missing = [m for m in all_metrics() if m not in KNOWN]
     assert not missing, f"metrics the owner could see raw: {missing}"
 
 
 def test_every_dimension_a_tool_accepts_has_a_shop_word():
-    from app.modules.analytics.semantic import all_metrics
+    from app.applications.apparel.modules.analytics.semantic import all_metrics
 
     dims = {d for m in all_metrics().values() for d in (m.dimensions_allowed or ())}
     missing = sorted(d for d in dims if "_" in d and d not in KNOWN)

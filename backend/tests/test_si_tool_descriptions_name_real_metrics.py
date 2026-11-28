@@ -11,11 +11,11 @@ later cannot leave the description lying.
 
 from __future__ import annotations
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _metric_registry,
     register_si_tools,
 )
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.tools import get_tool
 
 METRIC_TOOLS = ("si_metric",)
 

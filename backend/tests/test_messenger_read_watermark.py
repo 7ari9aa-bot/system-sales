@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.modules.conversations.gateway import ingest as ingest_module
-from app.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway import ingest as ingest_module
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 
 
 class _Result:

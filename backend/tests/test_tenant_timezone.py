@@ -49,9 +49,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.analytics import router as analytics_router
-from app.modules.analytics import service as analytics_service
-from app.modules.analytics.timekit import (
+from app.applications.apparel.modules.analytics import router as analytics_router
+from app.applications.apparel.modules.analytics import service as analytics_service
+from app.applications.apparel.modules.analytics.timekit import (
     FALLBACK_TIMEZONE,
     REPORTING_TZ_ENV,
     UnknownTimezoneError,

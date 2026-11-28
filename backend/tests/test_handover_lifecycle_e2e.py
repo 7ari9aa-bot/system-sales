@@ -17,13 +17,13 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.modules.ai.handover import request_human_takeover
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, AIHandover
-from app.modules.ai.router import claim_handover, resolve_handover
-from app.modules.conversations.models import Conversation
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.handover import request_human_takeover
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, AIHandover
+from app.applications.apparel.modules.ai.router import claim_handover, resolve_handover
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 
 def _ctx(db, tenant_ctx) -> SimpleNamespace:
@@ -240,7 +240,7 @@ async def test_the_agent_that_exists_is_used(db, tenant_ctx, monkeypatch) -> Non
     not about what a model would say, and a real turn would need an embedding
     provider configured.
     """
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -266,7 +266,7 @@ async def test_the_agent_that_exists_is_used(db, tenant_ctx, monkeypatch) -> Non
         calls["count"] += 1
         return TurnOutcome(reply="عندنا مقاس M و L", state_version=0)
 
-    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.hooks.run_customer_turn", fake_turn)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -303,7 +303,7 @@ async def test_an_empty_reply_hands_over_instead_of_silence(db, tenant_ctx, monk
     exhausted its step budget without a final assistant message). Silence is
     not an answer — a human takes the conversation.
     """
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -321,7 +321,7 @@ async def test_an_empty_reply_hands_over_instead_of_silence(db, tenant_ctx, monk
     async def fake_turn(*args, **kwargs):
         return TurnOutcome(reply=None)
 
-    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.hooks.run_customer_turn", fake_turn)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -349,7 +349,7 @@ async def test_an_empty_reply_hands_over_instead_of_silence(db, tenant_ctx, monk
 async def test_a_non_product_image_hands_over_deterministically(db, tenant_ctx, monkeypatch):
     """A payment proof or complaint photo is a HUMAN's job — and the handover is
     the coordinator's decision, not the model's response to a tool error."""
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -371,7 +371,7 @@ async def test_a_non_product_image_hands_over_deterministically(db, tenant_ctx, 
             handover_note="image:payment_proof_requires_human",
         )
 
-    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.hooks.run_customer_turn", fake_turn)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -399,7 +399,7 @@ async def test_a_non_product_image_hands_over_deterministically(db, tenant_ctx, 
 def test_the_classifier_verdict_maps_deterministically() -> None:
     """The pure mapping: a failed vision call on a non-product image IS a
     handover, a successful one is not, and an unrelated error is not."""
-    from app.modules.ai.agents.customer.turn import _image_handoff_reason
+    from app.applications.apparel.modules.ai.agents.customer.turn import _image_handoff_reason
 
     payment = {
         "name": "find_product_by_image",
@@ -449,7 +449,7 @@ async def _stubbed_turn(db, tenant_id, monkeypatch, fake_turn) -> Conversation:
         return True
 
     monkeypatch.setattr("app.modules.billing.service.EntitlementService.can", entitled)
-    monkeypatch.setattr("app.modules.ai.hooks.run_customer_turn", fake_turn)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.hooks.run_customer_turn", fake_turn)
 
     conversation = await _conversation(db, tenant_id)
     await ConversationService.add_message(
@@ -478,7 +478,7 @@ async def test_a_grounding_blocked_run_with_tool_evidence_is_low_confidence(
     """§37's `low_confidence` finally has its producer: the run gathered tool
     evidence and STILL had its reply withheld — the model had real data in
     front of it and could not answer confidently."""
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     async def fake_turn(*args, **kwargs):
         return TurnOutcome(
@@ -501,7 +501,7 @@ async def test_a_grounding_blocked_run_without_tools_stays_failure(
 ) -> None:
     """No tool call means the run never looked at the shop: the generic
     failure reason keeps its original meaning."""
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     async def fake_turn(*args, **kwargs):
         return TurnOutcome(reply=None, blocked_reason="grounding:unsourced numeral: 14")
@@ -519,7 +519,7 @@ async def test_a_guardrail_withheld_run_with_tool_evidence_is_low_confidence(
 ) -> None:
     """The guardrail path flows through the same mapping: evidence gathered,
     output withheld — the run was not confident enough to send."""
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     async def fake_turn(*args, **kwargs):
         return TurnOutcome(
@@ -539,7 +539,7 @@ async def test_a_guardrail_withheld_run_with_tool_evidence_is_low_confidence(
 async def test_a_guardrail_withheld_run_without_tools_stays_guardrail(
     db, tenant_ctx, monkeypatch
 ) -> None:
-    from app.modules.ai.agents.customer.turn import TurnOutcome
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnOutcome
 
     async def fake_turn(*args, **kwargs):
         return TurnOutcome(reply=None, blocked_reason="guardrail:policy")

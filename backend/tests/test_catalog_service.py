@@ -9,8 +9,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import ProductPrice
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.models import ProductPrice
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError
 
 

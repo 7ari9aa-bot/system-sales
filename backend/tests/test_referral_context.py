@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.routers.inbox import _present_card, _present_referral
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.routers.inbox import _present_card, _present_referral
 
 
 def _message(extra: dict, *, raw_key: str = "_messenger"):

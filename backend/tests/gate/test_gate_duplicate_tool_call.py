@@ -33,10 +33,10 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from app.modules.ai import tools as ai_tools
-from app.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
-from app.modules.ai.providers import ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai import tools as ai_tools
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentTool, ToolCall
+from app.applications.apparel.modules.ai.providers import ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 
 pytestmark = [pytest.mark.gate]
 

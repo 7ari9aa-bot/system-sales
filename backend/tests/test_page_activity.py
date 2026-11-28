@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.modules.conversations.page_activity_service import (
+from app.applications.apparel.modules.conversations.page_activity_service import (
     KINDS,
     PageActivityService,
     summary_for,
@@ -154,7 +154,7 @@ async def test_marking_read_up_to_a_time_leaves_the_newer_ones_unread(db, tenant
 
 async def test_activity_is_tenant_and_channel_scoped(db, tenant_ctx):
     """Two tenants, one Page id each: neither sees the other's feed."""
-    from app.modules.conversations.models import PageActivity
+    from app.applications.apparel.modules.conversations.models import PageActivity
 
     other_tenant = tenant_ctx.tenant_id
     await PageActivityService.record(

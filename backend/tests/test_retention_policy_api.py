@@ -49,8 +49,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.analytics import retention
-from app.modules.analytics import router as analytics_router
+from app.applications.apparel.modules.analytics import retention
+from app.applications.apparel.modules.analytics import router as analytics_router
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 
 POSITION_PATH = "/api/v1/analytics/retention"

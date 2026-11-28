@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.pos.router import _session_out
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.router import _session_out
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till
 
 pytestmark = pytest.mark.asyncio

@@ -14,9 +14,9 @@ import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.ai.models import Agent, AIChatMessage, AIChatThread, OwnerMemory
-from app.modules.ai.owner_habits import MIN_PERIOD_QUESTIONS
-from app.modules.ai.owner_memory import OwnerMemoryService
+from app.applications.apparel.modules.ai.models import Agent, AIChatMessage, AIChatThread, OwnerMemory
+from app.applications.apparel.modules.ai.owner_habits import MIN_PERIOD_QUESTIONS
+from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.identity.models import User
 
@@ -240,7 +240,7 @@ async def test_accepting_while_memory_is_off_is_refused(db, tenant_ctx):
 async def test_accepting_into_a_full_memory_is_refused(db, tenant_ctx):
     await _ask(db, tenant_ctx.tenant_id, tenant_ctx.user.id, [LAST7] * 8)
     svc = OwnerMemoryService(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
-    from app.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES
+    from app.applications.apparel.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES
 
     for i in range(MAX_ACTIVE_MEMORIES):
         await svc.remember(f"ملاحظة رقم {i} عن المحل", source="explicit")
@@ -262,7 +262,7 @@ async def test_the_habit_only_counts_the_last_questions_not_all_of_history(db, t
     # ones. The threads carry explicit times, so "recent" is a fact of the data, not of row order.
     from datetime import UTC, datetime, timedelta
 
-    from app.modules.ai.owner_habits import RECENT_QUESTIONS
+    from app.applications.apparel.modules.ai.owner_habits import RECENT_QUESTIONS
 
     now = datetime.now(UTC)
     await _ask(
@@ -283,7 +283,7 @@ async def test_the_habit_only_counts_the_last_questions_not_all_of_history(db, t
 async def test_inside_one_thread_the_later_turns_are_the_recent_ones(db, tenant_ctx):
     # One long thread: the first questions are about last-7-days, the LAST RECENT_QUESTIONS are
     # about this month. Turn order inside the thread decides what is recent.
-    from app.modules.ai.owner_habits import RECENT_QUESTIONS
+    from app.applications.apparel.modules.ai.owner_habits import RECENT_QUESTIONS
 
     questions = [LAST7] * 40 + [MONTH] * RECENT_QUESTIONS
     await _ask(db, tenant_ctx.tenant_id, tenant_ctx.user.id, questions)
@@ -293,7 +293,7 @@ async def test_inside_one_thread_the_later_turns_are_the_recent_ones(db, tenant_
 
 
 async def test_questions_beyond_the_recent_window_are_not_read(db, tenant_ctx):
-    from app.modules.ai.owner_habits import RECENT_QUESTIONS
+    from app.applications.apparel.modules.ai.owner_habits import RECENT_QUESTIONS
 
     # RECENT_QUESTIONS recent plain questions push 20 old "last 7 days" ones out of the window
     questions = [LAST7] * 20 + ["إيه أكتر منتج بيتباع؟"] * RECENT_QUESTIONS
@@ -304,7 +304,7 @@ async def test_questions_beyond_the_recent_window_are_not_read(db, tenant_ctx):
 
 
 async def test_a_dismissal_survives_a_new_session(db, tenant_ctx):
-    from app.modules.ai.owner_habits_service import OwnerHabitService
+    from app.applications.apparel.modules.ai.owner_habits_service import OwnerHabitService
 
     tenant_id, user_id = (
         tenant_ctx.tenant_id,
@@ -326,7 +326,7 @@ async def test_a_dismissal_survives_a_new_session(db, tenant_ctx):
 
 async def test_dismissing_a_second_period_keeps_the_first(db, tenant_ctx):
     # The first dismissal creates the settings row; the second must ADD to it, not replace it.
-    from app.modules.ai.owner_habits_service import OwnerHabitService
+    from app.applications.apparel.modules.ai.owner_habits_service import OwnerHabitService
 
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     svc = OwnerHabitService(db, tenant_id, user_id)
@@ -346,7 +346,7 @@ async def test_dismissing_a_second_period_keeps_the_first(db, tenant_ctx):
 async def test_dismissing_keeps_the_memory_on_off_switch(db, tenant_ctx):
     # The dismissal lives on the settings row that also holds the on/off switch: neither may undo
     # the other.
-    from app.modules.ai.owner_habits_service import OwnerHabitService
+    from app.applications.apparel.modules.ai.owner_habits_service import OwnerHabitService
 
     tenant_id, user_id = tenant_ctx.tenant_id, tenant_ctx.user.id
     await OwnerMemoryService(db, tenant_id, user_id).set_enabled(False)
@@ -357,7 +357,7 @@ async def test_dismissing_keeps_the_memory_on_off_switch(db, tenant_ctx):
 
 
 async def test_dismissing_twice_stores_it_once(db, tenant_ctx):
-    from app.modules.ai.owner_habits_service import OwnerHabitService
+    from app.applications.apparel.modules.ai.owner_habits_service import OwnerHabitService
 
     svc = OwnerHabitService(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     await svc.dismiss("today")
@@ -376,7 +376,7 @@ async def test_the_service_itself_refuses_a_period_that_is_not_one_of_ours(db, t
     # the route's Literal already stops this; the service must not rely on it
     import pytest
 
-    from app.modules.ai.owner_habits_service import HabitNotFound, OwnerHabitService
+    from app.applications.apparel.modules.ai.owner_habits_service import HabitNotFound, OwnerHabitService
 
     svc = OwnerHabitService(db, tenant_ctx.tenant_id, tenant_ctx.user.id)
     with pytest.raises(HabitNotFound):

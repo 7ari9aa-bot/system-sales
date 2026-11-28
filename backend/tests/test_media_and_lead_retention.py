@@ -55,7 +55,7 @@ from typing import Any
 
 import pytest
 
-from app.modules.analytics import retention
+from app.applications.apparel.modules.analytics import retention
 
 MESSAGES = "messages"
 ATTACHMENTS = "attachments"

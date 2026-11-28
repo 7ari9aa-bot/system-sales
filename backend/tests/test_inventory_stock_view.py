@@ -23,10 +23,10 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import NotFoundError, ValidationError
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.service import InventoryService
-from app.modules.inventory.stock_view import StockLevelService
-from app.modules.pos.stock_view import StockViewService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.stock_view import StockLevelService
+from app.applications.apparel.modules.pos.stock_view import StockViewService
 from tests.test_pos_returns import _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -97,7 +97,7 @@ async def test_status_follows_the_reorder_level(db, tenant_ctx, stock, level, st
 
 async def test_on_hand_is_summed_across_warehouses(db, tenant_ctx):
     _p, variant, w1 = await _variant(db, tenant_ctx, stock=4)
-    from app.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.models import Warehouse
 
     w2 = Warehouse(tenant_id=tenant_ctx.tenant_id, name="مخزن ٢", code=f"W{uuid.uuid4().hex[:5]}")
     db.add(w2)
@@ -118,7 +118,7 @@ async def test_unknown_cost_is_null_not_zero(db, tenant_ctx):
 
 
 async def test_a_known_cost_values_the_stock(db, tenant_ctx):
-    from app.modules.purchasing.models import VariantCost
+    from app.applications.apparel.modules.purchasing.models import VariantCost
 
     _p, variant, _w = await _variant(db, tenant_ctx, stock=4)
     db.add(VariantCost(tenant_id=tenant_ctx.tenant_id, variant_id=variant.id, avg_cost="12.5000"))
@@ -159,7 +159,7 @@ async def test_setting_the_level_twice_keeps_one_row(db, tenant_ctx):
 
 
 async def test_the_summary_counts_alerts_and_values_only_known_cost(db, tenant_ctx):
-    from app.modules.purchasing.models import VariantCost
+    from app.applications.apparel.modules.purchasing.models import VariantCost
 
     _p, low, _w = await _variant(db, tenant_ctx, stock=2)
     _p, out, _w = await _variant(db, tenant_ctx, stock=0)
@@ -199,7 +199,7 @@ async def test_any_staff_member_can_read_the_stock_but_not_change_a_level(db, te
     """The gate lives in Depends(), so calling the route function skips it. Run it explicitly."""
     from app.core.errors import PermissionDeniedError
     from app.modules.identity.deps import require_permission
-    from app.modules.pos.router import list_stock, stock_summary
+    from app.applications.apparel.modules.pos.router import list_stock, stock_summary
 
     _p, variant, _w = await _variant(db, tenant_ctx, stock=2)
     staff = await _ctx(db, tenant_ctx, "staff")
@@ -218,7 +218,7 @@ async def test_any_staff_member_can_read_the_stock_but_not_change_a_level(db, te
 async def test_the_put_route_sets_the_level_and_rejects_a_bad_body(db, tenant_ctx):
     from pydantic import ValidationError as BodyError
 
-    from app.modules.pos.router import ReorderLevelRequest, set_reorder_level
+    from app.applications.apparel.modules.pos.router import ReorderLevelRequest, set_reorder_level
 
     _p, variant, _w = await _variant(db, tenant_ctx, stock=2)
     manager = await _ctx(db, tenant_ctx, "manager")
@@ -273,7 +273,7 @@ async def test_an_authority_item_code_is_never_shown_as_the_items_barcode(db, te
 def _gate_codes(path: str, method: str) -> set[str]:
     """The permission codes a LIVE route is wired to (the gate sits in Depends, not in the body)."""
     from app.modules.identity.deps import require_permission
-    from app.modules.pos.router import router
+    from app.applications.apparel.modules.pos.router import router
 
     found: set[str] = set()
     for route in router.routes:
@@ -390,8 +390,8 @@ async def test_the_stored_level_reads_back_and_unset_reads_zero(db, tenant_ctx):
 
 def test_the_cost_table_shape_matches_purchasing():
     """pos reads variant_costs via a light table (no purchasing import); keep the two in step."""
-    from app.modules.pos.stock_view import VariantCost as light
-    from app.modules.purchasing.models import VariantCost as real
+    from app.applications.apparel.modules.pos.stock_view import VariantCost as light
+    from app.applications.apparel.modules.purchasing.models import VariantCost as real
 
     assert light.name == real.__tablename__
     real_columns = {c.name for c in real.__table__.columns}
@@ -400,10 +400,10 @@ def test_the_cost_table_shape_matches_purchasing():
 
 async def test_the_inventory_tables_pos_reads_match_inventory():
     """pos reads inventory_balances / variant_stock_settings as light tables; keep them in step."""
-    from app.modules.inventory.models import InventoryBalance as balance
-    from app.modules.inventory.models import VariantStockSetting as setting
-    from app.modules.pos.stock_view import InventoryBalance as light_balance
-    from app.modules.pos.stock_view import VariantStockSetting as light_setting
+    from app.applications.apparel.modules.inventory.models import InventoryBalance as balance
+    from app.applications.apparel.modules.inventory.models import VariantStockSetting as setting
+    from app.applications.apparel.modules.pos.stock_view import InventoryBalance as light_balance
+    from app.applications.apparel.modules.pos.stock_view import VariantStockSetting as light_setting
 
     for light, real in ((light_balance, balance), (light_setting, setting)):
         assert light.name == real.__tablename__

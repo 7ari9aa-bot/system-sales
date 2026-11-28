@@ -63,7 +63,7 @@ def test_a_naive_timestamp_is_read_as_utc():
 import uuid  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
-from app.modules.conversations.gateway.ingest import IngestService  # noqa: E402
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService  # noqa: E402
 
 FAKE_TOKEN = "fake-EAAUtSPZCPZCF0BT-fakefakefakefakefake1234567890"
 

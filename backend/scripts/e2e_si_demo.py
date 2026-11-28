@@ -27,11 +27,11 @@ from _bootstrap import session_factory  # noqa: E402
 
 from app.core.db import bind_tenant  # noqa: E402
 from app.core.model_registry import Base  # noqa: F401 — full metadata for FKs
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.analytics.evaluation.synthetic import Scenario, generate_store
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.analytics.evaluation.synthetic import Scenario, generate_store
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.models import Tenant
-from app.modules.orders.models import Order, OrderPayment, Shipment
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Shipment
 
 
 async def seed_synthetic_store(session, tenant_id: uuid.UUID) -> int:
@@ -113,8 +113,8 @@ async def main() -> int:
     print(f"tenant={tenant_id} agent={agent_id} orders={order_count}")
     print("running the REAL analysis (calls GLM)...")
 
-    from app.modules.ai.gateway import AIGateway
-    from app.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.ai.gateway import AIGateway
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     async with session_factory()() as analysis_session:
         await bind_tenant(analysis_session, tenant_id)

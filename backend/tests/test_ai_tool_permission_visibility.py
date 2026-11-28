@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.modules.ai.tools import ToolSpec, tools_visible_to
+from app.applications.apparel.modules.ai.tools import ToolSpec, tools_visible_to
 
 
 def _tool(name: str, requires: str | None = None) -> SimpleNamespace:

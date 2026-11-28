@@ -16,11 +16,11 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import select
 
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.instagram import InstagramProviderError
-from app.modules.conversations.gateway.instagram_limits import classify_instagram_error
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramProviderError
+from app.applications.apparel.modules.conversations.gateway.instagram_limits import classify_instagram_error
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.platform.models import Integration
 from app.workers.message_worker import MessageWorker, _SendPlan
 

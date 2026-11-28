@@ -6,9 +6,9 @@ import sys
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 
-from app.modules.einvoice.providers.eta import builder
-from app.modules.einvoice.providers.eta.codes import BuyerType, ReceiptType, ReturnReason
-from app.modules.einvoice.providers.eta.models import BuyerProfile, DiscountSpec
+from app.applications.apparel.modules.einvoice.providers.eta import builder
+from app.applications.apparel.modules.einvoice.providers.eta.codes import BuyerType, ReceiptType, ReturnReason
+from app.applications.apparel.modules.einvoice.providers.eta.models import BuyerProfile, DiscountSpec
 from tests.test_eta_ereceipt_core import _line, _receipt, _seller
 
 rnd = random.Random(20261120)

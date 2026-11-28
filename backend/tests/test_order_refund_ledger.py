@@ -4,7 +4,7 @@ Gap register line 153 claimed ``reconcile_payment`` could flip a CAPTURED paymen
 back to FAILED and so "forge refunds without Refund rows", citing
 ``orders/service.py:527-542``. That citation is STALE: the §47 money merge moved
 the rule into ``orders.money.reconciliation_refusal`` and ``reconcile_payment``
-now raises ``ConflictError`` for it (``app/modules/orders/service.py:936-940``).
+now raises ``ConflictError`` for it (``app/applications/apparel/modules/orders/service.py:936-940``).
 What was missing is coverage of the ledger as a whole, which is what this file
 owns — the pieces no other test pins:
 
@@ -35,16 +35,16 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.idempotency import REPLAY_HEADER, should_guard
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import money as orders_money
-from app.modules.orders import service as orders_service
-from app.modules.orders.models import OrderPayment, Refund
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import money as orders_money
+from app.applications.apparel.modules.orders import service as orders_service
+from app.applications.apparel.modules.orders.models import OrderPayment, Refund
+from app.applications.apparel.modules.orders.service import OrderService
 from tests.test_order_idempotency import KEY_HEADER, SessionStore, _build_app
 
 ORDERS_DIR = pathlib.Path(orders_service.__file__).parent

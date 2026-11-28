@@ -43,8 +43,8 @@ from typing import Any, Literal
 
 from sqlalchemy import func, select, update
 
-from app.modules.ai.models import AIChatMessage
-from app.modules.ai.usage import record_voice_turn_usage
+from app.applications.apparel.modules.ai.models import AIChatMessage
+from app.applications.apparel.modules.ai.usage import record_voice_turn_usage
 from app.modules.voice.domain.models import VoiceTurnRow
 from app.modules.voice.domain.states import TurnState
 

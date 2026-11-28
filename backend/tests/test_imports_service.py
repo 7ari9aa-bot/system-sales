@@ -13,10 +13,10 @@ from openpyxl import Workbook
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.db import bind_tenant
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.models import Tenant
 from app.modules.imports import service
-from app.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.models import Warehouse
 
 
 def _xlsx(sheets: dict[str, list[list[object]]]) -> bytes:

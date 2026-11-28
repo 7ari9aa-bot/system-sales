@@ -56,7 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
 from app.main import create_app
-from app.modules.analytics import retention
+from app.applications.apparel.modules.analytics import retention
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.workers import retention_worker
 
@@ -597,7 +597,7 @@ async def test_a_row_store_can_be_chosen_through_the_same_put(
     )
     monkeypatch.setattr(retention, "choose_policy", recorder)
     audit = _Recorder()
-    monkeypatch.setattr("app.modules.analytics.router.write_audit_row", audit)
+    monkeypatch.setattr("app.applications.apparel.modules.analytics.router.write_audit_row", audit)
 
     session = _RecordingPositionSession()
     response = await _request(
@@ -687,8 +687,8 @@ def test_the_module_still_owns_no_cross_module_import() -> None:
 async def _seed_message(
     db: AsyncSession, tenant_id, *, body: str, age_days: int, status: str = "received"
 ) -> uuid.UUID:
-    from app.modules.conversations.models import Conversation, Message
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_id, name=f"R-{uuid.uuid4().hex[:8]}")
     db.add(customer)

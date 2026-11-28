@@ -1,0 +1,797 @@
+"""AI integration hooks for the message worker.
+
+``maybe_auto_reply`` runs after a conversation ingest. It must never break
+ingest SILENTLY: the auto-reply itself is allowed to fail loudly so the worker
+runtime rolls the event back and retries (a swallowed error used to ack the
+event with NO reply and NO retry — a silent customer-facing loss), while the
+optional context lookups (knowledge, memories) degrade on purpose. The AI
+answer is posted through ConversationService (application service, never raw
+SQL) and the outbound event is staged via the outbox writer inside the same
+transaction.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.storage import get_storage
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.gateway import AIBudgetExhaustedError
+from app.applications.apparel.modules.conversations.policy import OutboundBlockedError
+from app.applications.apparel.modules.conversations.voice import omni_audio_format
+
+logger = logging.getLogger(__name__)
+
+KNOWLEDGE_SNIPPETS = 3
+HISTORY_MESSAGES = 10
+
+
+async def _handover_commitment_active(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    customer_message_at,
+) -> tuple[bool, str | None]:
+    """Is the A6 human-commitment still standing for this conversation?
+
+    The commitment stands while an open (pending/claimed) handover exists
+    with no staff OUTBOUND message sent after it — that is the state "a
+    human took this and has not answered yet". Two exits dissolve it:
+
+    * the handover was resolved (claimed + closed) — the human finished; or
+    * the handover is open but a staff reply followed it — the human already
+      answered inside the conversation, so the customer is being served.
+
+    Returns (commitment_stands, handover_created_at_iso) — the timestamp is
+    for the skip log.
+    """
+
+    from sqlalchemy import select
+
+    from app.applications.apparel.modules.ai.models import AIHandover
+
+    handover = (
+        (
+            await session.execute(
+                select(AIHandover)
+                .where(
+                    AIHandover.tenant_id == tenant_id,
+                    AIHandover.conversation_id == conversation_id,
+                )
+                .order_by(AIHandover.created_at.desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if handover is None:
+        return False, None
+    if handover.status == "resolved":
+        # The human CLOSED the queue item — the commitment is finished.
+        return False, handover.created_at.isoformat()
+    # Open handover: it jails the conversation ONLY when a staff member
+    # actually took over — an outbound staff message after the handover
+    # was created. An open handover NOBODY picked up is exactly the Oct-17
+    # shape: the customer must not type into silence for days. Parameter-
+    # bound read on the shared metadata (conversations owns the messages
+    # table; importing it here would trip the boundary ratchet).
+    from app.core.db import Base
+
+    messages = Base.metadata.tables["messages"]
+    staff_reply = (
+        await session.execute(
+            select(messages.c.id)
+            .where(
+                messages.c.tenant_id == tenant_id,
+                messages.c.conversation_id == conversation_id,
+                messages.c.direction == "outbound",
+                messages.c.sender_type == "agent",
+                messages.c.created_at > handover.created_at,
+                # BEFORE this customer message: a reply landing after it
+                # belongs to the NEXT turn, not this one.
+                messages.c.created_at < customer_message_at,
+            )
+            .limit(1)
+        )
+    ).first()
+    if staff_reply is not None:
+        return True, handover.created_at.isoformat()
+    return False, handover.created_at.isoformat()
+
+
+async def maybe_auto_reply(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    inbound_message_id: uuid.UUID | None = None,
+) -> None:
+    """AI reply to a conversation's inbound message.
+
+    `inbound_message_id` is the message the delivered event actually carried, and
+    it is what gets answered. Without it the reply targets the newest inbound
+    message — see `_do_auto_reply` for why that is only a fallback.
+
+    Runs under the caller's conversation lease (the message worker already
+    holds it — advisory xact locks are reentrant within one transaction).
+
+    Failure policy: exceptions propagate to the worker runtime, which rolls
+    the ProcessedEvent marker back and retries with backoff. Swallowing here
+    used to ack the event with NO reply and NO retry — a silent customer-
+    facing loss. ConversationBusy propagates as retryable by contract.
+    """
+    from app.core.lease import conversation_lease
+
+    async with conversation_lease(session, conversation_id):
+        await _do_auto_reply(
+            session, tenant_id, conversation_id, inbound_message_id=inbound_message_id
+        )
+
+
+async def _do_auto_reply(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    *,
+    inbound_message_id: uuid.UUID | None = None,
+) -> None:
+    """Inner auto-reply logic (called under the conversation lease)."""
+    # Lazy imports: conversations owns messages; AI is an optional layer.
+    from app.core.events.writer import add_outbox_event
+    from app.applications.apparel.modules.ai.core.resolver import resolve_agent_by_kind_optional
+    from app.applications.apparel.modules.ai.handover import request_human_takeover
+    from app.applications.apparel.modules.conversations.service import ConversationService
+
+    async def handover(reason: str, note: str, run_id: uuid.UUID | None) -> bool:
+        return await request_human_takeover(
+            session,
+            tenant_id,
+            conversation_id=conversation_id,
+            reason=reason,
+            note=note,
+            run_id=run_id,
+        )
+
+    # §165: whether the plan includes AI is an entitlement, and it is checked in
+    # ONE service rather than here. A tenant without it is not an error (never
+    # raise: a raised error would retry and dead-letter the customer's message) —
+    # but it is also not "nobody's problem". Without AI the conversation owes the
+    # customer a human answer, so the withhold is recorded like every other one:
+    # the row, the status and the event. §37's `policy` reason had no producer
+    # before this; a plan that excludes AI is exactly what it names.
+    from app.modules.billing.service import EntitlementService
+
+    if not await EntitlementService.can(session, tenant_id, "CanUseAI"):
+        created = await handover("policy", "plan does not include AI", None)
+        logger.info(
+            "auto-reply skipped: plan does not include AI conversation=%s handover_created=%s",
+            conversation_id,
+            created,
+        )
+        return
+
+    # §settings: customer_agent.enabled is the shop's own switch — a plan that
+    # includes AI but a shop that turned the agent off should NOT reply. Unlike
+    # the entitlement gate, this is a preference, not a plan limitation, so the
+    # conversation simply waits for a human instead of creating a handover row.
+    from app.modules.settings.service import SettingsService
+
+    agent_enabled = await SettingsService(session, tenant_id).value("customer_agent.enabled")
+    if not agent_enabled:
+        logger.info(
+            "auto-reply skipped: customer_agent disabled conversation=%s",
+            conversation_id,
+        )
+        return
+
+    agent = await resolve_agent_by_kind_optional(session, tenant_id, "customer")
+    if agent is None:
+        # Entitled to AI, but the canonical customer agent is not provisioned:
+        # a misconfiguration, not a customer problem. Record it as a failure so a
+        # human takes over, instead of the message sitting unanswered in a
+        # conversation with no owner.
+        created = await handover("failure", "customer agent is not provisioned", None)
+        logger.warning(
+            "auto-reply skipped: no customer agent conversation=%s handover_created=%s",
+            conversation_id,
+            created,
+        )
+        return
+
+    # Answer the message the event carried — not "whatever is newest by the time
+    # the worker gets here". With A and B queued and A's delivery delayed, the old
+    # behaviour answered B twice (once per event) and never answered A: the
+    # customer who wrote first got silence, and the other got a duplicate.
+    last_inbound = None
+    if inbound_message_id is not None:
+        named = await ConversationService.find_message(session, tenant_id, inbound_message_id)
+        # Scoped here, not in the service: an id from another conversation or an
+        # outbound row is not this turn. That includes the resume event's legacy
+        # shape, whose aggregate_id was an APPROVAL id — it resolves to nothing
+        # and falls through, instead of answering a message that does not exist.
+        if named is not None and named.conversation_id == conversation_id:
+            if named.direction != "inbound":
+                logger.info(
+                    "auto-reply skipped conversation=%s message=%s is outbound",
+                    conversation_id,
+                    inbound_message_id,
+                )
+                return
+            if (named.sender_type or "customer") != "customer":
+                # A system note is not a customer turn: the 131060 "could not be delivered"
+                # notice is inbound on the thread so the merchant sees it, but the message it
+                # describes lives in their own app — answering it would be the AI talking to
+                # itself about a message nobody sent us.
+                logger.info(
+                    "auto-reply skipped conversation=%s message=%s sender=%s",
+                    conversation_id,
+                    inbound_message_id,
+                    named.sender_type,
+                )
+                return
+            last_inbound = named
+
+    if last_inbound is None:
+        # No usable id: an approval resume (re-evaluate the current context), or
+        # an event staged before the id was carried.
+        history = await ConversationService.list_messages(
+            session, tenant_id, conversation_id, limit=HISTORY_MESSAGES
+        )
+        last_inbound = next(
+            (
+                m
+                for m in reversed(history)
+                if m.direction == "inbound"
+                and (m.body or m.media_url or m.content_type in ("image", "voice", "file"))
+            ),
+            None,
+        )
+    if last_inbound is None:
+        return
+
+    # Duplicate-answer guard (crash window + replay). The reply commits in its
+    # own transaction and the ProcessedEvent marker in a LATER one, so a worker
+    # that dies between them (or a 5-minute stale-claim reclaim) re-delivers the
+    # event — and re-running the turn would send the customer the same answer
+    # twice. The AI threads every reply to the inbound it answers via
+    # ``reply_to_message_id``, so "already answered" is one indexed lookup.
+    # The resume path (no carried id) stays unguarded on purpose: its job is to
+    # add the post-approval outcome on an inbound the first turn may already
+    # have acknowledged, and suppressing THAT is a silent customer-facing loss.
+    if inbound_message_id is not None:
+        already = await ConversationService.find_ai_reply(session, tenant_id, last_inbound.id)
+        if already is not None:
+            logger.info(
+                "ai.duplicate_reply_skipped conversation=%s inbound=%s reply=%s",
+                conversation_id,
+                last_inbound.id,
+                already.id,
+            )
+            return
+
+    # §8: intake belongs to the turn coordinator, not to six inline ways of
+    # asking "did the customer send a photo?". Fetch the attachments once and
+    # hand the coordinator the raw shape (§155 kinds + (mime, key) pairs).
+    from app.applications.apparel.modules.conversations.models import Attachment
+
+    att_rows = (
+        (
+            await session.execute(
+                select(Attachment).where(
+                    Attachment.tenant_id == tenant_id,
+                    Attachment.message_id == last_inbound.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    attachments: list[tuple[str, str | None]] = []
+    # §9: the agent accepts no tenant credentials — the URL mapping is minted
+    # HERE, outside the turn, from the durable storage keys.
+    image_urls: dict[str, str] = {}
+    transcript: str | None = None
+    has_image = (last_inbound.content_type == "image") or bool(
+        last_inbound.media_type and "image" in last_inbound.media_type
+    )
+    has_voice = (last_inbound.content_type == "voice") or bool(
+        last_inbound.media_type and "audio" in last_inbound.media_type
+    )
+    for att in att_rows:
+        mime = att.mime_type or ""
+        if att.storage_key:
+            attachments.append((mime, att.storage_key))
+            if mime.startswith("image/"):
+                has_image = True
+                # ADR-062 (amended): the URL minted here is exactly what the
+                # coordinator's vision pass sends to the external provider, so
+                # it exists ONLY for a scanned attachment — the same gate the
+                # runtime applies to its own media selection. A pending row
+                # (no scanner configured, or a scanner outage), a quarantined
+                # one, or a failed one gets NO URL: the coordinator counts the
+                # photo as skipped and the turn answers without vision.
+                if att.scan_status == "scanned":
+                    image_urls[att.storage_key] = get_storage().public_url(att.storage_key)
+                else:
+                    logger.info(
+                        "ai.image_refused_unscanned conversation=%s message=%s "
+                        "scan_status=%s — no provider URL minted (ADR-062)",
+                        conversation_id,
+                        last_inbound.id,
+                        att.scan_status,
+                    )
+            elif mime.startswith("audio/"):
+                has_voice = True
+        if att.transcription_status == "completed" and att.transcript_text:
+            transcript = att.transcript_text.strip() or None
+
+    body = last_inbound.body.strip() if last_inbound.body and last_inbound.body.strip() else None
+    synthetic_body = False
+    # A placeholder survives only where the coordinator has no vocabulary: an
+    # image whose bytes were never captured durably has no key to mint a URL
+    # from — and since ADR-062 an image whose scan never came back clean gets
+    # no URL minted either — so build_turn would see nothing at all; say so in
+    # words instead. Voice stays unplaceholdered: the coordinator surfaces an
+    # untranscribed note as state ("we could not hear them yet"), never hides it.
+    if body is None and has_image and not image_urls:
+        body = "[Customer sent an image]"
+        synthetic_body = True
+    elif (
+        body is None
+        and not has_image
+        and not has_voice
+        and not attachments
+        and last_inbound.media_url
+    ):
+        body = f"[Customer sent an attachment: {last_inbound.content_type}]"
+        synthetic_body = True
+    if body is None and not has_image and not has_voice and not attachments:
+        return
+
+    # Direct-Omni input: does this turn's audio actually reach the model? The
+    # runtime re-derives the same condition against the newest inbound message
+    # (which is this one); the coordinator needs the verdict to decide whether
+    # the "voice not transcribed yet" context line belongs in the prompt.
+    audio_rides = False
+    if get_settings().ai_voice_audio_input:
+        for att in att_rows:
+            mime = (att.mime_type or "").lower()
+            if (
+                mime.startswith("audio/")
+                and att.storage_key
+                and att.scan_status == "scanned"
+                and omni_audio_format(mime) is not None
+            ):
+                audio_rides = True
+                break
+
+    conversation = await ConversationService.get(session, tenant_id, conversation_id)
+    # A6: never talk over a human. Closed and paused stay quiet forever —
+    # a human ended them on purpose.
+    if conversation.status in ("closed", "paused"):
+        logger.info(
+            "auto-reply skipped conversation=%s status=%s",
+            conversation_id,
+            conversation.status,
+        )
+        return
+    if conversation.status == "waiting_human":
+        # waiting_human is a HUMAN-COMMITMENT, not a life sentence. The
+        # Oct-18 incident made the failure shape explicit: a dead handover
+        # left a conversation in waiting_human for DAYS while the customer
+        # kept messaging into silence. The re-arm rule, decided PER MESSAGE:
+        # the commitment holds only when a staff member REPLIED after the
+        # handover was created AND before THIS customer message — a human
+        # is actively serving the thread. An open handover nobody picked
+        # up, or one resolved without a reply, dissolves on the customer's
+        # next message: the agent re-arms (and if it still cannot answer,
+        # it hands over again — the failure path unchanged).
+        active_commitment, handover_created_at = await _handover_commitment_active(
+            session,
+            tenant_id,
+            conversation_id,
+            customer_message_at=last_inbound.created_at,
+        )
+        if active_commitment:
+            logger.info(
+                "auto-reply skipped conversation=%s — a staff member took "
+                "over after the handover (%s); A6 holds",
+                conversation_id,
+                handover_created_at,
+            )
+            return
+        # Open handover nobody picked up (no staff reply after it), or a
+        # resolved one: the commitment never took — re-open and answer.
+        await ConversationService.set_status(session, tenant_id, conversation_id, "open")
+        logger.info(
+            "ai.waiting_human_rearmed conversation=%s — customer wrote again "
+            "and no staff replied since the handover",
+            conversation_id,
+        )
+    customer_id: uuid.UUID | None = conversation.customer_id
+
+    # The customer's name/locale ride the CONTEXT as store-owned facts (the
+    # get_customer tool is gone). Best-effort: a missing row never blocks the
+    # reply — the agent just talks to an unnamed customer.
+    customer_name: str | None = None
+    customer_locale: str | None = None
+    # The store's timezone — the weekday the model sees must be the STORE's
+    # today. Parameter-bound read on the shared metadata (the read-model
+    # pattern): importing identity here would trip the boundary ratchet.
+    tenant_timezone: str | None = None
+    try:
+        from app.core.db import Base
+
+        tenants = Base.metadata.tables["tenants"]
+        tz_row = (
+            await session.execute(select(tenants.c.timezone).where(tenants.c.id == tenant_id))
+        ).first()
+        tenant_timezone = tz_row[0] if tz_row else None
+    except Exception:  # noqa: BLE001 — context is optional, the reply is not
+        logger.warning("auto-reply continuing WITHOUT the store timezone", exc_info=True)
+    if customer_id is not None:
+        try:
+            from app.applications.apparel.modules.customers.service import CustomerService
+
+            customer = await CustomerService().get(session, tenant_id, customer_id)
+            customer_name = customer.name
+            customer_locale = customer.locale
+        except Exception:  # noqa: BLE001 — identity context is optional, the reply is not
+            logger.warning(
+                "auto-reply continuing WITHOUT customer identity context customer=%s",
+                customer_id,
+                exc_info=True,
+            )
+
+    # Knowledge context is a bonus, never a hard dependency: if retrieval fails
+    # the reply still goes out. That part is deliberate.
+    #
+    # But it must not fail QUIETLY. A misconfigured embedding model means RAG
+    # contributes nothing to every reply from then on — answer quality drops and
+    # nothing says so. WARNING (not INFO) so it is visible in normal log review,
+    # and the message states what was actually lost rather than just "failed".
+    #
+    # §132: knowledge snippets are injected as a SEPARATE context block, not
+    # appended to the system prompt — trusted instructions stay away from
+    # untrusted retrieved content. The system prompt itself is no longer passed
+    # from here: the runtime resolves it from the agent row.
+    knowledge_context: str | None = None
+    # A synthetic placeholder ("[Customer sent an image]") is OUR text, not the
+    # customer's words — retrieving knowledge for it injects irrelevant
+    # snippets into every unscanned-photo turn.
+    retrieval_query = (None if synthetic_body else body) or transcript or ""
+    if retrieval_query:
+        try:
+            from app.applications.apparel.modules.ai.knowledge import retrieve_relevant
+
+            snippets = await retrieve_relevant(
+                session,
+                tenant_id,
+                query=retrieval_query,
+                customer_id=customer_id,
+                limit=KNOWLEDGE_SNIPPETS,
+            )
+            if snippets:
+                knowledge_context = "\n".join(f"- {s}" for s in snippets)
+        except Exception:  # noqa: BLE001 — context is optional, the reply is not
+            logger.warning(
+                "auto-reply continuing WITHOUT knowledge context — knowledge search "
+                "failed (check the embedding model config)",
+                exc_info=True,
+            )
+
+    # The no-resend ledger must be read BEFORE the turn: the coordinator
+    # records the run's proposed media into sent_media, so reading the row
+    # AFTER would filter out exactly what this turn proposed to deliver.
+    from app.applications.apparel.modules.ai.agents.customer.state import load_state
+
+    pre_turn_state = await load_state(session, tenant_id, conversation_id)
+    pre_turn_sent: set[str] = set(pre_turn_state.sent_media or []) if pre_turn_state else set()
+
+    try:
+        # §settings: build the style directive from customer_agent settings
+        # (dialect, formality, response_language). These ride after the
+        # persona in the system prompt, colouring the reply's voice.
+        from app.modules.settings.service import SettingsService
+
+        _svc = SettingsService(session, tenant_id)
+        dialect = await _svc.value("customer_agent.dialect")
+        formality = await _svc.value("customer_agent.formality")
+        resp_lang = await _svc.value("customer_agent.response_language")
+        directive_parts: list[str] = []
+        _DIALECT_AR = {
+            "msa": "استخدم الفصحى",
+            "egyptian": "استخدم اللهجة المصرية",
+            "gulf": "استخدم اللهجة الخليجية",
+            "levantine": "استخدم اللهجة الشامية",
+        }
+        _FORMALITY_AR = {
+            "formal": "كن رسمياً",
+            "friendly": "كن ودوداً",
+            "casual": "كن غير رسمي",
+        }
+        if dialect and dialect in _DIALECT_AR:
+            directive_parts.append(_DIALECT_AR[dialect])
+        if formality and formality in _FORMALITY_AR:
+            directive_parts.append(_FORMALITY_AR[formality])
+        if resp_lang == "ar":
+            directive_parts.append("ردّ بالعربية دائماً")
+        elif resp_lang == "en":
+            directive_parts.append("Always reply in English")
+        # "auto" = no directive (model matches the customer's language)
+        style_directive = "، ".join(directive_parts) if directive_parts else None
+
+        # §settings: customer_agent.max_turns_before_handoff — after this many
+        # customer-AI exchanges without resolution, hand off to a human staff
+        # member instead of continuing the loop. Count outbound AI replies as
+        # a proxy for completed exchanges.
+        max_turns = await SettingsService(session, tenant_id).value(
+            "customer_agent.max_turns_before_handoff"
+        )
+        if max_turns and max_turns > 0:
+            from app.applications.apparel.modules.conversations.models import Message
+
+            ai_reply_count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.tenant_id == tenant_id,
+                        Message.conversation_id == conversation_id,
+                        Message.direction == "outbound",
+                        Message.sender_type == "ai",
+                    )
+                )
+            ).scalar_one()
+            if ai_reply_count >= max_turns:
+                handoff_enabled = await SettingsService(session, tenant_id).value(
+                    "customer_agent.handoff_enabled"
+                )
+                if handoff_enabled:
+                    created = await handover(
+                        "max_turns",
+                        f"reached {max_turns} turns without resolution",
+                        None,
+                    )
+                    logger.info(
+                        "ai.max_turns_handover conversation=%s turns=%s max=%s handover=%s",
+                        conversation_id,
+                        ai_reply_count,
+                        max_turns,
+                        created,
+                    )
+                    return
+                logger.warning(
+                    "ai.max_turns_reached_no_handover conversation=%s turns=%s max=%s",
+                    conversation_id,
+                    ai_reply_count,
+                    max_turns,
+                )
+                return
+
+        outcome = await run_customer_turn(
+            session,
+            TurnInput(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                agent_id=agent.id,
+                inbound_message_id=last_inbound.id,
+                customer_id=customer_id,
+                customer_name=customer_name,
+                customer_locale=customer_locale,
+                channel=conversation.channel,
+                tenant_timezone=tenant_timezone,
+                body=body,
+                content_type=last_inbound.content_type,
+                attachments=attachments,
+                transcript=transcript,
+                image_urls=image_urls,
+                audio_rides=audio_rides,
+                knowledge_context=knowledge_context,  # §132: separate from system prompt
+                style_directive=style_directive,
+            ),
+        )
+    except AIBudgetExhaustedError as exc:
+        # A spent ceiling is not a retryable failure, and letting it reach the
+        # worker made it one: the message dead-lettered and the customer got
+        # silence with nobody told. Hand it to a human instead — the note says
+        # WHICH ceiling (monthly / daily / fairness) so the merchant can act.
+        await handover("budget", f"budget:{exc.message}", None)
+        logger.warning(
+            "ai.budget_exhausted_handover conversation=%s reason=%s",
+            conversation_id,
+            exc.message,
+        )
+        return
+
+    # §158: the memory for this run is persisted ONCE, inside AgentRunner
+    # (same provenance rules, plus an explicit guardrail==allow check). The
+    # duplicate write that used to live here produced two rows and two
+    # embeddings per run.
+
+    # §41/§12: the guardrail is evaluated inside the runner, and grounding
+    # inside the coordinator — both withhold the reply. Nothing sendable
+    # remains either way, so the hook only reacts: a guardrail verdict is a
+    # guardrail handover, anything else (a grounding failure) hands the run to
+    # a human rather than regenerating — v1 never spends a second model call
+    # on a reply the deterministic check may bounce again.
+    if outcome.blocked_reason == "empty_turn":
+        return
+    if outcome.blocked_reason is not None:
+        # §settings: customer_agent.handoff_enabled gates non-critical
+        # handovers (guardrail, low_confidence, no-reply). Critical ones
+        # (budget, policy, no-agent) always proceed.
+        handoff_enabled = await SettingsService(session, tenant_id).value(
+            "customer_agent.handoff_enabled"
+        )
+        if not handoff_enabled:
+            logger.warning(
+                "ai.blocked_no_handover conversation=%s reason=%s — handoff disabled",
+                conversation_id,
+                outcome.blocked_reason,
+            )
+            return
+        # §37: a reply withheld by the grounding re-check or the output
+        # guardrail is a plain failure only when the run never looked at the
+        # shop. A run that DID gather tool evidence (at least one tool call)
+        # had real data in front of it and still could not answer confidently
+        # — that is exactly `low_confidence`, the last §37 reason without a
+        # producer until now. The writer, dedup and events are unchanged.
+        made_tool_calls = bool(outcome.tool_calls_made)
+        if outcome.blocked_reason.startswith("guardrail:"):
+            await handover(
+                "low_confidence" if made_tool_calls else "guardrail",
+                outcome.blocked_reason,
+                outcome.run_id,
+            )
+        else:
+            await handover(
+                "low_confidence" if made_tool_calls else "failure",
+                outcome.blocked_reason,
+                outcome.run_id,
+            )
+        logger.warning(
+            "ai.turn_blocked conversation=%s reason=%s",
+            conversation_id,
+            outcome.blocked_reason,
+        )
+        return
+
+    if not outcome.reply:
+        # A turn that COMPLETED — not blocked, not handed over — yet produced
+        # nothing sendable. The main empty-content routes are caught earlier
+        # (the guardrail's validity check blocks them, and a blocked reason
+        # hands over above), so what reaches here is an edge shape: a run that
+        # exhausted its step budget without a final assistant message, or a
+        # provider that answered with nothing usable. Whatever it is, the
+        # customer WROTE SOMETHING and silence is not an answer — a human
+        # takes the conversation rather than nobody.
+        #
+        # (Parked approval runs never reach the hook's turn path for this
+        # agent: every customer tool is read-only, so no run ever suspends
+        # awaiting a HIGH-risk approval here.)
+        await handover("failure", "turn produced no reply", outcome.run_id)
+        logger.warning(
+            "ai.turn_empty_reply conversation=%s run=%s — handed to a human",
+            conversation_id,
+            outcome.run_id,
+        )
+        return
+
+    try:
+        message = await ConversationService.add_message(
+            session,
+            tenant_id,
+            conversation_id=conversation_id,
+            direction="outbound",
+            sender_type="ai",
+            body=outcome.reply,
+            reply_to_message_id=last_inbound.id,
+        )
+    except OutboundBlockedError as exc:
+        # §30: outside the customer-service window a free-form AI reply is not
+        # allowed on this channel. Hand over to a human (who can send an
+        # approved template) instead of letting the event fail — the customer
+        # still needs an answer, and a failed event would be retried forever.
+        await handover("messaging_window_closed", f"policy:{exc.message}", outcome.run_id)
+        logger.warning(
+            "ai.reply_blocked_by_policy conversation=%s reason=%s",
+            conversation_id,
+            exc.message,
+        )
+        return
+    await add_outbox_event(
+        session,
+        aggregate_type="message",
+        aggregate_id=message.id,
+        event_type="message.outbound",
+        tenant_id=tenant_id,
+        payload={
+            "message_id": str(message.id),
+            "conversation_id": str(conversation_id),
+        },
+        # Messages are append-only and carry no VersionMixin column, so the
+        # aggregate version is the constant 1 (created once, never mutated).
+        aggregate_version=1,
+    )
+
+    if outcome.handover_reason is not None:
+        # §37/P1-11: the turn REQUIRES the conversation to move. The ack (or,
+        # for a policy handover, the model's own reply) already went out — now
+        # it actually moves. This is the writer that gives `customer_request`
+        # a producer: before it, a customer saying "اتكلم مع حد" was answered
+        # by the model and nothing else ever learned they had asked. The note
+        # says WHY: the customer's own words, or the §12.5 image verdict.
+        await handover(
+            outcome.handover_reason,
+            outcome.handover_note or "customer asked for a human",
+            outcome.run_id,
+        )
+        logger.info(
+            "ai.turn_handover conversation=%s run=%s reason=%s note=%s",
+            conversation_id,
+            outcome.run_id,
+            outcome.handover_reason,
+            outcome.handover_note,
+        )
+        return
+
+    if not outcome.media:
+        return
+
+    async def send_media() -> None:
+        """§13: deliver the collected product photos after the text reply.
+
+        One outbound message per image, ONE outbox event per message. The
+        no-resend rule filters against the PRE-TURN sent_media snapshot: the
+        coordinator already recorded the run's proposed media on the state
+        row, so a fresh read here would hide exactly this turn's photos. The
+        state row itself needs no second patch — the coordinator owns it.
+        """
+        sent = set(pre_turn_sent)
+        for item in outcome.media:
+            if item["image_id"] in sent:
+                continue  # §13: the no-resend rule
+            try:
+                media_message = await ConversationService.add_message(
+                    session,
+                    tenant_id,
+                    conversation_id=conversation_id,
+                    direction="outbound",
+                    sender_type="ai",
+                    media_url=item["image_url"],
+                    media_type="image",
+                    content_type="image",
+                    reply_to_message_id=last_inbound.id,
+                )
+            except OutboundBlockedError as exc:
+                # The text went out; the window closed mid-delivery. Stop
+                # sending photos rather than retrying into a closed window.
+                logger.warning(
+                    "ai.media_send_blocked conversation=%s reason=%s",
+                    conversation_id,
+                    exc.message,
+                )
+                break
+            await add_outbox_event(
+                session,
+                aggregate_type="message",
+                aggregate_id=media_message.id,
+                event_type="message.outbound",
+                tenant_id=tenant_id,
+                payload={
+                    "message_id": str(media_message.id),
+                    "conversation_id": str(conversation_id),
+                },
+                aggregate_version=1,
+            )
+            sent.add(item["image_id"])
+
+    await send_media()

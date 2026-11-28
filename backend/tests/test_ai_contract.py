@@ -1,7 +1,7 @@
 """§47/ADR-053, §157/§158, §135 — the AI surface must answer with a typed
 contract, and its money must still be money on the other side of the wire.
 
-``app/modules/ai/router.py`` carries 24 routes and, before this file, not one of
+``app/applications/apparel/modules/ai/router.py`` carries 24 routes and, before this file, not one of
 them declared a ``response_model``: the return annotations were ``dict`` /
 ``list[dict]``, which FastAPI publishes as an open object — "any key may appear,
 any key may be missing". That is the same hole as a hand-built dict, just
@@ -50,18 +50,18 @@ from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.approvals import ApprovalService  # noqa: F401  (typing the stub)
-from app.modules.ai.models import Agent, AIUsage, ApprovalRequest, Memory
-from app.modules.ai.router import (
+from app.applications.apparel.modules.ai.approvals import ApprovalService  # noqa: F401  (typing the stub)
+from app.applications.apparel.modules.ai.models import Agent, AIUsage, ApprovalRequest, Memory
+from app.applications.apparel.modules.ai.router import (
     _approval_out,
     _evaluation_out,
     _memory_out,
     _policy_out,
 )
-from app.modules.ai.router import (
+from app.applications.apparel.modules.ai.router import (
     router as ai_router,
 )
-from app.modules.ai.trace import AITraceService
+from app.applications.apparel.modules.ai.trace import AITraceService
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 USER = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -716,7 +716,7 @@ def test_every_field_a_handler_builds_is_declared(
     """
     row = _memory() if builder is _memory_out else _approval() if builder is _approval_out else None
     if builder is _policy_out:
-        from app.modules.ai.models import AIProviderPolicy
+        from app.applications.apparel.modules.ai.models import AIProviderPolicy
 
         row = AIProviderPolicy(tenant_id=TENANT, provider="openai", status="allowed")
         row.id = uuid.uuid4()
@@ -725,7 +725,7 @@ def test_every_field_a_handler_builds_is_declared(
         row.data_classification = "internal"
         row.updated_at = datetime(2026, 9, 1, 8, tzinfo=UTC)
     if builder is _evaluation_out:
-        from app.modules.ai.models import AIEvaluation
+        from app.applications.apparel.modules.ai.models import AIEvaluation
 
         row = AIEvaluation(tenant_id=TENANT, agent_id=AGENT, status="pending")
         row.id = uuid.uuid4()
@@ -816,7 +816,7 @@ async def test_a_real_numeric_cost_row_leaves_the_api_as_an_exact_string(
     serialiser; this proves the column's scale is what the serialiser sees, which
     a stub can only assume.
     """
-    from app.modules.ai.usage import bucket_row_id
+    from app.applications.apparel.modules.ai.usage import bucket_row_id
 
     period = date.today()
     db.add(

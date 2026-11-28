@@ -24,9 +24,9 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.errors import DomainError, build_error_body
 from app.core.idempotency import IDEMPOTENT_PATHS, IdempotencyMiddleware
-from app.modules.conversations.routers import inbox as inbox_router_module
-from app.modules.conversations.routers.inbox import router as inbox_router
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.routers import inbox as inbox_router_module
+from app.applications.apparel.modules.conversations.routers.inbox import router as inbox_router
+from app.applications.apparel.modules.conversations.service import ConversationService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from tests.test_order_idempotency import MemoryStore
 

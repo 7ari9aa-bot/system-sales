@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 
-from app.modules.ai.agents.customer import tools as customer_tools
+from app.applications.apparel.modules.ai.agents.customer import tools as customer_tools
 from tests.agent_eval.cases_core import CASES
 from tests.agent_eval.shop_builder import build_shop
 

@@ -35,15 +35,15 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.models import (
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.models import (
     InventoryMovement,
     InventoryReservation,
     Warehouse,
 )
-from app.modules.inventory.service import InventoryReservationService, InventoryService
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.service import InventoryReservationService, InventoryService
+from app.applications.apparel.modules.orders.service import OrderService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
@@ -157,7 +157,7 @@ async def test_a_reserve_writes_exactly_one_availability_row(db: AsyncSession, t
 async def test_a_failed_reserve_writes_nothing(db: AsyncSession, tenant_ctx) -> None:
     """The guard that was already there must still fire, and a rejected hold
     must leave no trace in the ledger."""
-    from app.modules.orders.errors import InsufficientStockError
+    from app.applications.apparel.modules.orders.errors import InsufficientStockError
 
     tenant_id = tenant_ctx.tenant_id
     wh = await _warehouse(db, tenant_id)
@@ -391,7 +391,7 @@ async def test_a_return_restocks_once_after_capture(db: AsyncSession, tenant_ctx
     """The restock-on-return saga (ADR-052) must not now double-count: the
     capture's `out`/sale and the return's `in`/return are the only physical
     rows, and the hold pair nets to zero."""
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, wh = await _order_holding_stock(db, tenant_id, qty=3)

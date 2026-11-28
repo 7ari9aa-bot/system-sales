@@ -13,9 +13,9 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer, CustomerIdentity
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer, CustomerIdentity
 from app.modules.platform.models import DeliveryAttempt
 from app.workers import message_worker as mw
 from app.workers.base import DeferredError

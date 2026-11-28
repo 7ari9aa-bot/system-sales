@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 
 
 def _agent(**overrides) -> SimpleNamespace:

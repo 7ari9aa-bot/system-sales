@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from app.modules.catalog.services import CatalogService
+from app.applications.apparel.modules.catalog.services import CatalogService
 from app.modules.errors import ValidationError
 
 

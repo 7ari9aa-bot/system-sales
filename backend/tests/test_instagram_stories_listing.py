@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.conversations.social_service import SocialService
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.social_service import SocialService
 
 CREDS = {"api_key": "tok", "account_id": "ig-1"}
 
@@ -67,7 +67,7 @@ async def test_the_service_passes_stories_through_and_drops_one_without_an_id():
         )
     ) as client:
         InstagramAdapter.list_stories.__globals__  # noqa: B018 - keeps the import honest
-        import app.modules.conversations.social_service as svc
+        import app.applications.apparel.modules.conversations.social_service as svc
 
         original = svc.instagram_adapter.list_stories
 

@@ -13,9 +13,9 @@ import logging
 import pytest
 
 from app.core.errors import ConflictError
-from app.modules.ai.agents.sales_intelligence import agent as si_agent
-from app.modules.ai.chat import turns
-from app.modules.ai.models import AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as si_agent
+from app.applications.apparel.modules.ai.chat import turns
+from app.applications.apparel.modules.ai.models import AIChatMessage, AIChatThread
 from tests.test_chat_progress_in_a_turn import (  # noqa: F401
     QUESTION,
     _ctx,

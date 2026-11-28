@@ -83,7 +83,7 @@ def _record(integration: Integration, summary: dict) -> None:
 
 async def backfill_one_tenant(tenant_id: uuid.UUID, *, http=None) -> dict | None:
     """Read and store one store's Page history; None when its Messenger is not connected."""
-    from app.modules.conversations.messenger_backfill_service import MessengerBackfillService
+    from app.applications.apparel.modules.conversations.messenger_backfill_service import MessengerBackfillService
     from app.modules.platform.services.channel_access import channel_credentials_config
 
     async with SessionLocal() as session:

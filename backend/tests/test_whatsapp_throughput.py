@@ -18,7 +18,7 @@ import pytest
 
 from app.core.errors import ExternalProviderError
 from app.core.ratelimit import RateLimitResult
-from app.modules.conversations.gateway import whatsapp_throughput as throughput
+from app.applications.apparel.modules.conversations.gateway import whatsapp_throughput as throughput
 
 pytestmark = pytest.mark.asyncio
 

@@ -2,7 +2,7 @@
 
 ``tests/test_no_dead_core_modules.py`` watches ``app.core.*`` only. The v10
 external review found that ``app/modules/platform/dr.py``,
-``app/modules/notifications/digest.py`` and ``app/modules/catalog/external/*``
+``app/modules/notifications/digest.py`` and ``app/applications/apparel/modules/catalog/external/*``
 had ZERO callers outside their own tests and CI could not see it, because none
 of them lives under ``app.core``. That is the repo's dominant failure mode —
 "complete, unit-tested, imported by nothing" — recurring a fourth time in two
@@ -118,14 +118,14 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # registry and the orchestrating service are built and unit-tested, but no route or worker
     # submits a document yet: a fiscal submission is a per-country rollout decision (certificates,
     # onboarding, sandbox to production), not a one-line call. Drop an entry when its caller lands.
-    "app.modules.einvoice.providers.eta.mock_authority": _ETA_CORE_WHY,
+    "app.applications.apparel.modules.einvoice.providers.eta.mock_authority": _ETA_CORE_WHY,
     # Sales Intelligence analytics layer (spec §5-11) — pure, LLM-free
     # contracts and math: the metric contracts, the exact midpoint drivers,
     # the maturity classifier, the number policy, the confidence engine, and
     # the two validators. Unit-tested; their CALLERS are the query compiler
     # and the sales-intelligence agent loop (next phase), per the spec's
     # dependency order (Phase 1 contracts before Phase 4+ engines).
-    "app.modules.analytics.coverage": "SI Phase 7 controller — agent loop lands later.",
+    "app.applications.apparel.modules.analytics.coverage": "SI Phase 7 controller — agent loop lands later.",
     # evaluation.synthetic and evaluation.golden are no longer recorded:
     # golden.py imports the generator, and the operator harness
     # (scripts/run_golden_eval.py — scripts count as import roots) runs the
@@ -149,12 +149,12 @@ KNOWN_DEAD_MODULES: dict[str, str] = {
     # credentials (Integration) and drives sync. Recorded, not deleted, until
     # that intake exists. (The CSV half of §161 is now live: it is reached from
     # the catalog router's ``/imports/*`` intake, so it is no longer listed here.)
-    "app.modules.catalog.external.shopify_adapter": (
+    "app.applications.apparel.modules.catalog.external.shopify_adapter": (
         "§161 Shopify sync. No connector-config route/worker constructs a "
         "ShopifyAdapter yet; sync_products already delegates to the live "
         "CatalogService.upsert_from_external, so only the intake is missing."
     ),
-    "app.modules.catalog.external.source_of_truth": (
+    "app.applications.apparel.modules.catalog.external.source_of_truth": (
         "§161 source-of-truth policy model + service. Reached only by "
         "shopify_adapter (itself dead) and its tests; kept with it so the "
         "feature is not half-deleted. Table source_of_truth_policies exists."

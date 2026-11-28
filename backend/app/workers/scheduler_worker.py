@@ -143,7 +143,7 @@ async def _purge_expired_offboarding_tenants() -> int:
 # that table is tenant-scoped and recurring-job seeding only sees active
 # tenants. Each function owns its own durable claim/transaction semantics.
 async def _sweep_vision_product_indexing() -> int:
-    from app.modules.ai.agents.customer.vision.indexer import (
+    from app.applications.apparel.modules.ai.agents.customer.vision.indexer import (
         sweep_unindexed_product_images,
     )
 
@@ -213,7 +213,7 @@ def register_job_handler(job_type: str, fn: Callable) -> None:
 
 
 async def _handle_reconcile_messages(session, tenant_id, payload: dict) -> dict:
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     minutes = int(payload.get("threshold_minutes", 15))
     reconciled = await ConversationService.reconcile_unknown_messages(
@@ -226,7 +226,7 @@ register_job_handler("reconcile_unknown_messages", _handle_reconcile_messages)
 
 
 async def _handle_reconcile_payments(session, tenant_id, payload: dict) -> dict:
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     minutes = int(payload.get("threshold_minutes", 15))
     reconciled = await OrderService.reconcile_stuck_payments(
@@ -239,7 +239,7 @@ register_job_handler("reconcile_payments", _handle_reconcile_payments)
 
 
 async def _handle_reconcile_inventory(session, tenant_id, payload: dict) -> dict:
-    from app.modules.inventory.reconciliation import InventoryReconciliationService
+    from app.applications.apparel.modules.inventory.reconciliation import InventoryReconciliationService
 
     return await InventoryReconciliationService.reconcile_tenant(session, tenant_id)
 
@@ -248,7 +248,7 @@ register_job_handler("reconcile_inventory", _handle_reconcile_inventory)
 
 
 async def _handle_expire_reservations(session, tenant_id, payload: dict) -> dict:
-    from app.modules.inventory.service import InventoryReservationService
+    from app.applications.apparel.modules.inventory.service import InventoryReservationService
 
     expired = await InventoryReservationService.expire_stale(session, tenant_id)
     return {"count": expired}
@@ -263,7 +263,7 @@ async def _handle_expire_approvals(session, tenant_id, payload: dict) -> dict:
     Nothing called expire_stale() before, so an undecided approval stayed
     PENDING forever and its parked run never resolved either way.
     """
-    from app.modules.ai.approvals import ApprovalService
+    from app.applications.apparel.modules.ai.approvals import ApprovalService
 
     expired = await ApprovalService.expire_stale(session, tenant_id)
     return {"count": expired}
@@ -279,7 +279,7 @@ async def _handle_expire_budget_reservations(session, tenant_id, payload: dict) 
     a tenant that makes no further AI call keeps its crashed-run budget parked
     forever. The rowcount is the parked-budget leak metric.
     """
-    from app.modules.ai.budget import expire_stale_reservations
+    from app.applications.apparel.modules.ai.budget import expire_stale_reservations
 
     expired = await expire_stale_reservations(session, tenant_id)
     logger.info("scheduler.budget_reservations_expired tenant=%s count=%d", tenant_id, expired)
@@ -618,7 +618,7 @@ async def _handle_retention_purge(session, tenant_id, payload: dict) -> dict:
     thing separating this from the `archive_old_rows` that was deleted for
     having no policy behind it.
     """
-    from app.modules.analytics.retention import purge_expired_partitions
+    from app.applications.apparel.modules.analytics.retention import purge_expired_partitions
 
     return await purge_expired_partitions(session, tenant_id)
 
@@ -666,7 +666,7 @@ async def _handle_media_rescan(session, tenant_id, payload: dict) -> dict:
     it. This is the revisit. A no-scanner tenant is a cheap no-op, not an
     error — the sweep must not retry-loop against a decision not to scan.
     """
-    from app.modules.conversations.media import MediaService
+    from app.applications.apparel.modules.conversations.media import MediaService
 
     scanned = await MediaService.rescan_pending_images(session, tenant_id)
     return {"scanned": scanned}
@@ -693,7 +693,7 @@ async def _handle_journey_resume(session, tenant_id, payload: dict) -> dict:
     from uuid import UUID
 
     from app.core.errors import ValidationError
-    from app.modules.marketing.journey import JourneyExecutionService
+    from app.applications.apparel.modules.marketing.journey import JourneyExecutionService
 
     run_id = payload.get("run_id")
     if not run_id:
@@ -956,7 +956,7 @@ class SchedulerWorker(StreamWorker):
 
 async def _handle_eta_deliver(session, tenant_id, payload: dict) -> dict:
     """Send what is due for every ETA till of this store (see ``deliver_tenant``)."""
-    from app.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
+    from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_tenant, notify_owners
 
     result = await deliver_tenant(session, tenant_id)
     await notify_owners(
@@ -1029,7 +1029,7 @@ async def _handle_low_stock_alerts(session, tenant_id, payload: dict) -> dict:
     per owner (deduped per variant+warehouse per day so a persistent shortage
     reminds once, not every sweep).
     """
-    from app.modules.inventory.services.reporting import InventoryReportingService
+    from app.applications.apparel.modules.inventory.services.reporting import InventoryReportingService
     from app.modules.notifications.service import NotificationService
     from app.modules.settings.service import SettingsService
 
@@ -1086,7 +1086,7 @@ async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
 
     from sqlalchemy import select
 
-    from app.modules.pos.models import PosSession
+    from app.applications.apparel.modules.pos.models import PosSession
 
     now = datetime.now(UTC)
     # Build today's cutoff timestamp from shift_end_time (HH:MM).
@@ -1116,7 +1116,7 @@ async def _handle_auto_close_shifts(session, tenant_id, payload: dict) -> dict:
     if not open_sessions:
         return {"closed": 0}
 
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     closed = 0
     for sid in open_sessions:

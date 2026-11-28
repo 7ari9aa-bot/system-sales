@@ -8,8 +8,8 @@ import httpx
 import pytest
 
 from app.core.secrets import encrypt_credentials_dict
-from app.modules.customers import meta_unsubscribe as mu
-from app.modules.customers.routers import integrations as routes
+from app.applications.apparel.modules.customers import meta_unsubscribe as mu
+from app.applications.apparel.modules.customers.routers import integrations as routes
 from app.modules.platform.models import Integration
 from tests.test_customers_http_surface import TENANT, _call
 

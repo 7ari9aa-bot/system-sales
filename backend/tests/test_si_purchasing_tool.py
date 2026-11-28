@@ -14,12 +14,12 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.tools import _si_purchasing_summary
-from app.modules.ai.tools import TOOLS
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import Warehouse
-from app.modules.pos import models as _pos_models  # noqa: F401  (FK targets)
-from app.modules.purchasing.models import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_purchasing_summary
+from app.applications.apparel.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.pos import models as _pos_models  # noqa: F401  (FK targets)
+from app.applications.apparel.modules.purchasing.models import (
     PurchaseOrder,
     PurchaseOrderLine,
     Supplier,
@@ -345,9 +345,9 @@ async def test_a_name_clash_with_another_shops_supplier_cannot_leak_money(db, te
 
 
 def test_registered_gated_by_purchasing_read_low_risk_and_allowed():
-    import app.modules.ai.agents.sales_intelligence.tools as si
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
     spec = TOOLS["si_finance"]
@@ -357,7 +357,7 @@ def test_registered_gated_by_purchasing_read_low_risk_and_allowed():
 
 
 def test_every_purchasing_query_is_tenant_scoped():
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     for name in ("_PURCHASES_SQL", "_OWED_SQL"):
         sql = getattr(si, name)

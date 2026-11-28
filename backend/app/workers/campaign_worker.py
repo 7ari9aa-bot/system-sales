@@ -77,7 +77,7 @@ async def process_campaign_run_event(
     event without burning an attempt, so the run resumes when units free
     up. Runs in the CALLER's transaction (services never commit).
     """
-    from app.modules.marketing.campaign import (
+    from app.applications.apparel.modules.marketing.campaign import (
         CampaignExecutionService,
         CampaignRun,
         CampaignRunStatus,

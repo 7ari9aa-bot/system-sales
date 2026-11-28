@@ -16,18 +16,18 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.analytics.compiler import (
+from app.applications.apparel.modules.analytics.compiler import (
     UnsupportedFilter,
     compile_metric,
     compute_fact,
 )
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.contracts import (
     AnalysisPeriod,
     MaturityPolicy,
     MaturityStatus,
 )
-from app.modules.customers.models import Customer
-from app.modules.orders.models import (
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import (
     Order,
     OrderPayment,
     OrderStatusHistory,

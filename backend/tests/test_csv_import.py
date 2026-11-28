@@ -26,11 +26,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.catalog.external.csv_import import CSVImportService
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.external.csv_import import CSVImportService
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 

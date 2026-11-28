@@ -12,10 +12,10 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.inventory.models import InventoryBalance
-from app.modules.orders.models import Order, OrderPayment, Refund
-from app.modules.pos.models import PosCashMovement, PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.inventory.models import InventoryBalance
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.pos.models import PosCashMovement, PosSession
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import start_day, till
 
 pytestmark = pytest.mark.asyncio

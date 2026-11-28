@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.base import InboundMessage
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.policy import (
+from app.applications.apparel.modules.conversations.gateway.base import InboundMessage
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.policy import (
     MessagingPolicyService,
     ad_window_started_at,
     ad_window_state,
@@ -166,7 +166,7 @@ def test_a_postback_that_carries_an_ad_referral_counts() -> None:
 
 def test_the_messenger_adapter_output_is_what_ingest_reads() -> None:
     """Adapter and ingest must agree on where the referral lives."""
-    from app.modules.conversations.gateway.messenger import messenger_adapter
+    from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
     payload = {
         "object": "page",
@@ -189,7 +189,7 @@ def test_the_messenger_adapter_output_is_what_ingest_reads() -> None:
 
 
 def test_an_instagram_ad_referral_is_parsed_and_recognised() -> None:
-    from app.modules.conversations.gateway.instagram import instagram_adapter
+    from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
 
     payload = {
         "object": "instagram",

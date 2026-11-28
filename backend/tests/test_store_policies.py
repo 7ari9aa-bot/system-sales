@@ -11,11 +11,11 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.core.errors import ValidationError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai import policies
-from app.modules.ai.models import KnowledgeItem
-from app.modules.ai.providers import EmbeddingProvider
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai import policies
+from app.applications.apparel.modules.ai.models import KnowledgeItem
+from app.applications.apparel.modules.ai.providers import EmbeddingProvider
+from app.applications.apparel.modules.ai.tools import get_tool
 
 VECTOR_DIM = 1536
 
@@ -241,7 +241,7 @@ async def test_one_stores_policies_are_invisible_to_another(db, tenant_ctx, no_e
 def test_the_routes_are_gated_by_settings_permissions() -> None:
     """Reading needs settings:read, writing needs settings:write. Nobody else, so a staff
     member without settings access cannot rewrite what the agent tells customers."""
-    from app.modules.ai.routers.knowledge import router
+    from app.applications.apparel.modules.ai.routers.knowledge import router
 
     def codes(path: str, method: str) -> set[str]:
         (route,) = [r for r in router.routes if r.path == path and method in r.methods]

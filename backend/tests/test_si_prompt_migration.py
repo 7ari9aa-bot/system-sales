@@ -61,7 +61,7 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
 
 
 def test_the_code_prompt_says_sales_means_money_and_names_real_metrics() -> None:
-    from app.modules.analytics import compiler
+    from app.applications.apparel.modules.analytics import compiler
 
     computable = compiler.computable_metric_names()
     for name in ("collected_revenue", "delivered_revenue", "orders_placed"):

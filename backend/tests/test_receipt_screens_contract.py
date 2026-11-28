@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.pos.receipt_settings import _KEYS as RECEIPT_KEYS
-from app.modules.pos.receipt_settings import receipt_settings
+from app.applications.apparel.modules.pos.receipt_settings import _KEYS as RECEIPT_KEYS
+from app.applications.apparel.modules.pos.receipt_settings import receipt_settings
 from app.modules.settings.registry import ENFORCED_KEYS, REGISTRY, Scope
 from app.modules.settings.service import SettingsService
 from tests._pos_helpers import till

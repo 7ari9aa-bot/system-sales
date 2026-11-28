@@ -14,8 +14,8 @@ import pytest
 import sqlalchemy as sa
 
 from app.modules.errors import ValidationError
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_phase6 import _customer, _register, _sellable_variant, _warehouse
 
@@ -26,7 +26,7 @@ OUTSIDE = "outside this terminal's catalog"
 
 async def _scoped_till(db, tenant_ctx):
     """A till serving ONE category: a variant inside it, one outside, one with no category."""
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     wh = await _warehouse(db, tenant_ctx)
     inside = await CatalogService.create_category(db, tenant_ctx.tenant_id, name="in")

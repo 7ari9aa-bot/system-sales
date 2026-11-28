@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.inbox import InboxQuery
-from app.modules.conversations.models import Conversation
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.conversations.inbox import InboxQuery
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.deps import AuthedUser, TenantContext
 from app.modules.identity.models import User
 from app.modules.platform.models import Integration

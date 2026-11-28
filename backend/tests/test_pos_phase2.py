@@ -32,7 +32,7 @@ def test_phase_two_routes_are_mounted() -> None:
 
 
 def test_hold_cart_wire_validates() -> None:
-    from app.modules.pos.router import HoldCartRequest
+    from app.applications.apparel.modules.pos.router import HoldCartRequest
 
     body = HoldCartRequest(
         items=[{"variant_id": str(uuid.uuid4()), "quantity": 2}],
@@ -43,14 +43,14 @@ def test_hold_cart_wire_validates() -> None:
 
 
 def test_hold_cart_wire_needs_at_least_one_item() -> None:
-    from app.modules.pos.router import HoldCartRequest
+    from app.applications.apparel.modules.pos.router import HoldCartRequest
 
     with pytest.raises(PydanticValidationError):
         HoldCartRequest(items=[])
 
 
 def test_clean_held_items_normalises_and_refuses_junk() -> None:
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     variant_id = uuid.uuid4()
     clean = PosService._clean_held_items([{"variant_id": str(variant_id), "quantity": "3"}])
@@ -71,8 +71,8 @@ def test_clean_held_items_normalises_and_refuses_junk() -> None:
 async def _sellable_variant(db, tenant_ctx, *, price: str, stock: int):
     import uuid as _uuid
 
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     product = await CatalogService.create_product(
@@ -97,7 +97,7 @@ async def _sellable_variant(db, tenant_ctx, *, price: str, stock: int):
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون", source="pos"
@@ -105,7 +105,7 @@ async def _customer(db, tenant_ctx):
 
 
 async def _open_session(db, tenant_ctx, warehouse):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await PosService.create_register(
         db,
@@ -118,8 +118,8 @@ async def _open_session(db, tenant_ctx, warehouse):
 
 
 async def test_hold_cart_round_trip_reserves_nothing(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse, variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=5)
     pos_session = await _open_session(db, tenant_ctx, warehouse)
@@ -152,7 +152,7 @@ async def test_hold_cart_round_trip_reserves_nothing(db, tenant_ctx):
 
 async def test_held_cart_cannot_be_parked_on_a_closed_session(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse, variant = await _sellable_variant(db, tenant_ctx, price="10.00", stock=3)
     pos_session = await _open_session(db, tenant_ctx, warehouse)

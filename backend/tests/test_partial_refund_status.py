@@ -40,12 +40,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import money as orders_money
-from app.modules.orders.models import Order
-from app.modules.orders.service import TRANSITIONS, OrderService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import money as orders_money
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.orders.service import TRANSITIONS, OrderService
 from tests.test_order_idempotency import SessionStore, _build_app
 
 # ------------------------------------------------- DB-free: the derivation ----
@@ -276,7 +276,7 @@ async def test_a_rejected_refund_gives_nothing_back(db: AsyncSession, tenant_ctx
         "refund_state"
     ] == "partial"
 
-    from app.modules.orders.models import Refund
+    from app.applications.apparel.modules.orders.models import Refund
 
     row = await db.execute(
         Refund.__table__.update().where(Refund.payment_id == payment.id).values(status="rejected")

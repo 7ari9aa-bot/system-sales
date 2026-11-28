@@ -28,7 +28,7 @@ def test_returns_route_is_mounted() -> None:
 
 
 def test_return_wire_accepts_lines_and_restock() -> None:
-    from app.modules.pos.router import ReturnRequest
+    from app.applications.apparel.modules.pos.router import ReturnRequest
 
     body = ReturnRequest(
         order_id=uuid.uuid4(),
@@ -42,7 +42,7 @@ def test_return_wire_accepts_lines_and_restock() -> None:
 def test_return_wire_refuses_zero_quantity() -> None:
     from pydantic import ValidationError as PydanticValidationError
 
-    from app.modules.pos.router import ReturnRequest
+    from app.applications.apparel.modules.pos.router import ReturnRequest
 
     with pytest.raises(PydanticValidationError):
         ReturnRequest(
@@ -52,7 +52,7 @@ def test_return_wire_refuses_zero_quantity() -> None:
 
 
 def test_return_line_totals_price_at_the_original_sale() -> None:
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     settle = PosService._return_line_totals
     # No discount: the line refunds its original gross.
@@ -74,7 +74,7 @@ def test_return_refunds_what_was_paid_for_a_line_discounted_item() -> None:
     The old rule treated the line discount as part of one basket-wide discount and shared it out
     by gross, so the discounted item came back at 100 - 25 = 75 (and the plain item at less).
     """
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     settle = PosService._return_line_totals
     d = Decimal
@@ -89,7 +89,7 @@ def test_return_refunds_what_was_paid_for_a_line_discounted_item() -> None:
 
 def test_return_shares_only_the_invoice_discount_over_the_net_lines() -> None:
     """Line 50% off + a fixed 30 off the invoice: the 30 is shared over the NET (150), not gross."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     d = Decimal
     # Gross 200, line discount 50, invoice discount 30 -> discount_total 80, paid 120.
@@ -105,13 +105,13 @@ def test_return_shares_only_the_invoice_discount_over_the_net_lines() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -124,8 +124,8 @@ async def _register(db, tenant_ctx):
 
 
 async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -150,7 +150,7 @@ async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون المرتجع", source="pos"
@@ -160,8 +160,8 @@ async def _customer(db, tenant_ctx):
 async def test_line_return_records_value_without_refunding_the_original_tenders(db, tenant_ctx):
     from sqlalchemy import select
 
-    from app.modules.pos.models import PosCashMovement, PosReceipt
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosCashMovement, PosReceipt
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -210,7 +210,7 @@ async def test_line_return_records_value_without_refunding_the_original_tenders(
 
 
 async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -239,7 +239,7 @@ async def test_discounted_return_takes_its_proportional_share(db, tenant_ctx):
 
 async def test_returning_a_line_discounted_item_refunds_what_was_paid(db, tenant_ctx):
     """Real sale: two items at 100, one at 50% off. Paid 150; each comes back at what it cost."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -273,7 +273,7 @@ async def test_returning_a_line_discounted_item_refunds_what_was_paid(db, tenant
 
 async def test_return_is_capped_at_what_was_sold(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -304,8 +304,8 @@ async def test_return_is_capped_at_what_was_sold(db, tenant_ctx):
 
 
 async def test_restock_moves_only_the_returned_quantities(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -346,7 +346,7 @@ async def test_restock_moves_only_the_returned_quantities(db, tenant_ctx):
 
 
 async def test_card_only_return_leaves_the_drawer_alone(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(

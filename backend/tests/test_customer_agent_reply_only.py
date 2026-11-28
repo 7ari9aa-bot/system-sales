@@ -25,11 +25,11 @@ import re
 
 import pytest
 
-import app.modules.ai.agents.customer.definition  # noqa: F401 — registers the definition
-from app.modules.ai import hooks
-from app.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT
-from app.modules.ai.core.registry import AgentRegistry
-from app.modules.ai.handover import OPEN_HANDOVER_STATUSES, request_human_takeover
+import app.applications.apparel.modules.ai.agents.customer.definition  # noqa: F401 — registers the definition
+from app.applications.apparel.modules.ai import hooks
+from app.applications.apparel.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT
+from app.applications.apparel.modules.ai.core.registry import AgentRegistry
+from app.applications.apparel.modules.ai.handover import OPEN_HANDOVER_STATUSES, request_human_takeover
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -37,7 +37,7 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parent.parent
 # were already removed; these are the remaining surfaces.
 TRANSACTING_TOOLS = {"create_order", "add_task", "add_tag"}
 
-# The closed reason vocabulary from `app/modules/ai/models.py::AIHandover.reason`.
+# The closed reason vocabulary from `app/applications/apparel/modules/ai/models.py::AIHandover.reason`.
 HANDOVER_REASONS = {
     "budget",
     "policy",
@@ -183,7 +183,7 @@ def test_handover_routes_are_gated_by_a_permission(path: str, expected: str) -> 
     `create_app().routes`: the app mounts routers lazily, so the endpoint
     definitions — and their dependency trees — live here.
     """
-    from app.modules.ai.router import router as ai_router
+    from app.applications.apparel.modules.ai.router import router as ai_router
 
     routes = [route for route in ai_router.routes if getattr(route, "path", None) == path]
     assert len(routes) == 1, f"expected one route for {path}, found {len(routes)}"
@@ -196,8 +196,8 @@ def test_the_runtime_fallback_prompt_matches_the_canonical_reply_only_prompt():
     serves. It drifted once into teaching the agent to sell (the exact state
     the reply-only wave closed) — pin it to the canonical definition text so
     the two can never diverge again."""
-    from app.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT
-    from app.modules.ai.runtime import DEFAULT_SYSTEM_PROMPT
+    from app.applications.apparel.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT
+    from app.applications.apparel.modules.ai.runtime import DEFAULT_SYSTEM_PROMPT
 
     assert DEFAULT_SYSTEM_PROMPT == CUSTOMER_SYSTEM_PROMPT
     assert "إتمام عمليات الشراء" not in DEFAULT_SYSTEM_PROMPT

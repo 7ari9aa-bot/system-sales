@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 
 def _configure(monkeypatch: pytest.MonkeyPatch, token: str) -> None:
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type("S", (), {"whatsapp_app_secret": "", "whatsapp_verify_token": token})(),
     )
 

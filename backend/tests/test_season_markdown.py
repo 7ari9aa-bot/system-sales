@@ -18,10 +18,10 @@ from app.core.season_markdown import (
     marked_down,
     parse_percent,
 )
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.purchasing.models import VariantCost
+from app.applications.apparel.modules.purchasing.models import VariantCost
 
 pytestmark = pytest.mark.asyncio
 
@@ -146,7 +146,7 @@ async def test_season_matching_ignores_case_and_outer_spaces(db, tenant_ctx) -> 
 
 
 async def test_a_brand_narrows_the_set(db, tenant_ctx) -> None:
-    from app.modules.catalog.models import Brand
+    from app.applications.apparel.modules.catalog.models import Brand
 
     tid = tenant_ctx.tenant_id
     nile = Brand(tenant_id=tid, name="نيل")
@@ -409,7 +409,7 @@ async def test_a_zero_cost_is_a_known_cost_and_nothing_is_below_it(db, tenant_ct
 
 
 async def test_a_brand_filter_reaches_the_service_through_both_routes(db, tenant_ctx) -> None:
-    from app.modules.catalog.models import Brand
+    from app.applications.apparel.modules.catalog.models import Brand
     from tests.test_pos_close_variance_discipline import MANAGER, _call
 
     tid = tenant_ctx.tenant_id

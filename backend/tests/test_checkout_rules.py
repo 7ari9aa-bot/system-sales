@@ -22,12 +22,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.orders.service import OrderService
 
 # ------------------------------------------------------------------ helpers ----
 
@@ -78,7 +78,7 @@ async def _checkout(db: AsyncSession, tenant_id: uuid.UUID, variant, *, qty=1):
 
 
 def test_only_an_active_product_is_sellable():
-    from app.modules.orders.service import sellable_refusal
+    from app.applications.apparel.modules.orders.service import sellable_refusal
 
     assert sellable_refusal("active") is None
     assert sellable_refusal("draft") is not None

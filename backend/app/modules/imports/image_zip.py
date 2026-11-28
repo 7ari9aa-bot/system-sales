@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from app.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
+from app.applications.apparel.modules.catalog.limits import MAX_IMAGES_PER_SKU as CATALOG_MAX_IMAGES_PER_SKU
 
 # الحد اللي بيحكم عدد صور الصنف: نفس رقم ورقة الصور في مركز الاستيراد والرفع اليدوي
 # (المصدر الوحيد في catalog/limits.py).

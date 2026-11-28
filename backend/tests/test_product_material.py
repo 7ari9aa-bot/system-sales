@@ -13,7 +13,7 @@ import uuid as _uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.deps import (
     AuthedUser,
     TenantContext,
@@ -128,7 +128,7 @@ async def test_another_shops_material_is_never_returned(db, tenant_ctx) -> None:
 
 
 async def test_the_product_the_api_returns_carries_its_material(db, tenant_ctx) -> None:
-    from app.modules.catalog.routers._deps import _product_out
+    from app.applications.apparel.modules.catalog.routers._deps import _product_out
 
     p = await _product(db, tenant_ctx.tenant_id, material="Cotton")
     assert _product_out(p, [])["material"] == "Cotton"
@@ -232,7 +232,7 @@ async def test_the_model_and_the_database_agree_about_the_material_column(db) ->
     """
     from sqlalchemy import text
 
-    from app.modules.catalog.models import Product
+    from app.applications.apparel.modules.catalog.models import Product
 
     column = Product.__table__.c.material
     assert column.nullable is True

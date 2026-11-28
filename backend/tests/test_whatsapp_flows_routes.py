@@ -11,7 +11,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.modules.conversations.routers import whatsapp_flows as wf
+from app.applications.apparel.modules.conversations.routers import whatsapp_flows as wf
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
 from tests.security.test_role_authz_matrix import _authz_app
 
@@ -62,7 +62,7 @@ async def _request(db, ctx, method, path, *, body=None, seen=None, creds=CREDS, 
     wf._credentials = _creds
 
     # The gateway builds its own client when none is passed; point it at the mock transport.
-    import app.modules.conversations.gateway.whatsapp_flows as flows_mod
+    import app.applications.apparel.modules.conversations.gateway.whatsapp_flows as flows_mod
 
     original_call = flows_mod.WhatsAppFlowsClient._call
 

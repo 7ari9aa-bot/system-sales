@@ -21,16 +21,16 @@ import re
 import pytest
 
 from app.core.guardrails import screen_inbound
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.response import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
     FALLBACK_IF_THE_MODEL_FAILS,
     NOTE_FOR_THE_MODEL,
     fallback_if_the_model_fails,
     note_for_the_model,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AgentRun
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AgentRun
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from tests.test_si_agent import _seed
 
 LATIN_WORD = re.compile(r"[A-Za-z]{2,}")

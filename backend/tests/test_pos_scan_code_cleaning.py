@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import ctx_for, till
 from tests.test_pos_scan_generic_barcode import _register, _scan
 

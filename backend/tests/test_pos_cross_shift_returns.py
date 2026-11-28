@@ -20,7 +20,7 @@ pytestmark = pytest.mark.asyncio
 
 async def _sale_then_next_day(db, tenant_ctx, *, qty=2, price="25.00"):
     """Sell on shift A, count and close A, open shift B on the same register."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     first = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -41,7 +41,7 @@ async def _sale_then_next_day(db, tenant_ctx, *, qty=2, price="25.00"):
 
 
 async def test_a_closed_shifts_sale_can_be_returned_on_the_open_shift(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     first, second, variant, sold = await _sale_then_next_day(db, tenant_ctx)
     result = await PosService.return_sale(
@@ -60,7 +60,7 @@ async def test_a_closed_shifts_sale_can_be_returned_on_the_open_shift(db, tenant
 
 
 async def test_the_closed_shift_is_not_touched_by_a_later_return(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     first, second, variant, sold = await _sale_then_next_day(db, tenant_ctx)
     before = await PosService.get_session(db, tenant_ctx.tenant_id, first.id)
@@ -80,7 +80,7 @@ async def test_the_closed_shift_is_not_touched_by_a_later_return(db, tenant_ctx)
 
 async def test_the_quantity_cap_still_holds_across_shifts(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     first, second, variant, sold = await _sale_then_next_day(db, tenant_ctx, qty=2)
     await PosService.return_sale(
@@ -101,7 +101,7 @@ async def test_the_quantity_cap_still_holds_across_shifts(db, tenant_ctx):
 
 
 async def test_an_exchange_works_across_shifts_too(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     first, second, variant, sold = await _sale_then_next_day(db, tenant_ctx)
     other = await _sellable_variant(db, tenant_ctx, price="25.00", stock=10)

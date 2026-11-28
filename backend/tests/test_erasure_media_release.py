@@ -17,7 +17,7 @@ So a data-subject deletion — the most authorised deletion there is, asked for 
 the person themselves — was the one path that leaked media for certain.
 
 The closure mirrors what the retention sweep now does in
-``app/modules/analytics/retention.py`` (which cannot be imported from here without
+``app/applications/apparel/modules/analytics/retention.py`` (which cannot be imported from here without
 crossing the module boundary the ratchet guards): gather the keys, delete the rows,
 redact the transcripts, and release the objects LAST. A release that fails is
 REPORTED inside the audited report instead of aborting the erasure — a dead bucket
@@ -36,7 +36,7 @@ from typing import Any
 
 import app.core.search as search_mod
 import app.core.storage as storage_mod
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.privacy.service import DeletionService
 
 TENANT = uuid.UUID("88888888-8888-8888-8888-888888888888")

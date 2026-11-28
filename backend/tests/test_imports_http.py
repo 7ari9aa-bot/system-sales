@@ -14,7 +14,7 @@ import app.core.model_registry  # noqa: F401  (loads every table so foreign keys
 from app.core.middleware import MAX_IMPORT_UPLOAD_BYTES
 from app.main import create_app
 from app.modules.identity.deps import AuthedUser, TenantContext, get_db, get_tenant_ctx
-from app.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.models import Warehouse
 
 BOTH = {"products:write", "inventory:write"}
 

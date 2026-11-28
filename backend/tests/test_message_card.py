@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.routers.inbox import _present_card
+from app.applications.apparel.modules.conversations.routers.inbox import _present_card
 
 
 def _m(ig=None, deleted=False):
@@ -76,6 +76,6 @@ def test_garbage_in_the_stored_payload_is_ignored_not_raised() -> None:
 def test_the_messages_endpoint_hides_the_card_of_an_unsent_message() -> None:
     import inspect
 
-    from app.modules.conversations.routers import inbox
+    from app.applications.apparel.modules.conversations.routers import inbox
 
     assert '"card": None if m.deleted else _present_card(m)' in inspect.getsource(inbox)

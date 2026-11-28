@@ -27,17 +27,17 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import app.modules.ai.hooks as hooks_mod
-from app.modules.ai.agents.customer import turn as turn_module
-from app.modules.ai.agents.customer.turn import TurnInput, TurnOutcome, run_customer_turn
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunner, AgentRunResult
-from app.modules.conversations import models as conv_models
-from app.modules.conversations.media import MediaService
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
+import app.applications.apparel.modules.ai.hooks as hooks_mod
+from app.applications.apparel.modules.ai.agents.customer import turn as turn_module
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, TurnOutcome, run_customer_turn
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunner, AgentRunResult
+from app.applications.apparel.modules.conversations import models as conv_models
+from app.applications.apparel.modules.conversations.media import MediaService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
 from tests.test_customer_turn import FakeRunner
 from tests.test_media_pipeline import MEDIA_URL, FakeStorage, _set_scanner
 

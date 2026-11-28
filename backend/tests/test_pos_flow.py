@@ -14,14 +14,14 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.inventory.models import InventoryReservation
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order, OrderPayment
+from app.applications.apparel.modules.inventory.models import InventoryReservation
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment
 from app.modules.platform.models import OutboxEvent
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 
 

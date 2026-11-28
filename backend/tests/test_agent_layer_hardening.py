@@ -16,14 +16,14 @@ import pytest
 from pydantic import BaseModel
 
 from app.core.idempotency import should_guard
-from app.modules.ai.core.registry import (
+from app.applications.apparel.modules.ai.core.registry import (
     AgentCapability,
     AgentDefinition,
     AgentRegistry,
     discover_agents,
 )
-from app.modules.ai.runtime import _canary_chosen
-from app.modules.ai.tools import TOOLS, ToolSpec, register_tool
+from app.applications.apparel.modules.ai.runtime import _canary_chosen
+from app.applications.apparel.modules.ai.tools import TOOLS, ToolSpec, register_tool
 
 
 class _Args(BaseModel):

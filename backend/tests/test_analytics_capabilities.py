@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.modules.analytics.capabilities import (
+from app.applications.apparel.modules.analytics.capabilities import (
     CapabilityContext,
     EvidenceStore,
     analyze_drivers,
@@ -23,23 +23,23 @@ from app.modules.analytics.capabilities import (
     get_data_status,
     get_metric,
 )
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.contracts import (
     AnalysisPeriod,
     DriverResult,
     MaturityPolicy,
     MaturityStatus,
     MetricFact,
 )
-from app.modules.analytics.evidence import build_pack, validate_pack_inputs
-from app.modules.analytics.findings import build_findings
-from app.modules.analytics.semantic import StoreMetricProfile
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order, OrderPayment, Refund, Shipment
+from app.applications.apparel.modules.analytics.evidence import build_pack, validate_pack_inputs
+from app.applications.apparel.modules.analytics.findings import build_findings
+from app.applications.apparel.modules.analytics.semantic import StoreMetricProfile
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund, Shipment
 
 DAYS = 30
 REFERENCE = datetime.now(UTC)
 # The fact-id charset `{{fact_id:format}}` placeholders can carry
-# (app/modules/analytics/numbers.py).
+# (app/applications/apparel/modules/analytics/numbers.py).
 _PLACEHOLDER_ID_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
@@ -110,7 +110,7 @@ async def test_get_metric_registers_fact_with_id(db, tenant_ctx):
     await _seed_two_windows(db, tenant_ctx.tenant_id)
     context = CapabilityContext(tenant_id=tenant_ctx.tenant_id, profile=_profile())
     store = EvidenceStore()
-    from app.modules.analytics.capabilities import _period_window
+    from app.applications.apparel.modules.analytics.capabilities import _period_window
 
     period = _period_window(REFERENCE, days=DAYS)
     result = await get_metric(

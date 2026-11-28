@@ -16,8 +16,8 @@ from sqlalchemy import select, update
 
 from app.modules.identity.models import Tenant
 from app.modules.platform.models import OutboxEvent
-from app.modules.pos.models import PosDailySales, PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.models import PosDailySales, PosSession
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till
 
 pytestmark = pytest.mark.asyncio
@@ -71,7 +71,7 @@ async def test_a_close_just_after_cairo_midnight_belongs_to_the_new_cairo_day(
         def now(cls, tz=None):
             return instant
 
-    monkeypatch.setattr("app.modules.pos.service.datetime", _Frozen)
+    monkeypatch.setattr("app.applications.apparel.modules.pos.service.datetime", _Frozen)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, closed_by=tenant_ctx.user.id)
 
     assert await _event_date(db, tenant_ctx, shift.id) == "2026-11-25"
@@ -110,7 +110,7 @@ async def test_a_close_before_cairo_midnight_stays_on_the_same_day(
         def now(cls, tz=None):
             return instant
 
-    monkeypatch.setattr("app.modules.pos.service.datetime", _Frozen)
+    monkeypatch.setattr("app.applications.apparel.modules.pos.service.datetime", _Frozen)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, closed_by=tenant_ctx.user.id)
     assert await _event_date(db, tenant_ctx, shift.id) == "2026-11-24"
 
@@ -126,7 +126,7 @@ async def test_a_shop_with_no_timezone_keeps_counting_in_utc(db, tenant_ctx, mon
         def now(cls, tz=None):
             return instant
 
-    monkeypatch.setattr("app.modules.pos.service.datetime", _Frozen)
+    monkeypatch.setattr("app.applications.apparel.modules.pos.service.datetime", _Frozen)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, closed_by=tenant_ctx.user.id)
     assert await _event_date(db, tenant_ctx, shift.id) == "2026-11-24"
     assert (
@@ -148,7 +148,7 @@ async def test_the_backfill_moves_a_misfiled_day_to_the_shop_date(
         def now(cls, tz=None):
             return instant
 
-    monkeypatch.setattr("app.modules.pos.service.datetime", _Frozen)
+    monkeypatch.setattr("app.applications.apparel.modules.pos.service.datetime", _Frozen)
     await PosService.close_session(db, tenant_ctx.tenant_id, shift.id, closed_by=tenant_ctx.user.id)
     tid = tenant_ctx.tenant_id
 

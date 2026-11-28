@@ -1,0 +1,838 @@
+"""The SI agent orchestrator (spec §2.2, Phase 7 v1) — on the platform runner.
+
+Runs a sales question through the platform AgentRunner with the SI tools
+registered, then applies the DETERMINISTIC post-pass the spec demands:
+facts rebuild from tool results, the answer's numbers are checked against
+them, findings are graded by the engine — and when the answer cannot be
+proven, the SAFE RESPONSE answers instead (§10.4).
+
+Between-rounds coverage has landed (the recorded Gap Proposal): when the
+first draft skips dimensions the question asked for AND the evidence
+supports, ONE corrective regeneration runs through the gateway
+(coverage.py — budget reserve/settle like any model call, tools disabled,
+reusing the gathered evidence). The regenerated text must pass the same
+output guardrail, the free-number validation and a coverage re-check;
+failing any keeps the original draft for the safe-response path below.
+Still deterministic-only: coverage is a keyword gate over the question and
+the evidence, not a model-graded rubric. Neither step can produce a wrong
+number — they only narrow what is said.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Re-export: the provisioning single-source test imports the canonical prompt
+# FROM this module (the agent module is the prompt's public face) — the alias
+# form keeps it alive under any lint sweep.
+from app.core.guardrails import screen_inbound as _screen_inbound
+from app.applications.apparel.modules.ai.agents.sales_intelligence import (
+    permissions as _permissions,
+)
+from app.applications.apparel.modules.ai.agents.sales_intelligence import (
+    tools as _si_tools,  # noqa: F401 — registers the SI tools at import
+)
+from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import (
+    regenerate_on_coverage_gap,
+    regenerate_on_rejected_answer,
+)
+from app.applications.apparel.modules.ai.agents.sales_intelligence.plain_words import plain_words
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import (  # noqa: F401,E402
+    SI_SYSTEM_PROMPT as SI_SYSTEM_PROMPT,
+)
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
+    allowed_numbers_from_facts,
+    fallback_if_the_model_fails,
+    note_for_the_model,
+    period_dates_from_evidence,
+    recorded_days_from_evidence,
+    safe_response,
+    validate_answer,
+)
+from app.applications.apparel.modules.analytics.capabilities import (
+    CapabilityContext,
+    EvidenceStore,
+    load_store_metric_profile,
+)
+from app.applications.apparel.modules.analytics.contracts import (
+    AnalysisPeriod,
+    Comparison,
+    DataQuality,
+    DataQualityStatus,
+    DriverResult,
+    EvidencePack,
+    Finding,
+    MaturityPolicy,
+    MaturityStatus,
+    MetricFact,
+    Outcome,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class AnalysisResult:
+    """§12.2 — the agent boundary result (no HTTP/UI knowledge)."""
+
+    outcome: Outcome
+    answer: str
+    findings: list[Finding] = field(default_factory=list)
+    facts: list[dict] = field(default_factory=list)
+    evidence_hash: str | None = None
+    analysis_id: uuid.UUID | None = None
+    saved_evidence_id: uuid.UUID | None = None
+    run_id: uuid.UUID | None = None
+    tool_calls_made: list[dict] = field(default_factory=list)
+    data_quality: DataQuality = field(
+        default_factory=lambda: DataQuality(status=DataQualityStatus.COMPLETE)
+    )
+    guardrail_reason: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    model_version: str | None = None
+    agent_version: int = 1
+    prompt_version: str | None = "1"
+
+
+class AnalysisRequest(BaseModel):
+    """§12.1 — AnalysisInput v1: one question, no session chain yet."""
+
+    question: str = Field(min_length=1, max_length=2000)
+    agent_id: uuid.UUID | None = None
+
+
+class FindingOut(BaseModel):
+    statement: str
+    type: str
+    relationship: str
+    confidence: str
+    confidence_reasons: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class FindingStoredOut(BaseModel):
+    """A stored finding as the GET route returns it."""
+
+    statement: str
+    type: str
+    relationship: str
+    confidence: str
+    confidence_reasons: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    materiality: str
+
+
+class AnalysisStoredOut(BaseModel):
+    """§12.4 — a stored analysis as the GET route returns it (typed: the
+    AI contract refuses open bodies on the ai surface)."""
+
+    analysis_id: uuid.UUID
+    run_id: uuid.UUID | None = None
+    question: str
+    outcome: str
+    content_hash: str
+    model: str | None = None
+    # P1-12: the alias is not the model. Both halves of the provenance ship
+    # with the stored answer so a reader can tell what produced it.
+    provider: str | None = None
+    model_version: str | None = None
+    prompt_version: str | None = None
+    created_at: str
+    pack: EvidencePack
+    findings: list[FindingStoredOut]
+
+
+class AnalysisOut(BaseModel):
+    """§12.2 — the rendered result the dashboard consumes."""
+
+    analysis_id: uuid.UUID | None = None
+    outcome: str
+    answer: str
+    findings: list[FindingOut]
+    facts: list[dict]
+    data_quality_status: str
+    guardrail_reason: str | None = None
+
+
+class DeepAnalysisQueuedOut(BaseModel):
+    """§13 — the 202 body: what was queued and where to poll."""
+
+    job_id: uuid.UUID
+    analysis_id: uuid.UUID
+    status: str
+
+
+async def ensure_si_tools(session: AsyncSession, tenant_id: uuid.UUID, agent_id: uuid.UUID) -> None:
+    """Idempotently attach the six SI tools to the agent (§4.4). Read-only
+    tools on the owner's own agent — no policy surface is bypassed."""
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+    from app.applications.apparel.modules.ai.models import AgentTool
+
+    existing = {
+        row.name
+        for row in (
+            await session.execute(
+                select(AgentTool).where(
+                    AgentTool.tenant_id == tenant_id,
+                    AgentTool.agent_id == agent_id,
+                    AgentTool.name.in_(SI_TOOLS),
+                )
+            )
+        ).scalars()
+    }
+    missing = [name for name in SI_TOOLS if name not in existing]
+    if not missing:
+        return
+    try:
+        # Two analyses can provision concurrently. The loser of the unique
+        # (tenant, agent, tool) race must roll back only its insert, not poison
+        # the caller's transaction.
+        async with session.begin_nested():
+            for name in missing:
+                session.add(AgentTool(tenant_id=tenant_id, agent_id=agent_id, name=name, policy={}))
+            await session.flush()
+    except IntegrityError:
+        logger.info(
+            "si.tools_already_provisioned tenant=%s agent=%s",
+            tenant_id,
+            agent_id,
+        )
+
+
+def _rebuild_evidence(tool_calls_made: list[dict]) -> dict[str, list[dict]]:
+    """Evidence payloads from every OK si_* tool result.
+    Collects facts, comparisons, dimensions, drivers, summaries,
+    and full tool results (Report 4285 #6, #8)."""
+    facts: list[dict] = []
+    comparisons: list[dict] = []
+    dimensions: list[dict] = []
+    drivers: list[dict] = []
+    summaries: list[dict] = []
+    tool_results: list[dict] = []
+    for call in tool_calls_made:
+        if not str(call.get("name", "")).startswith("si_") or call.get("status") != "ok":
+            continue
+        res = call.get("result") or {}
+        tool_results.append(res)
+        facts.extend(res.get("facts") or [])
+        comparisons.extend(res.get("comparisons") or [])
+        dimensions.extend(res.get("dimensions") or [])
+        drivers.extend(res.get("drivers") or [])
+        if res.get("summary"):
+            s = res.get("summary")
+            summaries.append(s if isinstance(s, dict) else {"summary": s})
+    return {
+        "facts": facts,
+        "comparisons": comparisons,
+        "dimensions": dimensions,
+        "drivers": drivers,
+        "summaries": summaries,
+        "tool_results": tool_results,
+    }
+
+
+async def _recorded_days(session: AsyncSession, tenant_id: uuid.UUID) -> list[str]:
+    """The first and last day each of the shop's sources was recorded, as dates only.
+
+    An answer often says when the last order was ("the last order was on 17 September"), and the
+    model writes it whether or not it called the data-status tool this turn, so the date was
+    refused as unmeasured and the owner got a generic text instead of a correct answer. The server
+    reads it itself, the same read-only query the tool runs, and hands the gate DATES ONLY: no
+    counts, so no number becomes legal. A failure returns nothing and the answer is judged as
+    before.
+    """
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_data_status
+
+    try:
+        result = await _si_data_status(session, tenant_id)
+    except Exception:  # noqa: BLE001 — containment: the answer is still judged without it
+        logger.warning("si.recorded_days_unread tenant=%s", tenant_id, exc_info=True)
+        return []
+    days: list[str] = []
+    for row in (result.get("summary") or {}).get("sources") or []:
+        if isinstance(row, dict):
+            days.extend(v for v in (row.get("first"), row.get("last")) if isinstance(v, str))
+    return sorted(set(days))
+
+
+def _rebuild_facts(tool_calls_made: list[dict]) -> list[dict]:
+    """MetricFact payloads from every OK si_* tool result."""
+    return _rebuild_evidence(tool_calls_made)["facts"]
+
+
+def _parse_period_boundary(value: str, fact_tz: str, *, is_end: bool) -> datetime:
+    """Parse a period boundary in the FACT's own timezone, never naive-UTC.
+
+    `_fact_payload` now emits full ISO datetimes (the store timezone is part
+    of the payload), but legacy rows/events carry bare `YYYY-MM-DD` dates: a
+    date is interpreted as the fact's LOCAL day — start at 00:00 local, end
+    at the last instant of that local day — not as midnight UTC, which prior
+    `replace(tzinfo=UTC)` quietly claimed (§15.2: that call relabels the
+    timezone without converting a local time).
+    """
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(fact_tz)
+    if len(value) == 10:
+        d = datetime.strptime(value, "%Y-%m-%d").date()
+        t = datetime.max.time() if is_end else datetime.min.time()
+        return datetime.combine(d, t, tzinfo=tz)
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt
+
+
+def _facts_to_contracts(
+    payloads: list[dict], timezone: str = "Africa/Cairo"
+) -> dict[str, MetricFact]:
+    """Rebuild the run-scoped evidence needed for findings/coverage (P1-20).
+    Rebuilds facts transferring provenance fields from tool payload."""
+    facts: dict[str, MetricFact] = {}
+    now = datetime.now(UTC)
+    for payload in payloads:
+        fact_tz = payload.get("timezone") or timezone
+        data_as_of = (
+            datetime.fromisoformat(payload["data_as_of"]) if payload.get("data_as_of") else now
+        )
+        computed_at = (
+            datetime.fromisoformat(payload["computed_at"]) if payload.get("computed_at") else now
+        )
+
+        period = AnalysisPeriod(
+            start=_parse_period_boundary(payload["period_start"], fact_tz, is_end=False),
+            end=_parse_period_boundary(payload["period_end"], fact_tz, is_end=True),
+            timezone=fact_tz,
+            attribution_basis=payload.get("attribution_basis", "placed_at"),
+            maturity_policy=MaturityPolicy(kind=payload.get("maturity_policy", "immediate")),
+            maturity_status=MaturityStatus(payload["maturity"]),
+            data_as_of=data_as_of,
+        )
+        facts[payload["id"]] = MetricFact(
+            id=payload["id"],
+            metric=payload["metric"],
+            value=Decimal(str(payload["value"])),
+            unit=payload.get("unit", "orders"),
+            period=period,
+            # P1-12: the bucket a fact belongs to travels with it. The id is a
+            # digest of metric+window+filters, so a rebuild that dropped the
+            # filters would hold facts that no longer explain their own ids.
+            filters=payload.get("filters") or {},
+            source=payload.get("source", "orders"),
+            computed_at=computed_at,
+            data_as_of=data_as_of,
+            maturity_status=MaturityStatus(payload["maturity"]),
+        )
+    return facts
+
+
+async def _owner_notes_for_prompt(
+    session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID | None
+) -> str:
+    """The asker's own notes as a labelled block, or "" when there is nothing to show.
+
+    Memory is a convenience, never a dependency: any failure reads as "no notes", and the read runs
+    in a savepoint so a failed statement cannot poison the transaction the answer still needs."""
+    if user_id is None:
+        return ""
+    from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
+
+    try:
+        async with session.begin_nested():
+            return await OwnerMemoryService(session, tenant_id, user_id).render_for_prompt()
+    except Exception:  # noqa: BLE001 - a memory problem must never cost the owner an answer
+        logger.warning("owner_memory.read_failed tenant=%s", tenant_id, exc_info=True)
+        return ""
+
+
+def _shop_now(zone):
+    """The current instant in the shop's zone. A seam so a test can pin the clock."""
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.today import now_in
+
+    return now_in(zone)
+
+
+def _system_directive_for(
+    stored: str | None, currency: str | None, tenant_id: uuid.UUID, merchant_tz: str
+) -> str | None:
+    """What rides last in the system message: the shop's dialect, then what day it is.
+
+    Both are conveniences, never dependencies: each is built on its own, and a failure in one reads
+    as "that part is absent" so the owner still gets an answer (and never loses the other part)."""
+    from zoneinfo import ZoneInfo
+
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.today import today_context
+
+    parts: list[str] = []
+    dialect_part = _style_directive_for(stored, currency, tenant_id)
+    if dialect_part:
+        parts.append(dialect_part)
+    try:
+        zone = ZoneInfo(merchant_tz)
+        parts.append(today_context(_shop_now(zone), zone))
+    except Exception:  # noqa: BLE001 - a date problem must never cost the owner an answer
+        logger.warning("si_today.context_failed tenant=%s", tenant_id, exc_info=True)
+    return "\n\n".join(parts) if parts else None
+
+
+def _style_directive_for(
+    stored: str | None, currency: str | None, tenant_id: uuid.UUID
+) -> str | None:
+    """The shop's dialect directive, or ``None`` when it cannot be worked out.
+
+    Style is a convenience, never a dependency: any failure reads as "no directive" so the owner
+    still gets an answer, in the model's default voice."""
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
+
+    try:
+        return dialect.directive_for_shop(stored, currency)
+    except Exception:  # noqa: BLE001 - a style problem must never cost the owner an answer
+        logger.warning("si_dialect.directive_failed tenant=%s", tenant_id, exc_info=True)
+        return None
+
+
+async def _book_regen_usage(session, tenant_id, agent_id, result, regen_tokens) -> None:
+    """Book the tokens of a second model call against the run and the monthly cap.
+
+    The provider billed the call whether or not its text survived the gates. The runner already
+    finalized the run row AND wrote its ai_usage record before returning (this stage runs AFTER
+    run()), so folding into the in-memory result alone would mutate an object nobody re-persists:
+    the cap reads SUM(ai_usage.cost) and the gateway writes only an audit ModelCall row. The delta
+    is booked durably, in this transaction (deep self-review round 3, CRITICAL).
+    """
+    from app.applications.apparel.modules.ai.budget import estimate_cost
+    from app.applications.apparel.modules.ai.models import AgentRun as _AgentRun
+    from app.applications.apparel.modules.ai.usage import record_usage
+
+    result.tokens_in += regen_tokens[0]
+    result.tokens_out += regen_tokens[1]
+    if result.run_id is not None:
+        run_row = await session.get(_AgentRun, result.run_id)
+        if run_row is not None:
+            run_row.tokens_in += regen_tokens[0]
+            run_row.tokens_out += regen_tokens[1]
+            run_row.cost = (run_row.cost or 0) + estimate_cost(*regen_tokens)
+    await record_usage(
+        session,
+        tenant_id,
+        agent_id=agent_id,
+        tokens_in=regen_tokens[0],
+        tokens_out=regen_tokens[1],
+        cost=estimate_cost(*regen_tokens),
+    )
+
+
+async def run_sales_analysis(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    agent_id: uuid.UUID,
+    question: str,
+    runner=None,
+    history: list[dict[str, str]] | None = None,
+    actor_permissions: set[str] | frozenset[str] | None = None,
+    user_id: uuid.UUID | None = None,
+) -> AnalysisResult:
+    """One sales question → an evidence-backed answer (or a safe one).
+
+    ``user_id`` is the person asking. It selects THEIR owner notes, which ride to the model in the
+    untrusted-context slot. Absent (a scheduled job, an unknown asker) means no notes, never all."""
+    from sqlalchemy import text as sa_text
+
+    from app.applications.apparel.modules.ai.gateway import AIGateway
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
+
+    # §settings: analytics_agent.enabled gates whether the agent runs at all.
+    from app.modules.settings.service import SettingsService
+
+    _settings = SettingsService(session, tenant_id)
+    agent_enabled = await _settings.value("analytics_agent.enabled")
+    if not agent_enabled:
+        return AnalysisResult(
+            outcome=Outcome.UNSUPPORTED_ANALYSIS,
+            answer="The analytics agent is disabled in settings.",
+            findings=[],
+            run_id=None,
+        )
+
+    # The merchant zone is the one every fact's period is stamped through —
+    # caller → tenant → deployment → UTC (analytics timekit, §6.5/P1-19). This
+    # query used to COALESCE a hardcoded 'Africa/Cairo' over a NULL
+    # tenants.timezone, and every tenant that never declared a zone then
+    # failed its own evidence pack: the facts carried UTC, the pack demanded
+    # Africa/Cairo, and validate_pack_inputs raised before the answer shipped.
+    from app.applications.apparel.modules.analytics.service import resolve_report_timezone
+
+    merchant_tz = str(await resolve_report_timezone(session, tenant_id))
+    tenant_row = (
+        await session.execute(
+            sa_text("SELECT COALESCE(currency, 'EGP'), dialect FROM tenants WHERE id = :tid"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    merchant_currency = tenant_row[0] if tenant_row else "EGP"
+    style_directive = _system_directive_for(
+        tenant_row[1] if tenant_row else None, merchant_currency, tenant_id, merchant_tz
+    )
+    # §settings: analytics_agent.default_period — append to the system directive
+    # so the model knows the preferred default period when the question omits one.
+    default_period = await _settings.value("analytics_agent.default_period")
+    if default_period:
+        _period_hint = (
+            f"Default reporting period: {default_period}."
+            " Use this when the question does not specify a time range."
+        )
+        style_directive = (
+            f"{style_directive}\n\n{_period_hint}" if style_directive else _period_hint
+        )
+
+    # §settings: analytics_agent.include_branches — scope the analysis to the
+    # specified branch IDs. Empty = all branches. Passed as a directive so the
+    # model focuses its queries and reasoning on the allowed branches only.
+    include_branches = await _settings.value("analytics_agent.include_branches")
+    if include_branches:
+        branch_ids = ", ".join(str(b) for b in include_branches)
+        _branch_hint = (
+            f"Scope: analyse only these branch IDs: {branch_ids}."
+            " Exclude data from any branch not in this list."
+        )
+        style_directive = (
+            f"{style_directive}\n\n{_branch_hint}" if style_directive else _branch_hint
+        )
+
+    # Attach any tool the agent row does not have yet. Only the old /ai/sales route used to do
+    # this, so an agent created before a tool existed never received it on the chat path: in
+    # production 11 of 12 agents held three tools and answered "no stock data" with the stock tool
+    # deployed. It adds the missing ones and never removes or re-enables anything.
+    await ensure_si_tools(session, tenant_id, agent_id)
+
+    profile = await load_store_metric_profile(session, tenant_id)
+    owner_notes = await _owner_notes_for_prompt(session, tenant_id, user_id)
+
+    runner = runner or AgentRunner(gateway=AIGateway())
+    analysis_id = uuid.uuid4()
+    from app.applications.apparel.modules.analytics.events import emit_analysis_event
+
+    await emit_analysis_event(
+        session,
+        tenant_id,
+        event_type="ai.analysis.started",
+        analysis_id=analysis_id,
+        run_id=None,
+        payload={"question": question, "currency": merchant_currency},
+    )
+    # A message the shared guard would stop (it tries to change or read the assistant's own
+    # instructions, or asks for another shop's data) must still be ANSWERED BY THE MODEL, in the
+    # shop's voice: a fixed sentence is a prepared reply. The model must not read the hostile text
+    # itself, so it is given a note about what happened instead of what was typed. The runner
+    # screens whatever it is handed, and the note is written to pass that screen.
+    held = _screen_inbound(question)
+    note = note_for_the_model(held.reason) if held.decision != "allow" else None
+    message_for_the_model = note or question
+    result = None
+    try:
+        # A tool that covers several reads checks the permission of the read it was asked for, and
+        # the shared runner does not hand it the asker's permissions, so they travel in a context
+        # variable around the run. With none known the tool can only refuse (it fails closed).
+        with _permissions.asking_with(actor_permissions):
+            result = await runner.run(
+                session,
+                tenant_id,
+                agent_id=agent_id,
+                user_message=message_for_the_model,
+                # No `system_prompt` here on purpose. `_resolve_system_prompt` ranks an
+                # override ABOVE the agent row, so passing SI_SYSTEM_PROMPT made this
+                # call ignore whatever the tenant's Agent actually holds: merchant edits
+                # and any prompt rollout were inert for the whole Sales Intelligence
+                # agent. The row is provisioned from the definition, and
+                # `_resolve_system_prompt` falls back to that definition when the row is
+                # empty, so the configured prompt still always reaches the model.
+                history=history,
+                actor_permissions=actor_permissions,
+                # The owner's notes are free text, so they travel as UNTRUSTED context (a separate
+                # user message the model is told is data), never in the system prompt and never
+                # as system-owned facts.
+                knowledge_context=owner_notes or None,
+                # The dialect is trusted wording the server picked from a closed list, so it goes
+                # in the system prompt; the notes above are free text and never do.
+                style_directive=style_directive,
+            )
+    except Exception:
+        # A started event with no counterpart reads as "stuck forever" to
+        # anything pairing them. Best-effort: a poisoned transaction (the
+        # statement-timeout case the chat turn handler knows about) can refuse
+        # even this write — the original failure is re-raised either way.
+        try:
+            await emit_analysis_event(
+                session,
+                tenant_id,
+                event_type="ai.analysis.failed",
+                analysis_id=analysis_id,
+                run_id=None,
+                payload={"question": question, "currency": merchant_currency},
+            )
+        except Exception:  # noqa: BLE001 — containment, never masks the run failure
+            logger.warning(
+                "ai.analysis.failed_event_unwritten analysis=%s", analysis_id, exc_info=True
+            )
+        raise
+
+    run_id = result.run_id
+    evidence = _rebuild_evidence(result.tool_calls_made)
+    evidence["recorded_days"] = await _recorded_days(session, tenant_id)
+
+    # §settings: analytics_agent.min_confidence — filter findings below the
+    # tenant's confidence threshold so low-certainty suggestions are excluded.
+    min_confidence = await _settings.value("analytics_agent.min_confidence")
+    if min_confidence is None:
+        min_confidence = 0.7
+
+    payloads = evidence["facts"]
+    facts_contracts = _facts_to_contracts(payloads, timezone=merchant_tz)
+
+    from app.applications.apparel.modules.analytics.evidence import build_pack
+    from app.applications.apparel.modules.analytics.findings import build_findings
+
+    store = (
+        _store_from(
+            facts_contracts,
+            comparisons=evidence["comparisons"],
+            dimensions=evidence["dimensions"],
+            drivers=evidence["drivers"],
+        )
+        if facts_contracts
+        else EvidenceStore()
+    )
+    findings = build_findings(store) if facts_contracts else []
+    # §settings: analytics_agent.min_confidence — filter findings below threshold.
+    _conf_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    _min_level = 3 if min_confidence >= 0.8 else (2 if min_confidence >= 0.5 else 1)
+    findings = [f for f in findings if _conf_order.get(f.confidence, 0) >= _min_level]
+    allowed = allowed_numbers_from_facts(evidence, findings)
+    evidence_hash = None
+    pack = None
+    if facts_contracts:
+        # P1-12: the pack is validated against the timezone and currency the
+        # facts were actually measured in. `build_pack` defaults to UTC/EGP, and
+        # every fact rebuilt here carries the MERCHANT's zone — so a tenant that
+        # set a zone failed validation at publish time, after the model call was
+        # already paid for.
+        pack = build_pack(
+            store,
+            CapabilityContext(tenant_id=tenant_id, profile=profile),
+            question=question,
+            timezone=merchant_tz,
+            currency=merchant_currency,
+        )
+        evidence_hash = pack.content_hash
+
+    # Between-rounds coverage (the recorded Gap Proposal, now landed): when
+    # the first draft skips dimensions the question asked for and the
+    # evidence supports, ONE corrective regeneration runs through the
+    # gateway. Its output must pass the same guardrail + free-number gates
+    # and a coverage re-check; failing any keeps the original draft — the
+    # validation/safe-response block below then applies unchanged.
+    replacement, coverage_note, regen_tokens = await regenerate_on_coverage_gap(
+        session,
+        tenant_id,
+        agent_id=agent_id,
+        run_id=result.run_id,
+        question=question,
+        history=history,
+        draft=result.content,
+        evidence=evidence,
+        allowed_numbers=allowed,
+        findings=findings,
+        tool_calls_made=result.tool_calls_made,
+        style_directive=style_directive,
+    )
+    if replacement is not None:
+        result.content = replacement
+    if regen_tokens is not None:
+        await _book_regen_usage(session, tenant_id, agent_id, result, regen_tokens)
+    if coverage_note is not None:
+        await _record_run_output(session, result.run_id, "coverage_regen", coverage_note)
+
+    # P1-22: Determine outcome and answer before durable save_analysis
+    guardrail_reason: str | None = None
+    safe_resp: bool = False
+    if result.content:
+        problems = validate_answer(
+            result.content,
+            allowed,
+            findings,
+            period_dates=period_dates_from_evidence(evidence),
+            yearless_dates=period_dates_from_evidence(evidence, boundaries_only=True),
+            recorded_dates=recorded_days_from_evidence(evidence),
+        )
+        rewritten: str | None = None
+        if problems:
+            logger.warning("si.answer_rejected tenant=%s problems=%s", tenant_id, problems)
+            # one rewrite by the model before any fixed sentence is shown
+            rewritten, rewrite_tokens = await regenerate_on_rejected_answer(
+                session,
+                tenant_id,
+                agent_id=agent_id,
+                run_id=result.run_id,
+                history=history,
+                draft=result.content,
+                problems=problems,
+                evidence=evidence,
+                allowed_numbers=allowed,
+                findings=findings,
+                tool_calls_made=result.tool_calls_made,
+                question=question,
+                style_directive=style_directive,
+            )
+            if rewrite_tokens is not None:
+                await _book_regen_usage(session, tenant_id, agent_id, result, rewrite_tokens)
+        if problems and rewritten is None:
+            outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
+            answer = plain_words(safe_response(findings, {}))
+            guardrail_reason = "si_response_invalid"
+            safe_resp = True
+        elif rewritten is not None:
+            outcome = Outcome.ANSWERED
+            answer = plain_words(rewritten)
+        else:
+            outcome = Outcome.ANSWERED
+            # numbers are already proven above; only the words are touched here
+            answer = plain_words(result.content)
+    else:
+        outcome = Outcome.NO_CLEAR_EXPLANATION if findings else Outcome.INSUFFICIENT_DATA
+        # why the owner's message was held decides the floor; why the model then failed (an empty
+        # reply is itself reported as a reason) does not
+        guardrail_reason = (held.reason if note else None) or result.guardrail_reason
+        # The model answered a held message in its own words (the branch above). Reaching here
+        # means it could not: the call failed, came back empty, or its reply was stopped. Only
+        # then is the owner shown the plain floor, never "no clear result, we need more time".
+        answer = fallback_if_the_model_fails(guardrail_reason) or plain_words(
+            safe_response(findings, {})
+        )
+
+    saved_evidence_id = None
+    model_name = getattr(result, "model", None) or "fast"
+    provider_name = getattr(result, "provider", None) or "platform"
+    agent_ver = getattr(result, "agent_version", 1)
+    if pack is not None:
+        from app.applications.apparel.modules.analytics.persistence import save_analysis
+
+        saved_evidence_id = await save_analysis(
+            session,
+            tenant_id,
+            question=question,
+            outcome=outcome.value,
+            pack=pack,
+            findings=findings,
+            run_id=result.run_id,
+            model=model_name,
+            # P1-12: provenance the stored answer can be audited against.
+            provider=provider_name,
+            model_version=getattr(result, "model_name", None),
+            prompt_version=str(agent_ver),
+        )
+
+    await emit_analysis_event(
+        session,
+        tenant_id,
+        event_type="ai.analysis.completed",
+        analysis_id=analysis_id,
+        run_id=run_id,
+        payload={
+            "outcome": outcome.value,
+            "findings": len(findings),
+            "safe_response": safe_resp,
+        },
+    )
+    return AnalysisResult(
+        outcome=outcome,
+        answer=answer,
+        findings=findings,
+        facts=payloads,
+        evidence_hash=evidence_hash,
+        analysis_id=analysis_id,
+        saved_evidence_id=saved_evidence_id,
+        run_id=run_id,
+        tool_calls_made=result.tool_calls_made,
+        guardrail_reason=guardrail_reason,
+        provider=provider_name,
+        model=model_name,
+        # The concrete model behind the alias; AgentRunResult.model_name is the
+        # run's own record of what answered, not what was asked for.
+        model_version=getattr(result, "model_name", None),
+        agent_version=agent_ver,
+        prompt_version=str(agent_ver),
+    )
+
+
+async def _record_run_output(
+    session: AsyncSession, run_id: uuid.UUID | None, key: str, value: dict
+) -> None:
+    """Merge one observability key into the run row's output.
+
+    The runner finalized (but did not commit) the AgentRun row in this same
+    transaction, so the merge is a plain dict update + flush — no second
+    session, no race with the run's own write.
+    """
+    if run_id is None:
+        return
+    from app.applications.apparel.modules.ai.models import AgentRun
+
+    row = await session.get(AgentRun, run_id)
+    if row is None:
+        return
+    output = dict(row.output or {})
+    output[key] = value
+    row.output = output
+    await session.flush()
+
+
+def _store_from(
+    facts: dict[str, MetricFact],
+    *,
+    comparisons: list[dict] | None = None,
+    dimensions: list[dict] | None = None,
+    drivers: list[dict] | None = None,
+) -> EvidenceStore:
+    """Wrap rebuilt evidence in the store shape the findings builder reads."""
+    store = EvidenceStore()
+    for fact_id, fact in facts.items():
+        store.facts[fact_id] = fact
+
+    for idx, c in enumerate(comparisons or []):
+        left_id = c.get("left_fact_id", "")
+        right_id = c.get("right_fact_id", "")
+        if left_id in store.facts and right_id in store.facts:
+            ref = f"C{idx + 1}"
+            store.comparisons[ref] = Comparison(
+                label=c.get("label", ""),
+                left_fact_id=left_id,
+                right_fact_id=right_id,
+                delta=Decimal(str(c.get("delta", 0))),
+                delta_pct=Decimal(str(c["delta_pct"])) if c.get("delta_pct") is not None else None,
+            )
+
+    for drv_idx, drv in enumerate(drivers or []):
+        ord_contrib = Decimal(str(drv.get("orders_contribution", 0)))
+        aov_contrib = Decimal(str(drv.get("aov_contribution", 0)))
+        tot_delta = Decimal(str(drv.get("total_delta", 0)))
+        if ord_contrib + aov_contrib == tot_delta:
+            ref = f"D{drv_idx + 1}"
+            store.drivers[ref] = DriverResult(
+                kind=drv.get("kind", "orders_vs_aov"),
+                orders_contribution=ord_contrib,
+                aov_contribution=aov_contrib,
+                total_delta=tot_delta,
+            )
+
+    return store

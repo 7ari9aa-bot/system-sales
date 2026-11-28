@@ -2,7 +2,7 @@
 
 ``require_ai_entitlement`` (capability ``CanUseAI``) is what refuses a tenant whose plan does not
 sell the AI agents on the typed assistant — ``AnalyticsAICtx`` in
-``app/modules/ai/routers/_deps.py``. The voice control plane used to check only ``analytics:read``,
+``app/applications/apparel/modules/ai/routers/_deps.py``. The voice control plane used to check only ``analytics:read``,
 so the same tenant could open a paid realtime session and stream audio to the model.
 
 These cases pin three things, without a database (the harness is the same as the rest of
@@ -26,8 +26,8 @@ import pytest
 
 from app.core.ai_entitlement import require_ai_entitlement
 from app.core.errors import PermissionDeniedError
-from app.modules.ai.chat import service as chat_service
-from app.modules.ai.routers import _deps as ai_deps
+from app.applications.apparel.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.routers import _deps as ai_deps
 from app.modules.voice.application.session_manager import (
     InMemorySessionStore,
     VoiceSessionManager,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.catalog.apparel.barcode import (
+from app.applications.apparel.modules.catalog.apparel.barcode import (
     MAX_SEQUENCE,
     bars,
     check_digit,

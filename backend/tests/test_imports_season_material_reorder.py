@@ -22,7 +22,7 @@ from app.modules.imports.fields import (
 from app.modules.imports.models import ImportRow, ImportSession
 from app.modules.imports.normalize import CellError, parse_reorder_level
 from app.modules.imports.verdicts import encode_values, values_of
-from app.modules.inventory.stock_view import StockLevelService
+from app.applications.apparel.modules.inventory.stock_view import StockLevelService
 from app.workers.import_runner import PORTS
 
 pytestmark = pytest.mark.asyncio

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import dialect
+from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
 from app.modules.identity import dialects
 
 

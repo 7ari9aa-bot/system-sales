@@ -8,7 +8,7 @@ exactly the channels that most need them.
 import uuid
 from types import SimpleNamespace
 
-from app.modules.conversations.routers import webhooks as hooks
+from app.applications.apparel.modules.conversations.routers import webhooks as hooks
 
 
 class _Result:

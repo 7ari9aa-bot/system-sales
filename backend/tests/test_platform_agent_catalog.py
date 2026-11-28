@@ -46,9 +46,9 @@ async def test_a_wrong_token_is_refused(_token) -> None:
 
 
 async def test_the_catalog_lists_the_registered_kinds_with_their_tools(_token) -> None:
-    from app.modules.ai.agents.customer import definition as customer_definition  # noqa: F401
-    from app.modules.ai.agents.sales_intelligence import definition as si_definition  # noqa: F401
-    from app.modules.ai.core.registry import AgentRegistry, discover_agents
+    from app.applications.apparel.modules.ai.agents.customer import definition as customer_definition  # noqa: F401
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import definition as si_definition  # noqa: F401
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry, discover_agents
 
     discover_agents()
     app = create_app()

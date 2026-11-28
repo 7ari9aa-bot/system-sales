@@ -13,7 +13,7 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.catalog.apparel.options import (
+from app.applications.apparel.modules.catalog.apparel.options import (
     DEFAULT_COLOURS,
     DEFAULT_SIZE_SETS,
     ShopOptionsService,
@@ -189,7 +189,7 @@ async def test_the_defaults_returned_cannot_be_changed_by_a_caller(db, tenant_ct
 
 
 def test_the_rack_order_is_unchanged_for_the_built_in_letter_sizes() -> None:
-    from app.modules.catalog.apparel.matrix import size_sort_key
+    from app.applications.apparel.modules.catalog.apparel.matrix import size_sort_key
 
     ordered = sorted(["XL", "S", "L", "M"], key=size_sort_key)
     assert ordered == ["S", "M", "L", "XL"]
@@ -341,7 +341,7 @@ async def test_a_failed_save_leaves_the_previous_size_sets_untouched(
 ) -> None:
     """Replace is delete-then-insert: if the insert fails the old lists must still be there, with
     no savepoint wrapped around the call from outside."""
-    from app.modules.catalog.models import ShopSizeSet
+    from app.applications.apparel.modules.catalog.models import ShopSizeSet
 
     tid = tenant_ctx.tenant_id
     await ShopOptionsService.save_size_sets(db, tid, {"keep": ["M"]})
@@ -364,7 +364,7 @@ async def test_a_failed_save_leaves_the_previous_size_sets_untouched(
 async def test_a_failed_save_leaves_the_previous_colours_untouched(
     db, tenant_ctx, monkeypatch
 ) -> None:
-    from app.modules.catalog.models import ShopColour
+    from app.applications.apparel.modules.catalog.models import ShopColour
 
     tid = tenant_ctx.tenant_id
     await ShopOptionsService.save_colours(db, tid, [{"name": "keep"}])

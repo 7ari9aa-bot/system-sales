@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.chat.titles import TITLE_LIMIT, fallback_title, sanitize_title
+from app.applications.apparel.modules.ai.chat.titles import TITLE_LIMIT, fallback_title, sanitize_title
 
 
 class TestSanitize:

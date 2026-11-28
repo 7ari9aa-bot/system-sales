@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import NotFoundError, PermissionDeniedError, ValidationError
 from app.modules.identity.models import Location, Workspace
-from app.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
 from app.modules.settings.models import TenantSetting
 from app.modules.settings.registry import Scope
 from app.modules.settings.service import SettingsService
@@ -370,7 +370,7 @@ async def test_the_reservation_hold_follows_the_ttl_setting(db, tenant_ctx) -> N
     that never set it keeps the 15 minutes the order flow has always used."""
     from datetime import timedelta
 
-    from app.modules.orders.service import _RESERVATION_TTL, reservation_ttl
+    from app.applications.apparel.modules.orders.service import _RESERVATION_TTL, reservation_ttl
 
     assert _RESERVATION_TTL == timedelta(minutes=15)
     assert await reservation_ttl(db, tenant_ctx.tenant_id) == _RESERVATION_TTL

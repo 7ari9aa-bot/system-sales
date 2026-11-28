@@ -6,7 +6,7 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.imports import normalize as n
 from app.modules.imports import service
 from app.modules.imports.apply import SHEET_ORDER

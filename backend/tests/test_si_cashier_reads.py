@@ -25,15 +25,15 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import cashier as tool
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.analytics import cashier_reads as reads
-from app.modules.analytics.cashier_reads import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence import cashier as tool
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.analytics import cashier_reads as reads
+from app.applications.apparel.modules.analytics.cashier_reads import (
     COLLECTED_PAYMENT_STATUSES,
     difference_side,
     money_str,
 )
-from app.modules.analytics.contracts import AnalysisPeriod, MaturityPolicy, MaturityStatus
+from app.applications.apparel.modules.analytics.contracts import AnalysisPeriod, MaturityPolicy, MaturityStatus
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 SESSION = "22222222-2222-2222-2222-222222222222"
@@ -236,7 +236,7 @@ class FakeSession:
 
 
 async def test_expected_cash_matches_the_till_s_own_arithmetic():
-    from app.modules.pos.tender import expected_drawer_cash
+    from app.applications.apparel.modules.pos.tender import expected_drawer_cash
 
     original = expected_drawer_cash(
         opening_float=OPENING_FLOAT,
@@ -247,7 +247,7 @@ async def test_expected_cash_matches_the_till_s_own_arithmetic():
 
 def test_expected_cash_agrees_with_the_till_for_every_movement_reason():
     """The same comparison over the reasons the ledger actually holds, and at the cent."""
-    from app.modules.pos.tender import expected_drawer_cash
+    from app.applications.apparel.modules.pos.tender import expected_drawer_cash
 
     cases = [
         (Decimal("0"), []),
@@ -278,7 +278,7 @@ def test_expected_cash_agrees_with_the_till_for_every_movement_reason():
 
 def test_the_difference_sign_is_the_till_s_own_variance_read_as_a_magnitude():
     """``pos.tender.variance`` is counted minus expected; the read must not invent its own sign."""
-    from app.modules.pos.tender import variance as till_variance
+    from app.applications.apparel.modules.pos.tender import variance as till_variance
 
     cases = [
         (Decimal("115.00"), Decimal("120.00"), "shortage", Decimal("5.00")),
@@ -294,7 +294,7 @@ def test_the_difference_sign_is_the_till_s_own_variance_read_as_a_magnitude():
 
 async def test_sales_by_method_totals_equal_what_the_till_settled_at_sale_time():
     """The per-method takings are the tender lines the sale settled, added back up."""
-    from app.modules.pos.tender import TenderLine, settle
+    from app.applications.apparel.modules.pos.tender import TenderLine, settle
 
     settled = settle(
         [TenderLine("cash", Decimal("50.00")), TenderLine("card", Decimal("200.00"))],
@@ -396,7 +396,7 @@ async def test_daily_by_device_reads_the_projection_and_never_its_placeholders()
 
 
 async def test_sales_by_method_matches_the_collected_statuses_the_orders_module_uses():
-    from app.modules.orders.money import COLLECTED_PAYMENT_STATUSES as ORDERS_STATUSES
+    from app.applications.apparel.modules.orders.money import COLLECTED_PAYMENT_STATUSES as ORDERS_STATUSES
 
     assert COLLECTED_PAYMENT_STATUSES == ORDERS_STATUSES
     summary = await reads.sales_by_method(
@@ -425,7 +425,7 @@ def _period() -> AnalysisPeriod:
 @pytest.fixture
 def fake_window(monkeypatch):
     """The tool resolves its window through analytics (a DB read); here it is fixed."""
-    from app.modules.ai.agents.sales_intelligence.tools import _evidence_store, _typed_facts
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _evidence_store, _typed_facts
 
     async def resolve_window(session, tenant_id, days):
         return _period()
@@ -551,9 +551,9 @@ def test_the_read_model_contains_no_write_and_no_pos_import():
 
 
 def test_the_tool_is_registered_low_risk_and_known_to_the_risk_engine():
-    import app.modules.ai.agents.sales_intelligence.tools as si
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     si.register_si_tools()
     assert "si_cashier" in si.SI_TOOLS

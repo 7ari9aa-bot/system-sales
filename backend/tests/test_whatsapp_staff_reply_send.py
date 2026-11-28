@@ -15,17 +15,17 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import REACTION_REMOVED, WhatsAppAdapter
-from app.modules.conversations.models import Message
-from app.modules.conversations.routers._deps import ReactionRequest, SendMessageRequest
-from app.modules.conversations.routers.inbox import (
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import REACTION_REMOVED, WhatsAppAdapter
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.routers._deps import ReactionRequest, SendMessageRequest
+from app.applications.apparel.modules.conversations.routers.inbox import (
     _present_messages,
     react_to_message,
     send_message,
 )
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.service import ConversationService
 from app.workers.message_worker import MessageWorker, PermanentError
 from tests._pos_helpers import ctx_for
 

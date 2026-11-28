@@ -9,7 +9,7 @@ shape typed by hand. Re-run after changing gateway/whatsapp_order.py:
 import json
 from pathlib import Path
 
-from app.modules.conversations.gateway.whatsapp_order import parse_order
+from app.applications.apparel.modules.conversations.gateway.whatsapp_order import parse_order
 
 OUT = (
     Path(__file__).resolve().parents[2]

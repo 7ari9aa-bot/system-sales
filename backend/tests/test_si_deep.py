@@ -13,10 +13,10 @@ import uuid
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult
-from app.modules.ai.models import Agent
-from app.modules.analytics.contracts import Outcome
-from app.modules.analytics.persistence import load_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.analytics.contracts import Outcome
+from app.applications.apparel.modules.analytics.persistence import load_analysis
 from app.modules.platform.models import Job
 from app.modules.platform.service import JobService
 from app.workers.job_runner import get_job_handler
@@ -33,7 +33,7 @@ async def _stage(db, tenant_ctx, question="ليه المبيعات قلت؟"):
         )
     )
     await db.flush()
-    from app.modules.analytics.persistence import create_pending_analysis
+    from app.applications.apparel.modules.analytics.persistence import create_pending_analysis
 
     analysis_id = await create_pending_analysis(db, tenant_ctx.tenant_id, question=question)
     job = await JobService.create(
@@ -71,7 +71,7 @@ async def test_handler_runs_the_analysis_and_finalizes_the_shell(db, tenant_ctx,
         )
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_run
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_run
     )
     handler = get_job_handler("si.deep_analysis")
     assert handler is not None
@@ -94,7 +94,7 @@ async def test_handler_failure_marks_the_shell_failed(db, tenant_ctx, monkeypatc
         )
     )
     await db.flush()
-    from app.modules.analytics.persistence import create_pending_analysis
+    from app.applications.apparel.modules.analytics.persistence import create_pending_analysis
 
     analysis_id = await create_pending_analysis(db, tenant_ctx.tenant_id, question="سؤال")
 
@@ -102,7 +102,7 @@ async def test_handler_failure_marks_the_shell_failed(db, tenant_ctx, monkeypatc
         raise ExternalProviderError("provider down")
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_run
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_run
     )
     handler = get_job_handler("si.deep_analysis")
     job = Job(

@@ -12,9 +12,9 @@ import uuid
 
 import pytest
 
-from app.modules.ai.agents.customer.vision.reranker import rerank_candidates
-from app.modules.ai.agents.customer.vision.schemas import Candidate
-from app.modules.ai.providers import RerankResult
+from app.applications.apparel.modules.ai.agents.customer.vision.reranker import rerank_candidates
+from app.applications.apparel.modules.ai.agents.customer.vision.schemas import Candidate
+from app.applications.apparel.modules.ai.providers import RerankResult
 
 
 def _candidate(rank: int) -> Candidate:

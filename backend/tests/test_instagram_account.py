@@ -10,8 +10,8 @@ import pytest
 
 from app.core.circuit_breaker import reset_breakers
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.customers.routers.customers import _identity_out
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.customers.routers.customers import _identity_out
 
 A = InstagramAdapter()
 CREDS = {"api_key": "tok", "account_id": "ig1"}

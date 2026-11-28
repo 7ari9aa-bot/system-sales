@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.inventory.models import InventoryMovement
+from app.applications.apparel.modules.inventory.models import InventoryMovement
 from tests.test_pos_line_discounts import _sellable_variant
 from tests.test_pos_return_audit_and_day_holder import _call, _day
 

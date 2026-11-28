@@ -158,7 +158,7 @@ class SearchIndexerService:
         if entity_type == "customer":
             from sqlalchemy import select
 
-            from app.modules.customers.models import Customer
+            from app.applications.apparel.modules.customers.models import Customer
 
             customer = (
                 await session.execute(
@@ -182,7 +182,7 @@ class SearchIndexerService:
         if entity_type == "product":
             from sqlalchemy import select
 
-            from app.modules.catalog.models import Product
+            from app.applications.apparel.modules.catalog.models import Product
 
             product = (
                 await session.execute(

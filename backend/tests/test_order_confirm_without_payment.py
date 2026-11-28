@@ -10,10 +10,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.inventory.models import InventoryBalance, InventoryReservation
-from app.modules.orders.models import Order, OrderPayment
-from app.modules.orders.service import OrderService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.inventory.models import InventoryBalance, InventoryReservation
+from app.applications.apparel.modules.orders.models import Order, OrderPayment
+from app.applications.apparel.modules.orders.service import OrderService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till
 
 pytestmark = pytest.mark.asyncio

@@ -89,7 +89,7 @@ def test_the_voice_models_are_not_the_chat_model() -> None:
 
 
 def test_the_factory_returns_none_only_without_a_credential(monkeypatch) -> None:
-    from app.modules.conversations import voice
+    from app.applications.apparel.modules.conversations import voice
 
     monkeypatch.setattr(voice, "get_settings", lambda: _settings(), raising=False)
     monkeypatch.setattr("app.core.config.get_settings", lambda: _settings())
@@ -98,7 +98,7 @@ def test_the_factory_returns_none_only_without_a_credential(monkeypatch) -> None
 
 
 def test_the_factory_returns_a_provider_when_a_credential_resolves(monkeypatch) -> None:
-    from app.modules.conversations import voice
+    from app.applications.apparel.modules.conversations import voice
 
     monkeypatch.setattr("app.core.config.get_settings", lambda: _settings(ai_api_key_primary="k"))
     stt = voice.get_default_stt_provider()
@@ -156,7 +156,7 @@ def _patch_httpx(monkeypatch, captured: _CapturedPost) -> None:
 async def test_stt_sends_the_configured_model_and_credential(monkeypatch) -> None:
     """The model is a setting, not a hardcoded `whisper-1` in the payload."""
     from app.core.storage import get_storage
-    from app.modules.conversations import voice
+    from app.applications.apparel.modules.conversations import voice
 
     monkeypatch.setattr(
         "app.core.config.get_settings",
@@ -184,7 +184,7 @@ async def test_stt_sends_the_configured_model_and_credential(monkeypatch) -> Non
 
 
 async def test_tts_sends_the_configured_model_and_voice(monkeypatch) -> None:
-    from app.modules.conversations import voice
+    from app.applications.apparel.modules.conversations import voice
 
     monkeypatch.setattr(
         "app.core.config.get_settings",
@@ -203,7 +203,7 @@ async def test_tts_sends_the_configured_model_and_voice(monkeypatch) -> None:
 
 async def test_the_stt_provider_fails_loudly_without_a_credential(monkeypatch) -> None:
     """A misconfigured deployment must raise, not silently return empty text."""
-    from app.modules.conversations import voice
+    from app.applications.apparel.modules.conversations import voice
 
     monkeypatch.setattr("app.core.config.get_settings", lambda: _settings())
     provider = voice.OpenAIWhisperSTTProvider()
@@ -251,8 +251,8 @@ def test_no_keyword_gate_stands_between_the_customer_and_the_model() -> None:
     """
     import inspect
 
-    from app.modules.ai.agents.customer import turn as turn_module
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.customer import turn as turn_module
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     source = inspect.getsource(turn_module)
     assert "wants_human_request" not in source

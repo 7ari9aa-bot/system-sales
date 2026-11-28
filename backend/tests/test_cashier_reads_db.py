@@ -24,8 +24,8 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.analytics import cashier_reads as reads
-from app.modules.pos.models import (
+from app.applications.apparel.modules.analytics import cashier_reads as reads
+from app.applications.apparel.modules.pos.models import (
     PosCashMovement,
     PosSession,
     PosSessionHandover,
@@ -74,7 +74,7 @@ async def _closed_shift(db, ctx, register_id, *, opening, counted, closed_at, mo
 
 
 async def test_the_database_drawer_arithmetic_is_the_tills_own(db, tenant_ctx) -> None:
-    from app.modules.pos.tender import expected_drawer_cash
+    from app.applications.apparel.modules.pos.tender import expected_drawer_cash
 
     register = await _register(db, tenant_ctx)
     movements = [

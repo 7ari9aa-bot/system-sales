@@ -37,7 +37,7 @@ def test_resolve_route_publishes_its_parameters() -> None:
 
 
 def test_identifier_type_is_a_closed_vocabulary() -> None:
-    from app.modules.catalog.service import IDENTIFIER_TYPES
+    from app.applications.apparel.modules.catalog.service import IDENTIFIER_TYPES
 
     assert IDENTIFIER_TYPES == {
         "gtin",

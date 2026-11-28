@@ -12,12 +12,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_analyze_drivers,
     _si_compare_periods,
 )
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order
 
 NOW = datetime.now(UTC)
 

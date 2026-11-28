@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.providers import JinaMultimodalEmbeddingProvider, MultimodalContent
+from app.applications.apparel.modules.ai.providers import JinaMultimodalEmbeddingProvider, MultimodalContent
 
 BASE = "https://api.jina.ai/v1"
 

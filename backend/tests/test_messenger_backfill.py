@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.messenger_backfill import MessengerBackfill
+from app.applications.apparel.modules.conversations.gateway.messenger_backfill import MessengerBackfill
 
 TOKEN = "page-token"
 

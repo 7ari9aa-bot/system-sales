@@ -15,8 +15,8 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.conversations.gateway.registry import ADAPTERS, get_adapter
-from app.modules.conversations.policy import policy_for
+from app.applications.apparel.modules.conversations.gateway.registry import ADAPTERS, get_adapter
+from app.applications.apparel.modules.conversations.policy import policy_for
 from app.modules.platform.channel_specs.registry import (
     CONNECTION_SPECS,
     get_connection_spec,
@@ -42,7 +42,7 @@ def test_every_connectable_channel_has_an_organized_spec() -> None:
 
 def test_the_schema_provider_literal_matches_the_registry() -> None:
     """Drift guard: a channel added to the specs MUST reach the connect API."""
-    from app.modules.customers.schemas import IntegrationConnectBody
+    from app.applications.apparel.modules.customers.schemas import IntegrationConnectBody
 
     allowed = set(
         IntegrationConnectBody.model_fields["provider"].annotation.__args__  # type: ignore[attr-defined]
@@ -60,7 +60,7 @@ def test_the_message_adapter_registry_matches_the_connection_registry() -> None:
 
 
 def test_field_allow_lists_are_derived_not_duplicated() -> None:
-    from app.modules.customers.router import _CHANNEL_CONFIG_FIELDS, _CHANNEL_CREDENTIAL_FIELDS
+    from app.applications.apparel.modules.customers.router import _CHANNEL_CONFIG_FIELDS, _CHANNEL_CREDENTIAL_FIELDS
 
     assert _CHANNEL_CREDENTIAL_FIELDS["whatsapp"] == frozenset({"access_token"})
     assert _CHANNEL_CREDENTIAL_FIELDS["facebook"] == frozenset({"page_access_token"})
@@ -132,7 +132,7 @@ def test_the_webhook_route_accepts_facebook() -> None:
     dispatcher consults plus the route's presence in the app schema.
     """
     from app.main import create_app
-    from app.modules.conversations.router import _WEBHOOK_CHANNELS
+    from app.applications.apparel.modules.conversations.router import _WEBHOOK_CHANNELS
 
     assert "facebook" in _WEBHOOK_CHANNELS
     assert "/api/v1/webhooks/{channel}" in create_app().openapi()["paths"]

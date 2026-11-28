@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.customers import meta_oauth
+from app.applications.apparel.modules.customers import meta_oauth
 
 
 class _Resp:

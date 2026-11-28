@@ -15,12 +15,12 @@ import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError as PydanticValidationError
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.inbox import InboxQuery
-from app.modules.conversations.routers._deps import ListStateRequest
-from app.modules.conversations.routers.inbox import mark_read, set_list_state
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.inbox import InboxQuery
+from app.applications.apparel.modules.conversations.routers._deps import ListStateRequest
+from app.applications.apparel.modules.conversations.routers.inbox import mark_read, set_list_state
+from app.applications.apparel.modules.conversations.service import ConversationService
 from tests._pos_helpers import ctx_for
 
 adapter = WhatsAppAdapter()

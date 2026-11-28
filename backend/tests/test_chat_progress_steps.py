@@ -14,11 +14,11 @@ import uuid
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as si_tools
-from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
-from app.modules.ai.chat import progress as progress_module
-from app.modules.ai.chat.progress import STEP_TEXT, TOOL_STEP_BY, note_step, step_for_tool
-from app.modules.ai.models import AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si_tools
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+from app.applications.apparel.modules.ai.chat import progress as progress_module
+from app.applications.apparel.modules.ai.chat.progress import STEP_TEXT, TOOL_STEP_BY, note_step, step_for_tool
+from app.applications.apparel.modules.ai.models import AIChatMessage, AIChatThread
 from tests.test_si_agent import _seed
 
 LATIN = re.compile(r"[A-Za-z_]{2,}")
@@ -28,7 +28,7 @@ def _values_of(tool: str, parameter: str) -> set[str]:
     """The values the REAL argument schema accepts, so a new one cannot be forgotten here."""
     from typing import get_args
 
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     si_tools.register_si_tools()
     field = get_tool(tool).args_schema.model_fields[parameter]
@@ -242,7 +242,7 @@ async def _noop():
 async def test_after_a_turn_ends_a_tool_announces_nothing(db, tenant_ctx, own_session):
     # the answer's id lives in a context variable. If it outlived the turn, a tool called later
     # (a scheduled job, the older /ai/sales route) would write steps onto a finished answer
-    from app.modules.ai.chat.progress import announce, announcing_to
+    from app.applications.apparel.modules.ai.chat.progress import announce, announcing_to
 
     row = await _generating_row(db, tenant_ctx)
     with announcing_to(tenant_ctx.tenant_id, row.id):
@@ -253,7 +253,7 @@ async def test_after_a_turn_ends_a_tool_announces_nothing(db, tenant_ctx, own_se
 
 
 async def test_the_context_is_restored_even_when_the_turn_raises(db, tenant_ctx, own_session):
-    from app.modules.ai.chat.progress import _CURRENT_ANSWER, announcing_to
+    from app.applications.apparel.modules.ai.chat.progress import _CURRENT_ANSWER, announcing_to
 
     with pytest.raises(RuntimeError), announcing_to(tenant_ctx.tenant_id, uuid.uuid4()):
         raise RuntimeError("the turn failed")
@@ -265,7 +265,7 @@ def test_a_wrapped_tool_keeps_the_signature_the_runner_reads():
     # parameter would silently stop every tool that needs it
     import inspect
 
-    from app.modules.ai.chat.progress import with_progress
+    from app.applications.apparel.modules.ai.chat.progress import with_progress
 
     async def handler(session, tenant_id, *, days: int = 30, context=None):
         return days
@@ -279,7 +279,7 @@ def test_a_wrapped_tool_keeps_the_signature_the_runner_reads():
 
 
 async def test_a_wrapped_tool_still_returns_what_the_handler_returns():
-    from app.modules.ai.chat.progress import with_progress
+    from app.applications.apparel.modules.ai.chat.progress import with_progress
 
     async def handler(session, tenant_id, *, days: int = 30):
         return {"days": days}
