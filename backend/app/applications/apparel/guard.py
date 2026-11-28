@@ -23,6 +23,7 @@ from app.applications.apparel.compat import satisfied_by_legacy
 from app.applications.apparel.lifecycle import allows_reads, allows_writes
 from app.applications.apparel.manifest import APP_MANIFEST
 from app.applications.apparel.permissions import get_permission, is_write_code
+from app.core.config import get_settings
 from app.core.context import application_key_contextvar
 from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import decide_access
@@ -167,8 +168,28 @@ def require_apparel(permission_code: str) -> Callable[..., object]:
 
     from app.modules.identity.deps import get_tenant_ctx
 
-    async def dependency(ctx: TenantContext = Depends(get_tenant_ctx)) -> ApparelAccess:
-        return await apparel_access(ctx, permission_code)
+    async def dependency(ctx: TenantContext = Depends(get_tenant_ctx)) -> ApparelAccess | None:
+        mode = getattr(get_settings(), "apparel_gate_mode", "shadow")
+        if mode == "off":
+            return None
+        try:
+            return await apparel_access(ctx, permission_code)
+        except PermissionDeniedError as exc:
+            if mode == "enforce":
+                raise
+            # Shadow: the decision is recorded so it can be read before it is
+            # trusted. A gate nobody has watched is a gate that breaks a shop.
+            logger.warning(
+                "apparel gate (shadow) would deny %s: %s",
+                permission_code,
+                exc.message,
+                extra={
+                    "workspace_id": str(getattr(ctx, "workspace_id", "")),
+                    "tenant_id": str(getattr(ctx, "tenant_id", "")),
+                    "permission_code": permission_code,
+                },
+            )
+            return None
 
     dependency.__name__ = f"require_apparel_{permission_code.replace('.', '_')}"
     return dependency

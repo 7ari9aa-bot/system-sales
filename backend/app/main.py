@@ -498,6 +498,18 @@ def create_app() -> FastAPI:
 
     # CommitBeforeResponseRoute: a write is durable before the client is told it succeeded.
     api_v1 = APIRouter(prefix="/api/v1", route_class=CommitBeforeResponseRoute)
+    # The apparel gate on the trading routers: licence and permission decided
+    # before a handler can reach the database (industry-applications 16).
+    from app.applications.apparel.route_gate import gate_routers
+
+    gate_routers(
+        (catalog_router, "catalog"),
+        (inventory_router, "inventory"),
+        (purchasing_router, "purchasing"),
+        (pos_router, "pos"),
+        (orders_router, "orders"),
+        (customers_router, "customers"),
+    )
     for router in (
         identity_router,
         google_auth_router,

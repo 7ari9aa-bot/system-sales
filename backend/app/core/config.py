@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # the CI job env. A deploy that forgets the variable now fails closed rather
     # than running unvalidated.
     environment: str = "production"
+
+    # How the apparel gate behaves on the trading routes:
+    #   "off"     - not consulted (the pre-gate behaviour)
+    #   "shadow"  - consulted and logged, never blocks. Default, so a deploy can
+    #               never lock a shop out of its own till on the first request.
+    #   "enforce" - a denial is a 403 before any handler touches the database.
+    apparel_gate_mode: str = "shadow"
     # DEBUG defaults to the QUIET direction (it used to default True, so a
     # deploy that never set it ran verbose in production). Local development
     # sets DEBUG=true explicitly — see .env.example. Outside local/test a
