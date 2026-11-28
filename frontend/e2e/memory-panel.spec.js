@@ -247,7 +247,7 @@ test("with no notes, delete-all is not offered; with notes it is", async ({
   await expect(
     panel.getByRole("button", { name: /امسح كل الملاحظات/ }),
   ).toHaveCount(0);
-  await panel.getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…").fill("ملاحظة");
+  await panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…").fill("ملاحظة");
   await panel.getByRole("button", { name: "حفظ", exact: true }).click();
   await expect(
     panel.getByRole("button", { name: /امسح كل الملاحظات/ }),
@@ -260,7 +260,7 @@ test("the owner adds a note and sees it, newest first", async ({ page }) => {
   await expect(
     panel.getByText("مفيش ملاحظات لسه", { exact: false }),
   ).toBeVisible();
-  const box = panel.getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…");
+  const box = panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…");
   await box.fill("بحب أشوف الأرقام بالجنيه");
   await panel.getByRole("button", { name: "حفظ", exact: true }).click();
   await expect(panel.getByText("بحب أشوف الأرقام بالجنيه")).toBeVisible();
@@ -276,7 +276,7 @@ test("a refused note shows the server's reason, is not echoed back, and nothing 
 }) => {
   const api = await memoryApi(page);
   const panel = await open(page);
-  const box = panel.getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…");
+  const box = panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…");
   await box.fill("الباسورد بتاعي Hunter22xyz");
   await panel.getByRole("button", { name: "حفظ", exact: true }).click();
   const alert = panel.getByRole("alert");
@@ -373,7 +373,7 @@ test("a full memory blocks adding and says why", async ({ page }) => {
     panel.getByText("الذاكرة ممتلئة", { exact: false }),
   ).toBeVisible();
   await expect(
-    panel.getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…"),
+    panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…"),
   ).toBeDisabled();
   await expect(
     panel.getByRole("button", { name: "حفظ", exact: true }),
@@ -394,7 +394,7 @@ test("switching memory off is sent to the server and disables adding", async ({
     panel.getByText("الذاكرة مقفولة", { exact: false }),
   ).toBeVisible();
   await expect(
-    panel.getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…"),
+    panel.getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…"),
   ).toBeDisabled();
 });
 
@@ -402,7 +402,7 @@ test("an over-long draft cannot be sent", async ({ page }) => {
   const api = await memoryApi(page);
   const panel = await open(page);
   await panel
-    .getByPlaceholder("اكتب حاجة تحب المساعد يفتكرها…")
+    .getByPlaceholder("اكتب شيئاً تحب أن يتذكره المساعد…")
     .fill("ا".repeat(501));
   await expect(
     panel.getByRole("button", { name: "حفظ", exact: true }),
@@ -487,7 +487,7 @@ test("no habit means no suggestion block at all", async ({ page }) => {
   await memoryApi(page);
   const panel = await open(page);
   await expect(panel.getByTestId("habit-suggestion")).toHaveCount(0);
-  await expect(panel.getByText("لاحظت حاجة")).toHaveCount(0);
+  await expect(panel.getByText("لاحظت شيئاً")).toHaveCount(0);
 });
 
 test("with memory off nothing is suggested, and it comes back when memory is switched on", async ({
