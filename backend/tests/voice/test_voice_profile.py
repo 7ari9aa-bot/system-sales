@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.modules.voice.application.voice_profile import (
+    BASE_CONTRACT,
     VOICE_CATALOG,
     VOICES_BY_ID,
     ArabicDialect,
@@ -79,7 +80,10 @@ class TestOtherLanguages:
         )
         assert profile.dialect is None
         assert "المصري" not in profile.instructions
-        assert profile.instructions == "اسم المحل: Nile Coffee."
+        # العقد بيفضل موجود لكل لغة، والمحل هو آخر سطر: مش نص عربي متسرّب، ده تعليمات
+        # التفويض اللي من غيرها الموديل هيخترع أرقام.
+        assert profile.instructions.startswith(BASE_CONTRACT)
+        assert profile.instructions.endswith("اسم المحل: Nile Coffee.")
 
     def test_the_shop_name_travels_into_the_instructions(self) -> None:
         profile = resolve_voice_profile(ShopVoiceSettings(country_code="EG", shop_name="محل النور"))

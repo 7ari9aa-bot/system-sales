@@ -125,6 +125,20 @@ DIALECT_INSTRUCTIONS: dict[ArabicDialect, str] = {
     ArabicDialect.MODERN_STANDARD: ("اتكلم بعربية فصحى مبسطة وواضحة، من غير عامية."),
 }
 
+
+#: ما تقوله الجلسة الصوتية عن نفسها في كل الأحوال، قبل اللهجة وقبل اسم المحل.
+#: الوكيل الصوتي بيسمع ويتكلم ويفوّض، مش بيقرأ قاعدة بيانات ولا بينفّذ أداة:
+#: أي رقم أو حقيقة عن المحل لازم ترجع من التفويض، مش من ذاكرة الموديل.
+BASE_CONTRACT = (
+    "أنت المساعد الصوتي لمتجر التاجر على فهْرِست. "
+    "مهمتك تفهم اللي بيتقال وتتكلم برد قصير وواضح، مش تقرا نصوص طويلة. "
+    "مفيش عندك أي بيانات عن المتجر في المحادثة دي: أي سؤال عن مبيعات أو طلبات أو مخزون أو "
+    "أسعار أو عملاء لازم يتفوّض للنظام اللي بيرجّع الإجابة، ومتخمّنش رقم ومتقولش رقم من عندك. "
+    "لو السؤال ناقص اسأل سؤال توضيحي واحد قصير قبل ما تفوّض. "
+    "لو التفويض رجع إن البيانات مش متاحة قول كده بصراحة ومتألّفش بديل. "
+    "متقولش إنك بتفتح شاشة أو بتضغط زرار، ومتنطقش رموز أو تنسيق."
+)
+
 LANGUAGE_BY_COUNTRY_ARABIC = frozenset(COUNTRY_DIALECTS)
 
 
@@ -187,7 +201,7 @@ def resolve_voice_profile(settings: ShopVoiceSettings) -> VoiceProfile:
     voice = _pick_voice(settings)
     native = voice.language.strip().lower() == _language_name(language)
 
-    parts: list[str] = []
+    parts: list[str] = [BASE_CONTRACT]
     if language == "ar" and dialect is not None:
         parts.append(DIALECT_INSTRUCTIONS[dialect])
         parts.append(

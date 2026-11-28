@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import logging
 import uuid
 from typing import Annotated
 
@@ -42,6 +43,8 @@ from app.modules.voice.runtime.stream_ticket import (
     StreamTicketUnavailable,
 )
 from app.modules.voice.security.capabilities import ChannelType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
@@ -206,6 +209,23 @@ def _stream_issuer() -> StreamTicketIssuer:
     return StreamTicketIssuer.from_settings()
 
 
+async def _voice_config(tenant_id: str) -> dict[str, str]:
+    """برومبت المكالمة: صوت المحل ولهجته وتعليمات التفويض.
+
+    المفتاح هنا إن الـtenant ما بيوصلش للموديل: بيتقرا هنا، والـadapter بياخد نص جاهز.
+    أي فشل في القراءة بيرجّع dict فاضي فالجلسة تفتح بالافتراضي بدل ما تسقط.
+    """
+    from app.core.db import get_sessionmaker
+    from app.modules.voice.application.shop_voice import load_shop_voice_config
+
+    try:
+        async with get_sessionmaker()() as session:
+            return await load_shop_voice_config(session, uuid.UUID(str(tenant_id)))
+    except Exception:  # noqa: BLE001 - مكالمة من غير برومبت أحسن من مكالمة مرفوضة
+        logger.exception("could not load the voice prompt for tenant %s", tenant_id)
+        return {}
+
+
 def _call_factory():
     """The call builder; replaced in tests so no test opens a real gateway socket."""
     return build_browser_call
@@ -288,11 +308,13 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
         return
 
     try:
+        config = await _voice_config(grant.tenant_id)
         call = await _call_factory()(
             session_id=session_id,
             tenant_id=grant.tenant_id,
             user_id=grant.user_id,
             send_audio=websocket.send_bytes,
+            config=config,
         )
     except (GptLiveUnavailable, MediaPlaneUnavailable):
         await websocket.close(code=1011)
