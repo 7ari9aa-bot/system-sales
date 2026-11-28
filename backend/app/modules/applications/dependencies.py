@@ -76,8 +76,26 @@ def require_application(
     return dependency
 
 
-async def workspace_gate(application_key: str, ctx) -> GateResult:
-    """Read the facts for this request's workspace, then judge one application."""
+async def workspace_gate(
+    application_key: str, ctx, *, product_permission: str | None = None
+) -> GateResult:
+    """Read the facts for this request's workspace, then judge one application.
+
+    ``product_permission`` is the permission FAMILY this route group serves ("customers",
+    not "customers:read"), and it is checked first, before ``gather_facts`` runs its two
+    queries. A caller who holds no permission in the family cannot be answered whatever the
+    gate says, so the refusal must not cost a database read — `tests/test_customers_http_surface.py`
+    asserts exactly that ("the refusal still ran a query"). The family rather than one code,
+    because a router serves reads and writes under different codes and only the endpoint
+    knows which one it needs; the endpoint's own ``require_permission`` still decides.
+    """
+    if product_permission is not None:
+        prefix = f"{product_permission}:"
+        if not any(
+            code == product_permission or code.startswith(prefix)
+            for code in getattr(ctx, "permission_codes", set())
+        ):
+            raise PermissionDeniedError(f"missing permission: {prefix}*")
     facts = await gather_facts(
         ctx.session,
         tenant_id=ctx.tenant_id,
