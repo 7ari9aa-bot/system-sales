@@ -2683,6 +2683,31 @@ SI_TOOLS: tuple[str, ...] = (
     "si_cashier",
 )
 
+#: What the tools are allowed to cost, in characters of description plus argument schema.
+#:
+#: Every one of these strings is paid for on EVERY message of every conversation: the model can
+#: only choose a tool it can read, so the descriptions are prompt cost, not documentation. The
+#: budget exists so growth is a decision somebody makes, not drift nobody notices.
+#:
+#: Measured (description + ``model_json_schema()``, characters):
+#:
+#:     si_metric   2713      si_shop    2124
+#:     si_cashier  1406      si_finance 1055      total 7298
+#:
+#: History: 4988 with three tools, 5600 became the ceiling, then the three grew to 5822 while the
+#: guard that was supposed to catch it lived in a second test with its own stale number — so main
+#: carried two red tests and neither was believed. ``si_cashier`` (the till's cash, seven views)
+#: costs 1406 of the raise. The number is now ONE constant that both guards read.
+#:
+#: A fifth tool must SPLIT or shorten before it fits: 100 characters of headroom is not room for
+#: another read, and the honest fix then is a view on an existing tool, not a bigger budget.
+SI_TOOL_BUDGET_CHARS = 7400
+
+#: No single tool may take more than this share of the budget. A tool that outgrows the others is
+#: the signal to split it (``si_cashier`` lives in its own module for the same reason), not to
+#: raise the total and let the three cheap tools subsidise it.
+SI_TOOL_MAX_SHARE = 0.5
+
 
 def _explain_unsupported(handler):
     """Let the model hear WHY a request is unsupported instead of "failed unexpectedly".
@@ -2985,20 +3010,18 @@ def register_si_tools() -> None:
             description=(
                 "The till's cash and drawer (use for 'the drawer, short or over, cash in and out, "
                 "hand-over, how the day was paid'). view: "
-                "cash_in_out = drawer movements by reason, in, out and net; "
-                "expected_vs_counted = per closed shift what the drawer should have held versus "
-                "what was counted (pos:override); "
-                "drawer_differences = only the shifts that did not match, biggest first, labelled "
-                "shortage or overage (pos:override); "
-                "reconciliation_by_method = expected versus counted per payment method, with the "
-                "float it opened with; "
-                "shift_handovers = who handed the drawer to whom and the count at that moment "
-                "(pos:override); "
-                "daily_by_device = per till and day: shifts, invoices, returns, sales, returns, "
-                "tax; "
-                "sales_by_method = what each payment method collected on the till's sales. "
+                "cash_in_out = movements by reason, in, out, net; "
+                "expected_vs_counted = per closed shift, expected versus counted; "
+                "drawer_differences = only the shifts that did not match, biggest gap first, "
+                "shortage or overage; "
+                "reconciliation_by_method = expected versus counted per payment method, with its "
+                "opening float; "
+                "shift_handovers = who handed the drawer to whom, and the count then; "
+                "daily_by_device = per till and day: shifts, invoices, sales, returns, tax; "
+                "sales_by_method = what each method collected on the till's sales. "
+                "expected_vs_counted, drawer_differences and shift_handovers need pos:override. "
                 "Per-cashier SALES are si_shop view=cashier. days 1-366, default 30; limit max 25. "
-                "Every amount is already formatted. Read-only."
+                "Amounts are formatted. Read-only."
             ),
             args_schema=SICashierArgs,
             handler=si_cashier,
