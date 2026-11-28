@@ -115,7 +115,8 @@ async def test_si_tools_registered_in_the_platform_registry():
     # The owner assistant is deliberately kept to a short list: every tool is paid for in tokens on
     # every turn and is one more choice for the model. Adding or dropping one is a decision, so it
     # must show up here instead of drifting.
-    assert len(si_tools) == 3
+    # si_cashier is the fourth: the till's own reads, added as a deliberate decision
+    assert si_tools == ["si_cashier", "si_finance", "si_metric", "si_shop"]
 
 
 async def test_orchestrator_rejects_a_free_number_with_the_safe_response(

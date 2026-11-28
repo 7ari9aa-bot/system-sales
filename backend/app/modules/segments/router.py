@@ -22,12 +22,24 @@ from sqlalchemy import select
 
 from app.core.errors import NotFoundError
 from app.modules.applications.dependencies import workspace_gate
-from app.modules.identity.deps import TenantContext, TenantCtxDep, require_permission
+from app.modules.identity.deps import (
+    TenantContext,
+    TenantCtxDep,
+    get_tenant_ctx,
+    require_permission,
+)
 from app.modules.segments.service import Segment, SegmentService, validate_dsl
 
 
-async def _segments_gate(ctx: TenantContext = Depends(TenantCtxDep)):
-    """Audience segments belong to the engagement product."""
+async def _segments_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """Audience segments belong to the engagement product.
+
+    ``Depends(get_tenant_ctx)``, not ``Depends(TenantCtxDep)``: that alias is already
+    ``Annotated[..., Depends(...)]``, and wrapping it again left FastAPI unable to read
+    this function's signature — it fell back to ``*args, **kwargs`` and published two
+    REQUIRED query parameters (``args``, ``kwargs``) on all six segment routes, so every
+    real request died with a 422 before the handler ran.
+    """
     return await workspace_gate("customer.engagement", ctx)
 
 
