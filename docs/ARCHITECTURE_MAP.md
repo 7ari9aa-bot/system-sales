@@ -20,6 +20,21 @@
 
 ‫الحجم الحالي: ‏24 موديول دومين، ‏321 endpoint، ‏42 ملف core، ‏83 migration في سلسلة واحدة، ‏249 ملف اختبار.
 
+## 0 الوضع الحالي بعد إعادة الهيكلة — 2026-11-28
+
+‫الأرقام اللي تحت مقاسة من الشجرة نفسها في 2026-11-28، مش منقولة من نسخة أقدم. ‏الأقسام من 2 لـ7 تحت لسه بتوصف الشكل القديم (كل الوحدات في `app/modules`) وتاريخ توليدها 2026-10-06، فتُقرأ كتاريخ مش كوضع حالي.
+
+| العنصر | الوضع الحالي | القياس |
+|---|---|---|
+| الباك إند | مستويان: منصة + تطبيق قطاعي | `backend/app/platform/` (19 مجلد) و`backend/app/applications/apparel/modules/` (17 وحدة) |
+| `app/modules` | اتفرّغ | فاضل فيه `__init__.py` و`errors.py` المشترك بس |
+| الملفات المشتركة | طبقة `core` واحدة | 66 ملف في `backend/app/core/` |
+| الواجهة | التطبيق تحت مساره | 460 ملف في `frontend/src/applications/apparel/` (كان `src/cashier`) |
+| العقود | مقاسة ومقفولة | 725 عملية على 600 مسار (408 منها typed) في `desktop/openapi.lock.json` |
+| الاختبارات | 848 ملف باكند | 3725 اختبار واجهة في 306 ملف أخضر |
+
+‫قاعدة الحدود: ‏المنصة ما تستوردش تطبيق (قائمة دين مغلقة في `test_application_boundaries`)، ‏والتطبيقات ما تستوردش بعضها، ‏والتكامل عبر عقود API أو أحداث دومين من الـoutbox بس.
+
 ## 2 خريطة الموديولات — Module Map
 
 ‫جدول الموديولات كلها. ‏عمود Endpoints بيشمل الـ routers الثانوية، ‏والـ prefixes كاملة تحت ‏`/api/v1`. ‏ملفات الاختبار أسماء رئيسية مش قائمة كاملة.
@@ -155,19 +170,19 @@
 
 ‫‏Meta و Facebook:
 
-- OAuth لتوصيل الصفحة: ‏`app/modules/customers/meta_oauth.py`‏ — ‏متغيرات ‏`META_APP_ID`‏ و ‏`META_APP_SECRET`‏ و ‏`META_OAUTH_REDIRECT_URI`‏ و ‏`META_INSTAGRAM_CONFIG_ID`
-- بوابات الرسائل: ‏`app/modules/conversations/gateway/`‏ — ‏adapters لـ whatsapp و messenger و instagram و telegram و email و webchat
+- OAuth لتوصيل الصفحة: ‏`app/applications/apparel/modules/customers/meta_oauth.py`‏ — ‏متغيرات ‏`META_APP_ID`‏ و ‏`META_APP_SECRET`‏ و ‏`META_OAUTH_REDIRECT_URI`‏ و ‏`META_INSTAGRAM_CONFIG_ID`
+- بوابات الرسائل: ‏`app/applications/apparel/modules/conversations/gateway/`‏ — ‏adapters لـ whatsapp و messenger و instagram و telegram و email و webchat
 - متغيرات القنوات: ‏`WHATSAPP_APP_SECRET`‏ و ‏`WHATSAPP_VERIFY_TOKEN`‏ و ‏`MESSENGER_APP_SECRET`‏ و ‏`MESSENGER_VERIFY_TOKEN`‏ و ‏`INSTAGRAM_APP_SECRET`‏ و ‏`INSTAGRAM_VERIFY_TOKEN`‏ و ‏`TELEGRAM_BOT_TOKEN`‏ و ‏`TELEGRAM_WEBHOOK_SECRET`‏ و ‏`API_PUBLIC_BASE_URL`
 - ملاحظة مهمة: ‏متغيرات Meta دي مش موجودة أصلاً في ‏`.env.example`‏ — ‏فجوة موثقة في القسم 8
 
 ‫‏Stripe:
 
-- ‏`app/modules/billing/service.py`‏ — ‏قاعدة التهيئة موثقة: ‏التكامل بيتفعّل أول ما المفاتيح تظهر، ‏ولحد ما يحدث الاشتراكات شغالة trial/manual من غير ما تقفل الكور
+- ‏`app/platform/billing/service.py`‏ — ‏قاعدة التهيئة موثقة: ‏التكامل بيتفعّل أول ما المفاتيح تظهر، ‏ولحد ما يحدث الاشتراكات شغالة trial/manual من غير ما تقفل الكور
 - متغيرات: ‏`STRIPE_SECRET_KEY`‏ و ‏`STRIPE_WEBHOOK_SECRET`
 
 ‫‏Resend للبريد الأمني:
 
-- ‏`app/modules/identity/email_delivery.py`‏ — ‏تسليم دائم بـ retry لحد الانتهاء أو فشل نهائي، ‏التوكن بيتحقق من الـ hash في Postgres
+- ‏`app/platform/identity/email_delivery.py`‏ — ‏تسليم دائم بـ retry لحد الانتهاء أو فشل نهائي، ‏التوكن بيتحقق من الـ hash في Postgres
 - متغيرات: ‏`RESEND_API_KEY`‏ و ‏`EMAIL_FROM`‏ و ‏`EMAIL_DELIVERY_ENABLED`
 
 ‫‏Supabase Postgres:
@@ -180,15 +195,15 @@
 ‫‏Redis:
 
 - المصنع: ‏`app/core/redis.py`‏، ‏الحدود: ‏`app/core/ratelimit.py`‏ و ‏`app/core/auth_lockout.py`‏، ‏الـ breaker: ‏`app/core/circuit_breaker.py`‏
-- الـ streams هي عصب النظام: ‏relay الـ outbox بيضخ عليها، ‏و ‏`app/modules/realtime/router.py`‏ بيقرأ منها للـ SSE‏، ‏والـ workers كلها consumers
+- الـ streams هي عصب النظام: ‏relay الـ outbox بيضخ عليها، ‏و ‏`app/platform/realtime/router.py`‏ بيقرأ منها للـ SSE‏، ‏والـ workers كلها consumers
 - متغيرات: ‏`REDIS_URL`‏ و ‏`STREAM_MAXLEN`‏ و ‏`CONSUMER_BLOCK_MS`
 
 ‫‏تخزين الوسائط S3-compatible: ‏`app/core/storage.py`‏ — ‏متغيرات ‏`S3_ENDPOINT`‏ و ‏`S3_REGION`‏ و ‏`S3_BUCKET`‏ و ‏`S3_ACCESS_KEY_ID`‏ و ‏`S3_SECRET_ACCESS_KEY`
 
-‫‏مزودي الذكاء الاصطناعي: ‏`app/modules/ai/providers.py`‏ و ‏`gateway.py`‏ — ‏مسار OpenAI-compatible عبر Vercel AI Gateway بموديل Qwen للـ Customer Agent، ‏مع embedding بصري من DashScope و reranker من Jina. ‏متغيرات ‏`AI_PROVIDER_PRIMARY`‏ (لهجة الـ API، مش اسم الموديل) و ‏`AI_MODEL_PRIMARY`‏ (اسم الموديل نفسه) و ‏`AI_API_KEY_PRIMARY`‏ و ‏`AI_BASE_URL_PRIMARY`‏ و ‏`EMBEDDINGS_API_KEY`‏ و ‏`AI_EMBEDDING_VISION_*`‏ و ‏`AI_RERANKER_*`. ‏`AI_MODEL_PRIMARY`‏ مطلوب لأي تينانت ملوش صف ‏`model_configs`‏ للـ alias: ‏gateway بيرفض الطلب بصريح العبارة بدل ما يبعت اسم البروفايدر كأنه معرف موديل.
+‫‏مزودي الذكاء الاصطناعي: ‏`app/applications/apparel/modules/ai/providers.py`‏ و ‏`gateway.py`‏ — ‏مسار OpenAI-compatible عبر Vercel AI Gateway بموديل Qwen للـ Customer Agent، ‏مع embedding بصري من DashScope و reranker من Jina. ‏متغيرات ‏`AI_PROVIDER_PRIMARY`‏ (لهجة الـ API، مش اسم الموديل) و ‏`AI_MODEL_PRIMARY`‏ (اسم الموديل نفسه) و ‏`AI_API_KEY_PRIMARY`‏ و ‏`AI_BASE_URL_PRIMARY`‏ و ‏`EMBEDDINGS_API_KEY`‏ و ‏`AI_EMBEDDING_VISION_*`‏ و ‏`AI_RERANKER_*`. ‏`AI_MODEL_PRIMARY`‏ مطلوب لأي تينانت ملوش صف ‏`model_configs`‏ للـ alias: ‏gateway بيرفض الطلب بصريح العبارة بدل ما يبعت اسم البروفايدر كأنه معرف موديل.
 
 
-‫‏منصة المواقع الخارجية: ‏`app/modules/website/client.py`‏ — ‏مفتاح الشريك بسيفرك بس مش بيوصل للفرونت. ‏متغير ‏`WEBSITE_PLATFORM_API_KEY`‏ — ‏مش موجود في ‏`.env.example`‏ زي Meta
+‏منصة المواقع الخارجية: مفيش كود ليها في الريبو الحالي — مفيش أي ملف في `backend/app` أو `frontend/src` بيقرا `WEBSITE_PLATFORM_API_KEY`، والمسار القديم `app/modules/website/` مابقاش موجود
 
 ‫‏قنوات التنبيه: ‏`SMTP_URL`‏ و ‏`SMS_PROVIDER_KEY`‏ و ‏`PUSH_SERVICE_KEY`
 
@@ -201,12 +216,12 @@
 1. ‏الصفحة ‏`frontend/src/pages/Orders.jsx`‏ بتستدعي hook ‏`frontend/src/hooks/useOrders.js`‏ فوق TanStack Query
 2. ‏الـ hook بينادي ‏`api`‏ من ‏`frontend/src/lib/api.js`‏: ‏fetch بـ credentials include، ‏عنوان ‏`X-CSRF-Token`‏ من الكوكي غير HttpOnly، ‏ومسار ‏`POST /api/v1/orders`
 3. ‏الطلب بيعدي على سلسلة الـ middleware في ‏`backend/app/main.py`‏ من الخارج للداخل: ‏SecurityHeaders ثم CORS ثم RequestID ثم BodySize ثم RateLimit ثم RequestLogging ثم Idempotency — ‏الترتيب ده موثق بتعليق صريح في الملف
-4. ‏الـ router في ‏`backend/app/modules/orders/router.py`‏ — ‏الدالة create_order على ‏`POST /orders`‏ مع ‏`Depends(require_permission("orders:write"))`‏ من ‏`backend/app/modules/identity/deps.py`‏ اللي بيبني TenantContext
+4. ‏الـ router في ‏`backend/app/applications/apparel/modules/orders/router.py`‏ — ‏الدالة create_order على ‏`POST /orders`‏ مع ‏`Depends(require_permission("orders:write"))`‏ من ‏`backend/app/platform/identity/deps.py`‏ اللي بيبني TenantContext
 5. ‏الجلسة على الداتابيز بتتربط بالتينانت: ‏`backend/app/core/db.py`‏ bind_tenant بـ ‏`SET LOCAL app.tenant_id`‏ — ‏من هنا RLS في Supabase بتطبق FORCE على كل استعلام في الـ transaction، ‏والسياسات الأصلية من ‏`backend/scripts/provision.py`‏ ومفحوصة عند الإقلاع بـ ‏`backend/app/core/boot.py`
-6. ‏الخدمة ‏`backend/app/modules/orders/service.py`‏ — ‏OrderService.create_order داخل transaction المستدعي والخدمة مش بتـ commit أبدا: ‏تحقق عملة التينانت من ‏`backend/app/core/tenancy.py`‏ و resolve_tenant_currency، ‏رفض عميل blocked عبر CustomerService.get، ‏اختيار المخزن الافتراضي من InventoryService
-7. ‏التسعير: ‏قراءة batch للـ variants وسلّم الأسعار من ‏`backend/app/modules/catalog/service.py`‏ — ‏السعر بيتلقط مرة واحدة snapshot ومفيش حاجة بتعيد حسابه من سعر المتغير المتغير
+6. ‏الخدمة ‏`backend/app/applications/apparel/modules/orders/service.py`‏ — ‏OrderService.create_order داخل transaction المستدعي والخدمة مش بتـ commit أبدا: ‏تحقق عملة التينانت من ‏`backend/app/core/tenancy.py`‏ و resolve_tenant_currency، ‏رفض عميل blocked عبر CustomerService.get، ‏اختيار المخزن الافتراضي من InventoryService
+7. ‏التسعير: ‏قراءة batch للـ variants وسلّم الأسعار من ‏`backend/app/applications/apparel/modules/catalog/service.py`‏ — ‏السعر بيتلقط مرة واحدة snapshot ومفيش حاجة بتعيد حسابه من سعر المتغير المتغير
 8. ‏الحجز: ‏InventoryService.reserve لكل سطر بترتيب variant_id مش ترتيب السلة عشان قفل ثابت يمنع الـ deadlock، ‏وبعدها صفوف حجز دائمة بـ TTL 15 دقيقة
-9. ‏الإدراج: ‏_insert_order بحالة process_state تساوي stock_reserved لأن الحجز فعلًا اتحجز، ‏ومعاه صفوف OrderItem بـ snapshot العنوان والـ SKU، ‏وصف OrderStatusHistory، ‏وقاعدة الفلوس من ‏`backend/app/modules/orders/money.py`‏ — ‏compute_totals بترفض لو المكونات مش مظبوطة
+9. ‏الإدراج: ‏_insert_order بحالة process_state تساوي stock_reserved لأن الحجز فعلًا اتحجز، ‏ومعاه صفوف OrderItem بـ snapshot العنوان والـ SKU، ‏وصف OrderStatusHistory، ‏وقاعدة الفلوس من ‏`backend/app/applications/apparel/modules/orders/money.py`‏ — ‏compute_totals بترفض لو المكونات مش مظبوطة
 10. ‏الفعالية: ‏add_outbox_event بنوع ‏`order.created`‏ من ‏`backend/app/core/events/`‏ في نفس الـ transaction مع aggregate_version الحقيقي من VersionMixin — ‏لولو ده الـ relay كان بيبعت حاجة متكتبتش
 11. ‏الرد للفرونت: ‏مبالغ نصوص Decimal ‏مش floats، ‏بشكل order.id و number و status و grand_total
 12. ‏بعد الـ commit: ‏relay الـ outbox بيضخ الحدث على stream ‏`order.events`‏ في Redis، ‏فياخده ‏`realtime/router.py`‏ للـ SSE للداشبورد الحية، ‏وياخده العمال للتسلسلات اللي بعدها زي المخزون والتحليلات
