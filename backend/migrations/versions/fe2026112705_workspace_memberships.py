@@ -61,9 +61,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_workspace_memberships_tenant_id ON workspace_memberships (tenant_id)"
     )
-    op.execute(
-        "CREATE INDEX ix_workspace_memberships_user_id ON workspace_memberships (user_id)"
-    )
+    op.execute("CREATE INDEX ix_workspace_memberships_user_id ON workspace_memberships (user_id)")
     op.execute("ALTER TABLE workspace_memberships ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE workspace_memberships FORCE ROW LEVEL SECURITY")
     op.execute(

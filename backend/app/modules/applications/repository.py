@@ -50,7 +50,9 @@ async def entitled(
                         PlanApplicationInclusion.plan_id.in_(plans)
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
     scope = SubscriptionItem.workspace_id.is_(None)
     if workspace_id is not None:
@@ -62,7 +64,9 @@ async def entitled(
                     SubscriptionItem.subscription_id.in_(ids), scope
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     return frozenset(keys)
 
@@ -71,9 +75,9 @@ async def installed(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[s
     """Every application this workspace has a row for, with its state."""
     rows = (
         await session.execute(
-            select(
-                WorkspaceAppInstallation.application_key, WorkspaceAppInstallation.state
-            ).where(WorkspaceAppInstallation.workspace_id == workspace_id)
+            select(WorkspaceAppInstallation.application_key, WorkspaceAppInstallation.state).where(
+                WorkspaceAppInstallation.workspace_id == workspace_id
+            )
         )
     ).all()
     return {key: state for key, state in rows}

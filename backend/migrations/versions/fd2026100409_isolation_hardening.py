@@ -177,7 +177,18 @@ def downgrade() -> None:
         """
     )
     for table in _LEDGER_TABLES:
-        op.execute(f"GRANT UPDATE, DELETE ON public.{table} TO sales_app")
+        # Same pg_roles guard as the grants above: without it a database whose runtime role has
+        # not been provisioned yet cannot reach head at all.
+        op.execute(
+            f"""
+            DO $$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+                GRANT UPDATE, DELETE ON public.{table} TO sales_app;
+              END IF;
+            END $$;
+            """
+        )
     op.execute("DROP POLICY IF EXISTS location_access ON public.user_location_access")
     op.execute(
         f"""CREATE POLICY location_access ON public.user_location_access

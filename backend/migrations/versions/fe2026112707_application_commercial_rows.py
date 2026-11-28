@@ -48,7 +48,19 @@ def _secure(table: str, indexes: list[tuple[str, str]]) -> None:
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     op.execute(POLICY.format(table=table))
-    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO sales_app")
+    # sales_app is created by scripts/provision.py, which does not always run before Alembic: a
+    # CI database has no such role, and a bare GRANT aborted the whole upgrade with
+    # role "sales_app" does not exist (CI run 46087712727, backend shards, «alembic upgrade head»).
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sales_app') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO sales_app;
+          END IF;
+        END $$;
+        """
+    )
     for name, column in indexes:
         op.execute(f"CREATE INDEX {name} ON {table} ({column})")
 

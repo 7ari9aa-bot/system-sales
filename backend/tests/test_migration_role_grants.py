@@ -35,6 +35,17 @@ def _executed_sql(path: pathlib.Path) -> list[str]:
         first = node.args[0]
         if isinstance(first, ast.Constant) and isinstance(first.value, str):
             statements.append(first.value)
+        elif isinstance(first, ast.JoinedStr):
+            # f-string: القيم المتغيّرة بتتحول لـ{} والقوالب النصية بتفضل، فالـGRANT اللي بيتكتب
+            # بأسماء جداول متغيّرة بيتفحص زي اللي مكتوب بالنص.
+            statements.append(
+                "".join(
+                    part.value
+                    if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                    else "{}"
+                    for part in first.values
+                )
+            )
     return statements
 
 
