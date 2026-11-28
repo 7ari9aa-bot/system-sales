@@ -12,13 +12,14 @@ database replaced by stubs, because the wiring is the thing that was missing.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
 
 from app.modules.voice.domain.states import IllegalTransition
 from app.modules.voice.routers import sessions as api
-from app.modules.voice.runtime.gpt_live import GptLiveUnavailable
+from app.modules.voice.runtime.gpt_live import GptLiveProtocolError, GptLiveUnavailable
 
 TENANT = uuid.uuid4()
 SESSION = uuid.uuid4()
@@ -26,18 +27,29 @@ PROVIDER = "sess_live_1"
 
 
 class _Recorder:
-    """A manager that writes down every lifecycle move instead of making it."""
+    """A manager that writes down every lifecycle move instead of making it.
+
+    It also enforces the ONE move the real state machine refuses on this path:
+    a session that never named a provider is still CONFIGURING, and CONFIGURING
+    has no edge to CLOSING. Without that the recorder happily "closed" a row the
+    database would have rejected, and a test could pass on a move that cannot
+    happen.
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple] = []
+        self._connected = False
 
     async def attach_provider(self, session_id, provider_session_id):
+        self._connected = True
         self.calls.append(("attach", session_id, provider_session_id))
 
     async def activate(self, session_id):
         self.calls.append(("activate", session_id))
 
     async def close(self, session_id, *, reason="caller_hangup", tenant_id=None):
+        if not self._connected:
+            raise IllegalTransition("voice_session", "CONFIGURING", "CLOSING")
         self.calls.append(("close", session_id, reason))
 
     async def fail(self, session_id, *, reason):
@@ -179,6 +191,102 @@ async def test_a_socket_that_dies_before_connect_is_failed_not_left_configuring(
     # rather than closed: CONFIGURING -> CLOSING is a move the machine refuses.
     assert ("fail", SESSION, "socket_closed") in recorder.calls
     assert not any(call[0] == "close" for call in recorder.calls)
+
+
+@pytest.mark.asyncio
+async def test_a_protocol_error_while_opening_the_call_ends_the_session(monkeypatch) -> None:
+    """The gateway refusing the session is an ending, not a crash.
+
+    ``GptLiveProtocolError`` is what the adapter raises when the gateway answers
+    with something unusable or never reaches ``session.started``. Before this was
+    handled it escaped the start path entirely: the row stayed CONFIGURING, the
+    socket was never closed with 1011, and the only trace was a stack trace.
+    """
+    recorder = _Recorder()
+
+    async def _refused(**_kwargs):
+        raise GptLiveProtocolError("the session never reached session.started")
+
+    _install(monkeypatch, recorder, _refused)
+    websocket = _WebSocket()
+
+    await api.stream_audio(websocket, SESSION, ticket="t")
+
+    assert recorder.calls == [
+        ("fail", SESSION, "provider_protocol_error:GptLiveProtocolError"),
+    ]
+    assert websocket.closed_with == 1011
+
+
+@pytest.mark.asyncio
+async def test_a_connection_error_while_opening_the_call_ends_the_session(monkeypatch) -> None:
+    """A socket that cannot be reached is a provider failure with a reason, not a 500."""
+    recorder = _Recorder()
+
+    async def _unreachable(**_kwargs):
+        raise ConnectionResetError("the gateway dropped the handshake")
+
+    _install(monkeypatch, recorder, _unreachable)
+    websocket = _WebSocket()
+
+    await api.stream_audio(websocket, SESSION, ticket="t")
+
+    assert recorder.calls == [
+        ("fail", SESSION, "provider_connection_error:ConnectionResetError"),
+    ]
+    assert websocket.closed_with == 1011
+
+
+@pytest.mark.asyncio
+async def test_any_other_failure_to_open_the_call_still_ends_the_session(monkeypatch) -> None:
+    """A provider failure nobody anticipated must not leave a session CONFIGURING.
+
+    The list of exception types a vendor library can raise is not knowable, so the
+    start path catches the base and records what it was. An unrecorded ending is
+    the failure this whole path exists to remove.
+    """
+
+    class ProviderBoom(Exception):
+        pass
+
+    recorder = _Recorder()
+
+    async def _boom(**_kwargs):
+        raise ProviderBoom("the media plane answered with a shape we do not know")
+
+    _install(monkeypatch, recorder, _boom)
+    websocket = _WebSocket()
+
+    await api.stream_audio(websocket, SESSION, ticket="t")
+
+    assert recorder.calls == [("fail", SESSION, "provider_error:ProviderBoom")]
+    assert websocket.closed_with == 1011
+
+
+class _BrokenClose(_Call):
+    """A transport whose close() raises — the socket is already gone underneath us."""
+
+    async def close(self) -> None:
+        raise RuntimeError("the transport is already closed")
+
+
+@pytest.mark.asyncio
+async def test_a_close_that_raises_still_ends_the_session(monkeypatch, caplog) -> None:
+    """A failing ``call.close()`` must not cost the row its ending.
+
+    The close runs before ``finish()`` in the same ``finally``. One raising line
+    used to skip the state write entirely, which is how a session that really
+    ended stays ACTIVE in the database — the stuck-session symptom. The close
+    error is logged and the ending still happens.
+    """
+    recorder = _Recorder()
+    _install(monkeypatch, recorder, lambda **_kwargs: _await(_BrokenClose()))
+
+    with caplog.at_level(logging.WARNING, logger=api.logger.name):
+        await api.stream_audio(_WebSocket(), SESSION, ticket="t")
+
+    assert ("close", SESSION, "socket_closed") in recorder.calls
+    assert "voice.call_close_failed" in caplog.text
 
 
 async def _await(value):

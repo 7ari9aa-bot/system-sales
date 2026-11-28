@@ -117,6 +117,16 @@ class Settings(BaseSettings):
     gpt_live_url: str = "wss://ai-gateway.vercel.sh/v1/live/sessions"
     gpt_live_model: str = "openai/gpt-live-1.1"
     gpt_live_voice: str = "marin"
+
+    # How long a voice session may sit untouched before the sweeper treats it as abandoned.
+    # There is no heartbeat on a call: the only evidence a session is alive is that something
+    # touched its row (a state move, a completed turn), so these budgets ARE the safety margin for
+    # a real call that happens to be quiet. They are settings because the right value is a property
+    # of how a shop uses its phone line, not of the code: a support line with long holds needs a
+    # longer silence budget than a shop that answers and hangs up. Raising them only makes the
+    # sweeper later to end a dead row; it never ends a live one sooner.
+    voice_sweep_stale_after_minutes: int = 30
+    voice_sweep_configuring_grace_minutes: int = 5
     access_token_ttl_seconds: int = 60 * 30
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 14
     # HttpOnly cookie auth (the XSS-hardening wave). None means AUTO:

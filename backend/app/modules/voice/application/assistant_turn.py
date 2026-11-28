@@ -112,7 +112,35 @@ async def run_voice_turn(
         if reply is not None:
             # Replayed key: the answer already exists. Running it again would
             # double-bill the gateway for the same spoken question, and writing
-            # the turn again would make the call look like it had two of them.
+            # the question again would put it in the timeline twice.
+            #
+            # The turn is a different matter. The answer is written by the shared
+            # runtime and the link by ``complete_turn``, which are two commits: a
+            # crash in between leaves an answer with no ``voice_turns`` row, and
+            # the retry lands exactly here. Returning the message alone would
+            # leave that turn unlinked and unbilled for ever, so the link is
+            # healed on the replay. ``complete_turn`` is idempotent on
+            # ``(session, question)`` and books spend only when it creates the
+            # row, so a healthy replay adds nothing and costs nothing.
+            #
+            # DELIVERED, deliberately, even when the turn is no longer current:
+            # the answer's own status is the runtime's to write, and rewriting it
+            # from here could un-deliver an answer the caller already heard. The
+            # return value below is what stops a stale one being spoken.
+            completed = await transcript_sync.complete_turn(
+                session,
+                tenant_id=ctx.tenant_id,
+                voice_session_id=voice_session_id,
+                thread_id=thread.id,
+                user_message_id=question.user_message_id,
+                assistant_message_id=reply.id,
+                outcome=transcript_sync.DELIVERED,
+            )
+            if completed.created:
+                await _session_manager(session).note_turn_completed(
+                    voice_session_id, completed.sequence_number
+                )
+            await session.commit()
             if not ledger.is_current(turn):
                 # The caller asked something else while this one was replayed. The
                 # answer exists, but it is the answer to an abandoned question.
