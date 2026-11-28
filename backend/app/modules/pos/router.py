@@ -15,14 +15,29 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator
 
+from app.modules.applications.dependencies import workspace_gate
 from app.modules.errors import ValidationError
-from app.modules.identity.deps import TenantContext, require_permission
+from app.modules.identity.deps import (
+    TenantContext,
+    get_tenant_ctx,
+    require_permission,
+)
 from app.modules.pos.override import OverrideDep
 from app.modules.pos.profiles import PosProfileService
 from app.modules.pos.service import PosService
 from app.modules.pos.stock_view import StockViewService
 
-router = APIRouter(prefix="/pos", tags=["pos"])
+
+async def _pos_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
+    """Selling is the core product; a workspace without it has no till."""
+    return await workspace_gate("retail.core", ctx)
+
+
+router = APIRouter(
+    prefix="/pos",
+    tags=["pos"],
+    dependencies=[Depends(_pos_gate)],
+)
 
 PosReadCtx = Annotated[TenantContext, Depends(require_permission("orders:read"))]
 PosStockReadCtx = Annotated[TenantContext, Depends(require_permission("inventory:read"))]
