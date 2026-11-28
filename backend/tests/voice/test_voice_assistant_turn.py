@@ -23,7 +23,11 @@ import pytest
 from app.core.errors import ValidationError
 from app.modules.ai.assistant.contracts import LIVE_VOICE
 from app.modules.voice.application import assistant_turn
-from app.modules.voice.application.transcript_sync import DELIVERED, CompletedTurn, OpenedTurn
+from app.modules.voice.application.transcript_sync import (
+    DELIVERED,
+    CompletedTurn,
+    OpenedTurn,
+)
 
 TENANT = uuid.uuid4()
 AGENT = uuid.uuid4()
@@ -101,7 +105,7 @@ def wired(monkeypatch):
         user_message_id,
         assistant_message_id,
         transcript_status="final",
-        outcome=None,
+        outcome=DELIVERED,
         **kwargs,
     ):
         seen["completed"].append(

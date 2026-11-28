@@ -362,13 +362,32 @@ async def _connect_session(manager, session_id, provider_session_id: str) -> Non
     await manager.activate(session_id)
 
 
-async def _end_session(manager, session_id, tenant_id, reason: str) -> None:  # noqa: ANN001
+async def _end_session(
+    manager,  # noqa: ANN001 - the manager is the only argument
+    session_id,
+    tenant_id,
+    reason: str,
+    *,
+    failed: bool = False,
+) -> None:
     """End the row the way the call actually ended.
+
+    ``failed`` is for a call that never became real — no provider session was ever
+    opened. Its ending is FAILED with the reason, said outright rather than inferred
+    from the state machine refusing a move, because the caller asked us to record a
+    failure and a store that tolerates the move would otherwise record a hangup.
 
     A socket that dies before the provider connected never reaches CLOSING, and a
     session that already ended needs nothing. Both become FAILED-with-a-reason or
     stay terminal; neither is left sitting in CONFIGURING.
     """
+    if failed:
+        try:
+            await manager.fail(session_id, reason=reason)
+            return
+        except (ConflictError, IllegalTransition):
+            logger.info("voice.session_already_ended session=%s", session_id)
+            return
     try:
         await manager.close(session_id, reason=reason, tenant_id=tenant_id)
     except (ConflictError, IllegalTransition):
@@ -432,9 +451,9 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
 
     tenant_id = uuid.UUID(str(grant.tenant_id))
 
-    async def finish(reason: str) -> None:
+    async def finish(reason: str, *, failed: bool = False) -> None:
         async def step(manager) -> None:  # noqa: ANN001 - the manager is the only argument
-            await _end_session(manager, session_id, tenant_id, reason)
+            await _end_session(manager, session_id, tenant_id, reason, failed=failed)
 
         await _lifecycle(tenant_id, step)
 
