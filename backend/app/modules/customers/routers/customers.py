@@ -38,8 +38,14 @@ from ._deps import (
 
 
 async def _customers_gate(ctx: TenantContext = Depends(get_tenant_ctx)):
-    """Customer records belong to the engagement product, not the base till."""
-    return await workspace_gate("customer.engagement", ctx)
+    """Customer records belong to the engagement product, not the base till.
+
+    ``product_permission`` is checked before the gate queries anything: this dependency runs
+    at router scope, ahead of every endpoint's own ``require_permission``, so without it a
+    caller holding no customer permission at all would still make the gate read the
+    commercial tables before being refused.
+    """
+    return await workspace_gate("customer.engagement", ctx, product_permission="customers")
 
 
 router = APIRouter(tags=["customers"], dependencies=[Depends(_customers_gate)])
