@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 725,
-    "sha256": "916c3c07982aca7c41f46ed6ef355b1fab5e7bd342b7c9d262f60484b637fac8",
+    "sha256": "cbf819b751ac3bd19c9efd838278d2a0a78bfac3483b26b6a4f4415f7fdce21c",
     "typed_operations": 408
   },
   "spec": {
@@ -412,6 +412,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -1677,6 +1678,7 @@
         "AnomalyResult": {
           "properties": {
             "baseline": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Baseline",
               "type": "string"
             },
@@ -1689,6 +1691,7 @@
               "type": "boolean"
             },
             "observed": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Observed",
               "type": "string"
             },
@@ -2553,6 +2556,7 @@
             "reserved_budget": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -2638,6 +2642,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -2666,6 +2671,7 @@
               "title": "Actor Id"
             },
             "available_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Available Amount",
               "type": "string"
             },
@@ -2704,6 +2710,7 @@
               "type": "string"
             },
             "reserved_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Reserved Amount",
               "type": "string"
             },
@@ -2720,10 +2727,12 @@
               "title": "Reset At"
             },
             "spent_amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Spent Amount",
               "type": "string"
             },
             "total_limit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Limit",
               "type": "string"
             },
@@ -3647,6 +3656,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3768,6 +3778,7 @@
             "max_budget": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3861,6 +3872,7 @@
         "CashMovementOut": {
           "properties": {
             "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -3920,6 +3932,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -4526,12 +4539,14 @@
         "Comparison": {
           "properties": {
             "delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
             "delta_pct": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5178,6 +5193,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5213,6 +5229,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5228,6 +5245,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5275,6 +5293,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7584,6 +7603,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -7596,6 +7616,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7611,6 +7632,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7825,6 +7847,7 @@
               "type": "string"
             },
             "delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
@@ -8117,6 +8140,7 @@
         "DriverResult": {
           "properties": {
             "aov_contribution": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Aov Contribution",
               "type": "string"
             },
@@ -8126,10 +8150,12 @@
               "type": "string"
             },
             "orders_contribution": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Orders Contribution",
               "type": "string"
             },
             "total_delta": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Delta",
               "type": "string"
             }
@@ -8566,6 +8592,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,15}0*$)\\d{0,10}\\.\\d{0,4}0*$)",
                   "type": "string"
                 }
               ],
@@ -10353,6 +10380,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11318,6 +11346,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11355,6 +11384,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12330,6 +12360,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12410,6 +12441,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -13072,6 +13104,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14118,6 +14151,7 @@
               "type": "string"
             },
             "value": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Value",
               "type": "string"
             }
@@ -14448,6 +14482,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14554,6 +14589,7 @@
             "reserved_budget": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14975,6 +15011,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -15941,6 +15978,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17063,6 +17101,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17098,6 +17137,7 @@
               "type": "string"
             },
             "unit_price": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Unit Price",
               "type": "string"
             },
@@ -18260,6 +18300,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -18869,6 +18910,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -21884,6 +21926,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -23049,6 +23092,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -23804,6 +23848,7 @@
               "type": "string"
             },
             "rate": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Rate",
               "type": "string"
             }
@@ -26106,10 +26151,12 @@
               "type": "string"
             },
             "total_credits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             },
@@ -26448,14 +26495,17 @@
               "type": "string"
             },
             "net_balance": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Net Balance",
               "type": "string"
             },
             "total_credit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credit",
               "type": "string"
             },
             "total_debit": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debit",
               "type": "string"
             }
@@ -26500,10 +26550,12 @@
               "type": "string"
             },
             "total_credits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             }
@@ -26816,6 +26868,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26854,6 +26907,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26932,6 +26986,7 @@
                   "type": "number"
                 },
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -27804,6 +27859,7 @@
               "type": "string"
             },
             "grand_total": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Grand Total",
               "type": "string"
             },
@@ -27821,6 +27877,7 @@
               "type": "string"
             },
             "subtotal": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Subtotal",
               "type": "string"
             }
@@ -28801,6 +28858,7 @@
             "available_credit": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28810,16 +28868,19 @@
               "title": "Available Credit"
             },
             "balance": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance",
               "type": "string"
             },
             "credit_held": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Credit Held",
               "type": "string"
             },
             "credit_limit": {
               "anyOf": [
                 {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28845,6 +28906,7 @@
               "title": "Note"
             },
             "owes": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Owes",
               "type": "string"
             }
@@ -28864,10 +28926,12 @@
         "app__modules__customer_accounts__router__EntryOut": {
           "properties": {
             "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
             "balance_after": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance After",
               "type": "string"
             },
@@ -29066,6 +29130,7 @@
               "type": "string"
             },
             "amount": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
