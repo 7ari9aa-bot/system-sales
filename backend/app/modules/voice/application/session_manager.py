@@ -23,6 +23,7 @@ from typing import Protocol
 from app.core.errors import ConflictError, NotFoundError
 from app.modules.voice.domain.personas import PersonaType, PrincipalType
 from app.modules.voice.domain.states import (
+    IllegalTransition,
     VoiceSessionState,
     agent_may_speak,
     next_session_state,
@@ -123,6 +124,15 @@ class InMemorySessionStore:
             last_completed_turn=max(record.last_completed_turn, sequence),
             updated_at=dt.datetime.now(dt.UTC),
         )
+
+
+def _may_reach_closing(state: VoiceSessionState) -> bool:
+    """Whether a graceful ending exists from here; pre-live calls end FAILED instead."""
+    try:
+        next_session_state(state, VoiceSessionState.CLOSING)
+    except IllegalTransition:
+        return False
+    return True
 
 
 class VoiceSessionManager:
@@ -238,7 +248,19 @@ class VoiceSessionManager:
         reason: str = "caller_hangup",
         tenant_id: uuid.UUID | None = None,
     ) -> VoiceSessionRecord:
+        """End the call the way it actually ended.
+
+        A call the caller hung up before it ever went live has no graceful ending to
+        walk: CONFIGURING cannot reach CLOSING, and pretending it can left the row
+        stuck and its ``client_key`` held forever — the second press on the same
+        screen then failed on ``ux_voice_sessions_client_key``. Such a call ends
+        FAILED with the caller's reason, which is both the legal move and the truth,
+        and the store releases the key on any terminal state.
+        """
         record = await self._authorized(session_id, tenant_id)
+        if not _may_reach_closing(record.state):
+            record = await self._move(record, VoiceSessionState.FAILED)
+            return await self._save(replace(record, closed_reason=reason))
         record = await self._move(record, VoiceSessionState.CLOSING)
         record = await self._move(record, VoiceSessionState.CLOSED)
         return await self._save(replace(record, closed_reason=reason))

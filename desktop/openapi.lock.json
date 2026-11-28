@@ -1,8 +1,8 @@
 {
   "measured": {
-    "operations": 723,
-    "sha256": "1b3b9616386f2309ca1cd316f4ed716cd90f3818ae966f8ce00fbfe0ddf1d99d",
-    "typed_operations": 406
+    "operations": 725,
+    "sha256": "916c3c07982aca7c41f46ed6ef355b1fab5e7bd342b7c9d262f60484b637fac8",
+    "typed_operations": 408
   },
   "spec": {
     "components": {
@@ -412,7 +412,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -1678,7 +1677,6 @@
         "AnomalyResult": {
           "properties": {
             "baseline": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Baseline",
               "type": "string"
             },
@@ -1691,7 +1689,6 @@
               "type": "boolean"
             },
             "observed": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Observed",
               "type": "string"
             },
@@ -2556,7 +2553,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -2642,7 +2638,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -2671,7 +2666,6 @@
               "title": "Actor Id"
             },
             "available_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Available Amount",
               "type": "string"
             },
@@ -2710,7 +2704,6 @@
               "type": "string"
             },
             "reserved_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Reserved Amount",
               "type": "string"
             },
@@ -2727,12 +2720,10 @@
               "title": "Reset At"
             },
             "spent_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Spent Amount",
               "type": "string"
             },
             "total_limit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Limit",
               "type": "string"
             },
@@ -3656,7 +3647,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3778,7 +3768,6 @@
             "max_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3872,7 +3861,6 @@
         "CashMovementOut": {
           "properties": {
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -3932,7 +3920,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -4539,14 +4526,12 @@
         "Comparison": {
           "properties": {
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
             "delta_pct": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5193,7 +5178,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5229,7 +5213,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5245,7 +5228,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5293,7 +5275,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7603,7 +7584,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -7616,7 +7596,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7632,7 +7611,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7847,7 +7825,6 @@
               "type": "string"
             },
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
@@ -8140,7 +8117,6 @@
         "DriverResult": {
           "properties": {
             "aov_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Aov Contribution",
               "type": "string"
             },
@@ -8150,12 +8126,10 @@
               "type": "string"
             },
             "orders_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Orders Contribution",
               "type": "string"
             },
             "total_delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Delta",
               "type": "string"
             }
@@ -8592,7 +8566,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,15}0*$)\\d{0,10}\\.\\d{0,4}0*$)",
                   "type": "string"
                 }
               ],
@@ -10380,7 +10353,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11346,7 +11318,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11384,7 +11355,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12360,7 +12330,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12441,7 +12410,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -13104,7 +13072,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14151,7 +14118,6 @@
               "type": "string"
             },
             "value": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Value",
               "type": "string"
             }
@@ -14482,7 +14448,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14589,7 +14554,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -15011,7 +14975,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -15978,7 +15941,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17101,7 +17063,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17137,7 +17098,6 @@
               "type": "string"
             },
             "unit_price": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Unit Price",
               "type": "string"
             },
@@ -18300,7 +18260,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -18910,7 +18869,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -21926,7 +21884,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -22583,6 +22540,18 @@
                 }
               ],
               "title": "Client Key"
+            },
+            "thread_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id"
             }
           },
           "title": "StartSessionRequest",
@@ -23080,7 +23049,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -23836,7 +23804,6 @@
               "type": "string"
             },
             "rate": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Rate",
               "type": "string"
             }
@@ -26139,12 +26106,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             },
@@ -26483,17 +26448,14 @@
               "type": "string"
             },
             "net_balance": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Net Balance",
               "type": "string"
             },
             "total_credit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credit",
               "type": "string"
             },
             "total_debit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debit",
               "type": "string"
             }
@@ -26538,12 +26500,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             }
@@ -26856,7 +26816,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26895,7 +26854,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26974,7 +26932,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -27847,7 +27804,6 @@
               "type": "string"
             },
             "grand_total": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Grand Total",
               "type": "string"
             },
@@ -27865,7 +27821,6 @@
               "type": "string"
             },
             "subtotal": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Subtotal",
               "type": "string"
             }
@@ -28846,7 +28801,6 @@
             "available_credit": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28856,19 +28810,16 @@
               "title": "Available Credit"
             },
             "balance": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance",
               "type": "string"
             },
             "credit_held": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Credit Held",
               "type": "string"
             },
             "credit_limit": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28894,7 +28845,6 @@
               "title": "Note"
             },
             "owes": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Owes",
               "type": "string"
             }
@@ -28914,12 +28864,10 @@
         "app__modules__customer_accounts__router__EntryOut": {
           "properties": {
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
             "balance_after": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance After",
               "type": "string"
             },
@@ -29118,7 +29066,6 @@
               "type": "string"
             },
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -38104,6 +38051,206 @@
           "summary": "Save Shop Size Sets",
           "tags": [
             "catalog"
+          ]
+        }
+      },
+      "/api/v1/applications": {
+        "get": {
+          "description": "Every application, with this workspace's verdict on it.",
+          "operationId": "list_applications_api_v1_applications_get",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response List Applications Api V1 Applications Get",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "List Applications",
+          "tags": [
+            "applications"
+          ]
+        }
+      },
+      "/api/v1/applications/install": {
+        "post": {
+          "description": "Record what this workspace is licensed for, so the gate has something to read.\n\nA workspace that finished setup before the installations table existed has no\nrows, and the gate has to let it through as \"not configured yet\". This closes\nthat window for the workspace making the request - and only for it: the id\ncomes from the resolved context, never from the request body, so nobody can\ninstall a product into somebody else's business. It installs only what the\nlive subscription already covers, so it cannot grant anything unpaid.",
+          "operationId": "install_applications_api_v1_applications_install_post",
+          "parameters": [
+            {
+              "in": "header",
+              "name": "x-tenant-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Tenant-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-workspace-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Workspace-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "x-location-id",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Location-Id"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Install Applications Api V1 Applications Install Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          },
+          "summary": "Install Applications",
+          "tags": [
+            "applications"
           ]
         }
       },

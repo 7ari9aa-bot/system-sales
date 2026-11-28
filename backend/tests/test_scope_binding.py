@@ -96,7 +96,10 @@ async def _seed_workspace(
     db.add(ws)
     await db.flush()
     if user_id is not None:
-        db.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id))
+        # tenant_id is not decoration: workspace_memberships carries it so the RLS policy can
+        # scope a row without joining workspaces, and an insert without it is refused by
+        # `tenant_isolation` before it ever lands. A grant is always inside one account.
+        db.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, tenant_id=tenant_id))
         await db.flush()
     return ws
 
