@@ -34,6 +34,10 @@ export default function WorkspaceSwitchSection() {
   const [rows, setRows] = React.useState(null);
   const [error, setError] = React.useState("");
   const [switching, setSwitching] = React.useState("");
+  // What this business actually has, asked of the server: only it knows what was
+  // paid for and how far each setup got, so the screen never guesses from a list.
+  const [apps, setApps] = React.useState(null);
+  const [appsError, setAppsError] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -43,6 +47,20 @@ export default function WorkspaceSwitchSection() {
       })
       .catch((failure) => {
         if (alive) setError(failure?.message || "failed");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    api("/applications")
+      .then((data) => {
+        if (alive) setApps(data?.applications || []);
+      })
+      .catch((failure) => {
+        if (alive) setAppsError(failure?.message || "failed");
       });
     return () => {
       alive = false;
@@ -119,6 +137,47 @@ export default function WorkspaceSwitchSection() {
           );
         })}
       </SettingCard>
+      <div className="mt-4">
+        <SettingCard title={t("workspace.apps.title")} desc={t("workspace.apps.desc")}>
+          {appsError && (
+            <div role="alert" className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+              {appsError}
+            </div>
+          )}
+          {apps === null && !appsError && (
+            <p className="inline-flex items-center gap-2 py-2 text-[12.5px] text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {t("workspace.apps.loading")}
+            </p>
+          )}
+          {apps !== null && apps.length === 0 && (
+            <p className="py-2 text-[12.5px] text-muted-foreground">{t("workspace.apps.empty")}</p>
+          )}
+          {(apps || []).map((application, index) => {
+            const reason = String(application.reason || "");
+            const base = reason.split(":")[0];
+            return (
+              <SettingRow
+                key={application.key}
+                label={application.title_ar || application.title_en || application.key}
+                desc={t(`workspace.apps.reason.${base}`) === `workspace.apps.reason.${base}`
+                  ? reason
+                  : t(`workspace.apps.reason.${base}`)}
+                last={index === (apps || []).length - 1}
+              >
+                {application.allowed ? (
+                  <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-emerald-600">
+                    <Check className="h-4 w-4" />
+                    {t("workspace.apps.reason.allowed")}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-muted-foreground">{application.key}</span>
+                )}
+              </SettingRow>
+            );
+          })}
+        </SettingCard>
+      </div>
       <p className="mt-4 text-[11.5px] leading-relaxed text-muted-foreground">{t("workspace.switch.note")}</p>
     </SettingsShell>
   );
