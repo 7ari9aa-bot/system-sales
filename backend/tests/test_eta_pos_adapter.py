@@ -509,7 +509,7 @@ class TestTheFrontendNamesEveryChoice:
         from app.platform.settings.registry import list_definitions
 
         root = pathlib.Path(__file__).resolve().parents[2]
-        src = (root / "frontend/src/cashier/api/shopPolicy.js").read_text(encoding="utf-8")
+        src = (root / "frontend/src/applications/apparel/api/shopPolicy.js").read_text(encoding="utf-8")
         for d in list_definitions(domain="einvoice"):
             if d.type.value != "enum":
                 continue

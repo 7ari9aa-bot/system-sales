@@ -53,7 +53,7 @@ from app.applications.apparel.modules.conversations.gateway.telegram import tele
 from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
-GATEWAY_DIR = BACKEND_ROOT / "app" / "modules" / "conversations" / "gateway"
+GATEWAY_DIR = BACKEND_ROOT / "app" / "applications" / "apparel" / "modules" / "conversations" / "gateway"
 
 _THRESHOLD = 2
 

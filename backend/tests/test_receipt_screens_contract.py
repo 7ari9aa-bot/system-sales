@@ -20,7 +20,7 @@ from app.platform.settings.registry import ENFORCED_KEYS, REGISTRY, Scope
 from app.platform.settings.service import SettingsService
 from tests._pos_helpers import till
 
-SCREENS = Path(__file__).resolve().parents[2] / "frontend/src/cashier/components/settings"
+SCREENS = Path(__file__).resolve().parents[2] / "frontend/src/applications/apparel/components/settings"
 
 
 def _keys_in(screen: str, name: str) -> list[str]:

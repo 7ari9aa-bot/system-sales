@@ -26,7 +26,7 @@ from app.applications.apparel.modules.conversations.service import ConversationS
 from app.applications.apparel.modules.customers.models import Customer
 from app.platform.platform.models import OutboxEvent
 
-AI_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules" / "ai"
+AI_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "applications" / "apparel" / "modules" / "ai"
 
 
 async def _parked(db, tenant_id, *, ttl_minutes: int = 60):

@@ -357,7 +357,7 @@ def test_no_notification_route_writes_a_detail_body() -> None:
     the one door the client still opens for it.
     """
     offenders: list[str] = []
-    for path in sorted((BACKEND_ROOT / "app" / "modules" / "notifications").rglob("*.py")):
+    for path in sorted((BACKEND_ROOT / "app" / "platform" / "notifications").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Dict):

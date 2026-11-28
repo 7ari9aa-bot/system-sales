@@ -26,8 +26,8 @@ import pathlib
 import pytest
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
-PLATFORM_ROUTER = BACKEND_ROOT / "app" / "modules" / "platform" / "router.py"
-GATEWAY_REGISTRY = BACKEND_ROOT / "app" / "modules" / "conversations" / "gateway" / "registry.py"
+PLATFORM_ROUTER = BACKEND_ROOT / "app" / "platform" / "platform" / "router.py"
+GATEWAY_REGISTRY = BACKEND_ROOT / "app" / "applications" / "apparel" / "modules" / "conversations" / "gateway" / "registry.py"
 
 
 def _imported_names(path: pathlib.Path) -> set[str]:
