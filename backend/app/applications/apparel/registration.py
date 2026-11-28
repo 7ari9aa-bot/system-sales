@@ -7,7 +7,7 @@ must stop answering for.
 
 from __future__ import annotations
 
-from app.applications.apparel import events
+from app.applications.apparel import consumers, events
 from app.applications.apparel.manifest import APP_MANIFEST
 from app.applications.apparel.permissions import NAMESPACE
 from app.applications.apparel.routes import PREFIX
@@ -26,3 +26,5 @@ def register() -> None:
     # Event types the outbox must be able to deserialize (§17). Registered by
     # the application, so the platform's closed set never names a sector.
     events.register()
+    # Consumers for the events this release actually acts on (§17).
+    consumers.register()
