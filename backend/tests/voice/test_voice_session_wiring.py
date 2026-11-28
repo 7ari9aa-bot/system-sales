@@ -95,7 +95,9 @@ class TestTheContractEveryCallCarries:
     def test_the_contract_comes_first_so_the_dialect_refines_it(self) -> None:
         profile = resolve_voice_profile(ShopVoiceSettings(country_code="SA"))
         assert profile.instructions.startswith("أنت المساعد الصوتي")
-        assert profile.instructions.index("أنت المساعد الصوتي") < profile.instructions.index("الخليجية")
+        contract_at = profile.instructions.index("أنت المساعد الصوتي")
+        dialect_at = profile.instructions.index("الخليجية")
+        assert contract_at < dialect_at
 
 
 class TestThePromptIsReadFromTheShop:

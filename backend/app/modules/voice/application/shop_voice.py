@@ -44,7 +44,9 @@ async def load_shop_voice_config(session, tenant_id: uuid.UUID) -> dict[str, str
         )
     ).first()
     if row is None:
-        logger.warning("voice session for a missing tenant %s: starting on the base contract", tenant_id)
+        logger.warning(
+            "voice session for a missing tenant %s: starting on the base contract", tenant_id
+        )
         return session_start_config(resolve_voice_profile(ShopVoiceSettings()))
 
     name, country, dialect = row

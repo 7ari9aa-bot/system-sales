@@ -15,6 +15,7 @@ from app.modules.voice.security.capabilities import (
     resolve_capability,
 )
 
+
 def test_entering_a_voice_session_needs_no_shop_read_scope():
     """«assistant:use» opens the call; reading data still needs a read scope.
 
