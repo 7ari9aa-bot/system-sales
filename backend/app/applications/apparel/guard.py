@@ -20,6 +20,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from app.applications.apparel.compat import satisfied_by_legacy
+from app.applications.apparel.lifecycle import allows_reads, allows_writes
 from app.applications.apparel.permissions import get_permission, is_write_code
 from app.core.errors import PermissionDeniedError
 from app.modules.applications.access import decide_access
@@ -38,10 +39,6 @@ APPAREL_LICENCE_KEY = "retail.core"
 #: No installation rows at all: the workspace predates the gate. Same transition
 #: rule the platform gate applies, stated once here so the two cannot disagree.
 UNCONFIGURED = "__unconfigured__"
-
-#: Installation states that still let someone work. ``read_only`` is handled
-#: separately because it depends on what the endpoint does.
-BLOCKED_STATES = frozenset({"suspended", "uninstalled", "revoked", "expired"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +83,10 @@ def decide_apparel_access(
     if user_id is None:
         raise PermissionDeniedError("no user on this request")
 
-    if installation_state in BLOCKED_STATES:
+    # One lifecycle, one answer: an unconfigured workspace keeps the platform's
+    # transition rule, and any other state is judged by lifecycle.py, which
+    # refuses states it does not know.
+    if installation_state != UNCONFIGURED and not allows_reads(installation_state):
         raise PermissionDeniedError(f"apparel is {installation_state} for this workspace")
 
     # The apparel code first, then the legacy code it replaces while roles are
@@ -94,7 +94,7 @@ def decide_apparel_access(
     if permission_code not in held_codes and not satisfied_by_legacy(permission_code, held_codes):
         raise PermissionDeniedError(f"missing permission: {permission_code}")
 
-    read_only = installation_state == "read_only"
+    read_only = installation_state != UNCONFIGURED and not allows_writes(installation_state)
     if read_only and is_write(permission_code):
         raise PermissionDeniedError("apparel is read only: this action changes data")
 
