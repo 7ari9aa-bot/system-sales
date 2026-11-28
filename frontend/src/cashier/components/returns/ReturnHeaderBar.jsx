@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { ClipboardList, RotateCcw } from "lucide-react";
 import { Button } from "@/cashier/components/ui/button";
+import { appPath } from "../../basePath";
 
 // رأس شاشة تسجيل المرتجع: رقم العملية والتاريخ والموظف، مع رابط سجل المرتجعات.
 export default function ReturnHeaderBar({ number, employee, title = "تسجيل مرتجع", numberLabel = "رقم المرتجع" }) {
@@ -35,7 +36,7 @@ export default function ReturnHeaderBar({ number, employee, title = "تسجيل 
 
       <div className="ms-auto flex items-center gap-2">
         <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-[12px] text-muted-foreground">
-          <Link to="/cashier/returns/log">
+          <Link to={appPath("/returns/log")}>
             <ClipboardList className="h-3.5 w-3.5" />
             سجل المرتجعات
           </Link>

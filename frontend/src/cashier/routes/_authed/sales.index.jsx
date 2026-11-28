@@ -20,6 +20,7 @@ import { posApi, newIntent } from "@/cashier/api/posApi";
 import { filterRows, totalsOf } from "@/cashier/api/salesLog";
 import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/cashier/lib/format";
 import { exportCsv } from "@/cashier/lib/exportCsv";
+import { appPath } from "../../basePath";
 
 
 // الفلاتر الافتراضية: آخر أسبوع. «مسح الفلاتر» يرجع لهذه القيم.
@@ -201,7 +202,7 @@ export default function SalesLogPage() {
 
       <div className="mb-[18px] flex flex-wrap gap-2.5">
         <Button asChild className={BTN_PRIMARY}>
-          <Link to="/cashier/pos">
+          <Link to={appPath("/pos")}>
             <FilePlus2 className="h-4 w-4 shrink-0 !text-white" />
             <span className="!text-white font-semibold">فاتورة بيع جديدة</span>
           </Link>

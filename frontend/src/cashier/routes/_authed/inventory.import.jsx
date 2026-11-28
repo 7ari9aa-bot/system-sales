@@ -22,6 +22,7 @@ import {
   useValidateImport,
 } from "@/cashier/api/useImportCenter";
 import { assignField } from "@/cashier/api/importCenter";
+import { appPath } from "../../basePath";
 
 export default function InventoryImportPage() {
   const [params, setParams] = useSearchParams();
@@ -89,7 +90,7 @@ export default function InventoryImportPage() {
           <h1 className="font-heading text-[26px] font-semibold leading-tight sm:text-[30px]">استيراد المنتجات والمخزون</h1>
           <p className="mt-1.5 text-[13px] text-[#7A766C]">من ملف Excel أو CSV: منتجات وأصناف ورصيد أول المدة</p>
         </div>
-        <Link to="/cashier/inventory" className="inline-flex items-center gap-1.5 text-[13px] text-[#7A766C] hover:text-[#E8761A]">
+        <Link to={appPath("/inventory")} className="inline-flex items-center gap-1.5 text-[13px] text-[#7A766C] hover:text-[#E8761A]">
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
           المخزون
         </Link>

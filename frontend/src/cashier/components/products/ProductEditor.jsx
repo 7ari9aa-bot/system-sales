@@ -8,6 +8,7 @@ import { GLOW, PAGE } from "@/cashier/components/products/formStyles";
 import { useCreateProduct, useUpdateProduct } from "@/cashier/api/useCatalogWrite";
 import { retryFailedImages, uploadProductImages } from "@/cashier/api/productImage";
 import { createSaveGuard } from "@/cashier/lib/saveOnce";
+import { appPath } from "../../basePath";
 
 // شاشة إضافة / تعديل منتج (تُستخدم من مسار الإضافة ومسار التعديل).
 export default function ProductEditor({ product }) {
@@ -77,14 +78,14 @@ export default function ProductEditor({ product }) {
       const hasPhotos = values.imageFiles?.length > 0;
       const photosOk = await uploadPhotos(product.id, values.imageFiles);
       if (photosOk) toast.success(changed || hasPhotos ? "تم حفظ تعديلات المنتج" : "لا توجد تعديلات لحفظها");
-      navigate("/cashier/products");
+      navigate(appPath("/products"));
     } catch (e) {
       toast.error(e?.message ?? "تعذّر حفظ المنتج");
     }
   }
 
   function handleCancel() {
-    if (isEdit) navigate("/cashier/products");
+    if (isEdit) navigate(appPath("/products"));
     else setFormKey((k) => k + 1);
   }
 

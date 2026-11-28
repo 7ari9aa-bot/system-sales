@@ -6,6 +6,7 @@ import SectionCard from "@/cashier/components/ui-kit/SectionCard";
 import ConfirmDialog from "@/cashier/components/ui-kit/ConfirmDialog";
 import { STATUS_LABEL, progressOf, remainingOf, totalsOf } from "@/cashier/api/importCenter";
 import { fmtInt } from "@/cashier/lib/format";
+import { appPath } from "../../basePath";
 
 /** Step 4: the import is running, or it ended. The numbers are what the server has applied so far. */
 export default function RunStep({ session, busy, error, onCancel, onDownload, onAgain }) {
@@ -80,7 +81,7 @@ export default function RunStep({ session, busy, error, onCancel, onDownload, on
         )}
         {!running && (
           <Button asChild className="bg-[#E8761A] text-white hover:bg-[#D1650F]">
-            <Link to="/cashier/inventory">عرض المخزون</Link>
+            <Link to={appPath("/inventory")}>عرض المخزون</Link>
           </Button>
         )}
       </div>
