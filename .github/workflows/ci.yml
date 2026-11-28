@@ -71,6 +71,11 @@ jobs:
   # 45733494289); the same arithmetic at today's suite size lands on ten, which cuts every shard's
   # share to roughly eight minutes while the fixed cost per shard (install, migrations, provision)
   # stays ~2 minutes.
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     strategy:
       # A cancelled run must not leave half a matrix behind, and one failing shard should not
       # hide the others' results: every shard reports its own verdict.
@@ -342,7 +347,10 @@ jobs:
   # Lowering this number requires an ADR. It lives here because coverage only means
   # something over the whole suite.
   coverage:
-    needs: backend
+    # `changes` must be a declared dependency, not just referenced: actionlint rejects
+    # needs.changes.outputs.backend when the job only needs `backend`, and GitHub resolves the
+    # missing dependency to null, so this condition was never true and the 80% gate never ran.
+    needs: [changes, backend]
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     steps:
