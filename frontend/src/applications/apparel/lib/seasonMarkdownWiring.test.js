@@ -3,7 +3,20 @@ import { describe, expect, it } from "vitest";
 
 // The dialog is JSX the test setup cannot render, so the links that matter most are guarded at the
 // source: a stale preview must never be confirmable, and the token must travel with what it signed.
-const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
+// The application tree moved under src/applications/apparel, so a path in these
+// tests may be written from the application root, from src, or from the repo
+// root. Resolve by trying each, with the application root first.
+const read = (rel) => {
+  const clean = rel.replace(/^(\.\.\/)+/, "").replace(/^(cashier|apparel)\//, "");
+  for (const base of ["../", "../../", "../../../", "../../../../", "../../../../../"]) {
+    try {
+      return readFileSync(new URL(base + clean, import.meta.url), "utf8");
+    } catch {
+      // try the next base
+    }
+  }
+  throw new Error(`cannot resolve ${rel}`);
+};
 const dialog = read("components/inventory/SeasonMarkdownDialog.jsx");
 const page = read("routes/_authed/inventory.index.jsx");
 const api = read("api/posApi.js");

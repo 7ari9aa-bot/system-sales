@@ -3,7 +3,20 @@ import { describe, expect, it } from "vitest";
 
 // The sale screen is JSX the test setup cannot render, so the wiring that carries a payment from the
 // dialog to the server is guarded at the source: a broken link here books a card sale as cash.
-const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
+// The application tree moved under src/applications/apparel, so a path in these
+// tests may be written from the application root, from src, or from the repo
+// root. Resolve by trying each, with the application root first.
+const read = (rel) => {
+  const clean = rel.replace(/^(\.\.\/)+/, "").replace(/^(cashier|apparel)\//, "");
+  for (const base of ["../", "../../", "../../../", "../../../../", "../../../../../"]) {
+    try {
+      return readFileSync(new URL(base + clean, import.meta.url), "utf8");
+    } catch {
+      // try the next base
+    }
+  }
+  throw new Error(`cannot resolve ${rel}`);
+};
 
 describe("a payment entered in the dialog reaches the server", () => {
   const pos = read("routes/_authed/pos.jsx");
@@ -88,7 +101,7 @@ describe("the shop's own policy is not written in the receipt screen", () => {
 });
 
 describe("the shop's currency reaches every amount", () => {
-  const auth = readFileSync(new URL("../../../../lib/AuthContext.jsx", import.meta.url), "utf8");
+  const auth = readFileSync(new URL("../../../lib/AuthContext.jsx", import.meta.url), "utf8");
   const format = read("lib/format.js");
 
   it("the signed-in shop's currency is set whenever the user changes", () => {

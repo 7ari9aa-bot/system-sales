@@ -4,7 +4,20 @@ import { describe, expect, it } from "vitest";
 // The reports page is JSX the test setup cannot render, so the wiring that carries the period, the
 // brand and the season from the screen to the server is guarded at the source: a broken link here
 // shows the owner a profit for the wrong window, or for every brand while one is selected.
-const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
+// The application tree moved under src/applications/apparel, so a path in these
+// tests may be written from the application root, from src, or from the repo
+// root. Resolve by trying each, with the application root first.
+const read = (rel) => {
+  const clean = rel.replace(/^(\.\.\/)+/, "").replace(/^(cashier|apparel)\//, "");
+  for (const base of ["../", "../../", "../../../", "../../../../", "../../../../../"]) {
+    try {
+      return readFileSync(new URL(base + clean, import.meta.url), "utf8");
+    } catch {
+      // try the next base
+    }
+  }
+  throw new Error(`cannot resolve ${rel}`);
+};
 
 describe("the profit tab is on the reports page and asks for what the owner picked", () => {
   const page = read("routes/_authed/reports.jsx");

@@ -4,7 +4,17 @@ import { describe, expect, it } from "vitest";
 // The cashier records sales, returns and exchanges. It takes no payment and refunds nothing, so a
 // screen must never tell the user money is paid back or owed. A source-level guard, because these
 // strings live in components that the test setup cannot render.
-const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
+const read = (rel) => {
+  const clean = rel.replace(/^(\.\.\/)+/, "").replace(/^(cashier|apparel)\//, "");
+  for (const base of ["../", "../../", "../../../", "../../../../", "../../../../../"]) {
+    try {
+      return readFileSync(new URL(base + clean, import.meta.url), "utf8");
+    } catch {
+      // try the next base
+    }
+  }
+  throw new Error(`cannot resolve ${rel}`);
+};
 
 describe("screens do not claim money moves", () => {
   it("the return screen does not promise a refund to the customer", () => {

@@ -20,7 +20,7 @@ const read = (rel) => {
 };
 const screen = read("apparel/components/settings/ReportsAccessSettings.jsx");
 const settingsPage = read("pages/settings/PosSettings.jsx");
-const registry = readFileSync(new URL("../../../../backend/app/platform/settings/registry.py", import.meta.url), "utf8");
+const registry = readFileSync(new URL("../../../../../backend/app/platform/settings/registry.py", import.meta.url), "utf8");
 
 describe("the owner's switch for who sees cost and profit", () => {
   it("asks for exactly the key the server registers, in the business domain", () => {
@@ -36,7 +36,7 @@ describe("the owner's switch for who sees cost and profit", () => {
   });
 
   it("is on the settings page, in the tab where the owner decides who sees what", () => {
-    expect(settingsPage).toMatch(/import ReportsAccessSettings from "@\/cashier\/components\/settings\/ReportsAccessSettings"/);
+    expect(settingsPage).toMatch(/import ReportsAccessSettings from "@\/applications\/apparel\/components\/settings\/ReportsAccessSettings"/);
     expect(settingsPage).toMatch(/value: "users"/);
     expect(settingsPage).toMatch(/<ReportsAccessSettings \/>/);
   });

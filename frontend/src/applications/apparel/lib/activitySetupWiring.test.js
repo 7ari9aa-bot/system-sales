@@ -28,7 +28,7 @@ const register = read("pages/Register.jsx");
 
 describe("the gate", () => {
   it("is mounted in the dashboard layout, so it covers the dashboard and the till", () => {
-    expect(layout).toMatch(/import ActivitySetupGate from "@\/cashier\/components\/setup\/ActivitySetupGate"/);
+    expect(layout).toMatch(/import ActivitySetupGate from "@\/applications\/apparel\/components\/setup\/ActivitySetupGate"/);
     expect(layout).toMatch(/<ActivitySetupGate \/>/);
   });
   it("renders nothing unless the server says this owner is due, and nothing once closed", () => {
@@ -39,7 +39,7 @@ describe("the gate", () => {
     expect(gate).not.toMatch(/catalogApi/);
   });
   it("finishing goes to the till", () => {
-    expect(gate).toMatch(/navigate\("\/cashier\/pos"\)/);
+    expect(gate).toMatch(/navigate\(appPath\("\/pos"\)\)/);
   });
 });
 

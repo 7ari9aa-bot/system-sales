@@ -34,12 +34,13 @@ describe("an amount taken out of the drawer", () => {
 // The four screens that print a return amount must use the guarded formatter. A bare
 // `−${fmtMoney(...)}` in any of them brings "−0.00" back on a real screen.
 describe("every return column is wired to the guarded formatter", () => {
-  // The tree moved one level deeper: a path may be written from the application
-  // root or from src, so resolve against both.
+  // The tree moved under src/applications/apparel: a path may be written from the
+  // application root, from src, or from the repo root. Try each, application first.
   const read = (rel) => {
-    for (const base of ["../../../../", "../../../", "../../"]) {
+    const clean = rel.replace(/^(\.\.\/)+/, "").replace(/^(cashier|apparel)\//, "");
+    for (const base of ["../", "../../", "../../../", "../../../../", "../../../../../"]) {
       try {
-        return readFileSync(new URL(base + rel, import.meta.url), "utf8");
+        return readFileSync(new URL(base + clean, import.meta.url), "utf8");
       } catch {
         // try the next base
       }

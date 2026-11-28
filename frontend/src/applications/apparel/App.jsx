@@ -3,7 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "@/applications/apparel/components/ui/sonner";
 import PageSkeleton from "@/applications/apparel/components/ui-kit/PageSkeleton";
 import "./cashier.css";
-import { appPath } from "basePath";
+import { appPath } from "./basePath";
 
 // كل صفحات الكاشير تُحمَّل عند الطلب حتى لا تثقل باقي النظام.
 const Page0 = lazy(() => import("./routes/_authed/activity-log.jsx"));
