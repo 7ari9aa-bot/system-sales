@@ -1,0 +1,284 @@
+import { Link, useNavigate } from "react-router-dom";
+import { Download, FilePlus2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/applications/apparel/components/ui/button";
+import SalesLogFilters from "@/applications/apparel/components/sales/SalesLogFilters";
+import SalesLogTable from "@/applications/apparel/components/sales/SalesLogTable";
+import LogBadge from "@/applications/apparel/components/sales/LogBadge";
+import InvoiceRowActions from "@/applications/apparel/components/sales/InvoiceRowActions";
+import OperationsLogDialog from "@/applications/apparel/components/sales/OperationsLogDialog";
+import ReceiptDialog from "@/applications/apparel/components/pos/ReceiptDialog";
+import VoidInvoiceDialog from "@/applications/apparel/components/sales/VoidInvoiceDialog";
+import { useAuth } from "@/lib/AuthContext";
+import { useShifts } from "@/applications/apparel/api/useShifts";
+import { useShiftSales } from "@/applications/apparel/api/usePosSale";
+import { useWorkingSession } from "@/applications/apparel/api/useShifts";
+import PendingRefundsPanel from "@/applications/apparel/components/returns/PendingRefundsPanel";
+import { mergePendingRefunds, withoutPendingRefund } from "@/applications/apparel/api/pendingRefunds";
+import { posApi, newIntent } from "@/applications/apparel/api/posApi";
+import { filterRows, totalsOf } from "@/applications/apparel/api/salesLog";
+import { fmtDateTime, fmtInt, fmtMoney, INVOICE_STATUS } from "@/applications/apparel/lib/format";
+import { exportCsv } from "@/applications/apparel/lib/exportCsv";
+import { appPath } from "../../basePath";
+
+
+// الفلاتر الافتراضية: آخر أسبوع. «مسح الفلاتر» يرجع لهذه القيم.
+const DEFAULT_FILTERS = { from: "", to: "", term: "", status: "" };
+
+const BTN =
+  "h-10 gap-2 rounded-[10px] border border-[#e3d6c2] bg-white px-[18px] text-[13px] font-bold text-[#0F172A] shadow-none transition-[background-color,box-shadow,border-color] duration-150 hover:border-[#F97316] hover:bg-[#FFF4E8] hover:text-[#0F172A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316] focus-visible:ring-0 active:shadow-[inset_0_2px_4px_rgba(15,23,42,.15)]";
+const BTN_PRIMARY =
+  "h-10 gap-2 rounded-[10px] border border-[#F97316] bg-[#F97316] px-[18px] text-[13px] font-bold text-white shadow-none transition-[background-color,box-shadow,border-color] duration-150 hover:border-[#F97316] hover:bg-[#ea6a0a] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316] focus-visible:ring-0 active:shadow-[inset_0_2px_4px_rgba(15,23,42,.15)]";
+
+export default function SalesLogPage() {
+  const navigate = useNavigate();
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [logInvoice, setLogInvoice] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [voidInvoice, setVoidInvoice] = useState(null);
+  const [voidError, setVoidError] = useState(null);
+  // A void refunds through the same settlement as a return, so its card reversal is pending too.
+  const [pendingRefunds, setPendingRefunds] = useState([]);
+  // A void refunds through the same settlement, so its card reversal is owed after a reload too.
+  const [manualReversals, setManualReversals] = useState([]);
+  const [voidPending, setVoidPending] = useState(false);
+
+  const { user } = useAuth();
+  const shiftsQuery = useShifts({ employees: user?.id ? { [user.id]: user.full_name || user.email } : {} });
+  const shifts = shiftsQuery.data ?? [];
+  const [pickedShift, setPickedShift] = useState("");
+  const shiftId = pickedShift || shifts[0]?.id || "";
+  const salesQuery = useShiftSales(shiftId, { cashier: shifts.find((x) => x.id === shiftId)?.employeeId === user?.id ? (user.full_name || user.email || "") : "" });
+
+  const rows = useMemo(() => filterRows(salesQuery.data ?? [], filters), [salesQuery.data, filters]);
+  const activeCount = ["from", "to", "term", "status"].filter((k) => filters[k] !== "").length;
+  const totals = totalsOf(rows);
+
+  const openInvoice = (inv) => navigate(`/cashier/sales/${inv.id}?shift=${encodeURIComponent(shiftId)}`);
+
+  // الإلغاء بيرد الفلوس من درج الوردية المفتوحة، فلازم نعرف الوردية المفتوحة الحالية.
+  useEffect(() => {
+    let alive = true;
+    posApi
+      .listPendingRefunds()
+      .then((rows) => {
+        if (alive) setPendingRefunds((prev) => mergePendingRefunds(prev, rows));
+      })
+      .catch(() => {}); // a read failure must not block the till
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const working = useWorkingSession();
+  async function confirmVoid({ orderId, reason }) {
+    if (voidPending) return;
+    const sessionId = working.data?.session?.id ?? working.data?.id ?? shiftId;
+    if (!sessionId) {
+      setVoidError("لا توجد وردية مفتوحة تُرد منها الأموال. افتح اليوم أولاً.");
+      return;
+    }
+    setVoidPending(true);
+    setVoidError(null);
+    try {
+      const res = await posApi.voidSale(sessionId, { orderId, reason }, newIntent());
+      toast.success(`اتلغت الفاتورة ${voidInvoice?.number ?? ""} — مستند الإلغاء ${res?.void_receipt_number ?? ""}`.trim());
+      setPendingRefunds((prev) => mergePendingRefunds(prev, res?.awaiting_confirmation));
+      setManualReversals(res?.terminal_only ?? []);
+      setVoidInvoice(null);
+      await salesQuery.refetch();
+    } catch (e) {
+      setVoidError(e?.message || "الخادم رفض الإلغاء");
+    } finally {
+      setVoidPending(false);
+    }
+  }
+  const shift = shifts.find((x) => x.id === shiftId);
+
+  const columns = [
+    {
+      key: "number",
+      header: "رقم الفاتورة",
+      render: (inv) => <span className="num font-bold text-[#d9600a]">{inv.number}</span>,
+    },
+    {
+      key: "date",
+      header: "التاريخ والوقت",
+      render: (inv) => <span className="num text-[12px] text-[#7a6f61]">{fmtDateTime(inv.date)}</span>,
+    },
+    {
+      key: "pieces",
+      header: <span title="عدد القطع = مجموع وحدات كل الأصناف داخل الفاتورة">عدد القطع</span>,
+      align: "center",
+      render: (inv) => <span className="num">{fmtInt(inv.pieces)}</span>,
+    },
+    {
+      key: "total",
+      header: "إجمالي الفاتورة",
+      render: (inv) => <span className="num font-bold">{fmtMoney(inv.total)}</span>,
+    },
+    {
+      key: "status",
+      header: "حالة الفاتورة",
+      render: (inv) => (
+        <LogBadge label={INVOICE_STATUS[inv.status]?.label ?? inv.status} tone={INVOICE_STATUS[inv.status]?.tone} />
+      ),
+    },
+    {
+      key: "actions",
+      header: "الإجراءات",
+      sortable: false,
+      align: "center",
+      render: (inv) => (
+        // منع فتح صفحة التفاصيل عند استخدام قائمة الإجراءات.
+        <div onClick={(event) => event.stopPropagation()}>
+          <InvoiceRowActions
+            invoice={inv}
+            onView={() => openInvoice(inv)}
+            onPrint={() => {
+              setReceipt(inv.receipt);
+            }}
+            onReturn={() => navigate(`/cashier/returns?invoice=${encodeURIComponent(inv.number)}`)}
+            onLog={() => setLogInvoice(inv)}
+            onVoid={(row) => { setVoidError(null); setVoidInvoice(row); }}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="-mx-2 -my-2 min-h-[calc(100vh-1rem)] bg-[#FAF7F2] px-4 pb-12 pt-6 text-[#0F172A] sm:-mx-3 sm:px-8 lg:px-10 lg:pt-9">
+      <PendingRefundsPanel
+        sessionId={working.data?.session?.id ?? working.data?.id ?? null}
+        pending={pendingRefunds}
+        onConfirmed={(res) => setPendingRefunds((prev) => withoutPendingRefund(prev, res.refund_id))}
+        onRejected={(res) =>
+          setPendingRefunds((prev) =>
+            // The attempt is rejected, but the customer was not paid: the follow-up row is the
+            // money still owed, and it stays in the list until someone settles it.
+            res?.outstanding
+              ? mergePendingRefunds(withoutPendingRefund(prev, res.refund_id), [res.outstanding])
+              : withoutPendingRefund(prev, res.refund_id),
+          )
+        }
+      />
+      {manualReversals.length ? (
+        <div
+          className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+          data-testid="manual-reversals"
+        >
+          <span className="font-bold">لازم ترد المبلغ ده يدويًا على الماكينة: </span>
+          {manualReversals
+            .map((row) => `${row.method === "card" ? "بطاقة" : row.method === "wallet" ? "محفظة" : row.method} ${row.amount}`)
+            .join(" · ")}
+          {" — بعد ما تعكس المبلغ على الجهاز سجّل رقم المرجع في لوحة الردود المعلقة."}
+        </div>
+      ) : null}
+      <div className="mb-[22px] flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <h1 className="text-[26px] font-extrabold leading-[1.2] tracking-[-.03em] sm:text-[32px]">سجل المبيعات</h1>
+          <p className="mt-1.5 text-[13px] text-[#6b6358]">
+            فواتير الوردية المختارة مع البحث والفلاتر. اضغط أي صف لعرض التفاصيل
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {[
+            { label: "عدد الفواتير", value: `${fmtInt(rows.length)} فاتورة` },
+            { label: "إجمالي المبيعات (بعد الخصم)", value: fmtMoney(totals.total) },
+            { label: "عدد القطع المباعة", value: fmtInt(totals.pieces) },
+          ].map((chip) => (
+            <div
+              key={chip.label}
+              className="min-w-[170px] rounded-xl border border-[#eadfce] bg-white px-4 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,.04)]"
+            >
+              <small className="block text-[11px] font-semibold text-[#7a6f61]">{chip.label}</small>
+              <b className="num mt-1 block text-[20px] font-bold leading-tight">{chip.value}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-[18px] flex flex-wrap gap-2.5">
+        <Button asChild className={BTN_PRIMARY}>
+          <Link to={appPath("/pos")}>
+            <FilePlus2 className="h-4 w-4 shrink-0 !text-white" />
+            <span className="!text-white font-semibold">فاتورة بيع جديدة</span>
+          </Link>
+        </Button>
+        <Button
+          className={BTN}
+          onClick={() => {
+            exportCsv(
+              `سجل-المبيعات-${shift?.number ?? "وردية"}.csv`,
+              [
+                { header: "رقم الفاتورة", key: "number" },
+                { header: "التاريخ", key: "date" },
+                { header: "عدد القطع", key: "pieces" },
+                { header: "الإجمالي", key: "total" },
+                { header: "الحالة", value: (inv) => INVOICE_STATUS[inv.status]?.label ?? inv.status },
+              ],
+              rows,
+            );
+            toast.success(`تم تصدير ${rows.length} فاتورة`);
+          }}
+        >
+          <Download className="h-4 w-4 shrink-0 !text-[#33322E]" />
+          <span className="!text-[#33322E] font-medium">تصدير Excel</span>
+        </Button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+        <label htmlFor="sales-shift" className="font-semibold text-[#6b6358]">الوردية</label>
+        <select
+          id="sales-shift"
+          value={shiftId}
+          onChange={(e) => setPickedShift(e.target.value)}
+          className="h-9 rounded-lg border border-[#e3d6c2] bg-white px-3 text-[13px]"
+        >
+          {shifts.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.number} • {fmtDateTime(x.date)} • {x.status === "open" ? "مفتوحة" : "مغلقة"}
+            </option>
+          ))}
+        </select>
+        {salesQuery.isError ? <span role="alert" className="font-semibold text-rose-600">تعذّر تحميل فواتير هذه الوردية</span> : null}
+      </div>
+
+      <SalesLogFilters
+        filters={filters}
+        onChange={setFilters}
+        onReset={() => setFilters(DEFAULT_FILTERS)}
+        activeCount={activeCount}
+      />
+
+      <SalesLogTable
+        columns={columns}
+        rows={rows}
+        pageSize={10}
+        loading={salesQuery.isLoading || shiftsQuery.isLoading}
+        loadingLabel="جارٍ تحميل فواتير الوردية…"
+        onRowClick={openInvoice}
+        emptyTitle="لا توجد فواتير مطابقة للفلاتر"
+        emptyDescription="عدّل الفترة أو امسح الفلاتر لعرض كل الفواتير."
+        emptyAction={
+          <Button variant="outline" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>
+            مسح الفلاتر
+          </Button>
+        }
+      />
+
+      <OperationsLogDialog open={!!logInvoice} onOpenChange={(o) => !o && setLogInvoice(null)} invoice={logInvoice} />
+      <ReceiptDialog open={!!receipt} onOpenChange={(o) => !o && setReceipt(null)} receipt={receipt} />
+      <VoidInvoiceDialog
+        open={!!voidInvoice}
+        onOpenChange={(o) => { if (!o) { setVoidInvoice(null); setVoidError(null); } }}
+        invoice={voidInvoice}
+        pending={voidPending}
+        error={voidError}
+        onConfirm={confirmVoid}
+      />
+    </div>
+  );
+}

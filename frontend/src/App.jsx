@@ -38,7 +38,7 @@ const FacebookInsightsPage = lazy(() => import('@/pages/facebook/FacebookInsight
 const FacebookReelsPage = lazy(() => import('@/pages/facebook/FacebookReelsPage'));
 const Customers = lazy(() => import('@/pages/Customers'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
-const CashierApp = lazy(() => import('@/cashier/CashierApp'));
+const CashierApp = lazy(() => import('@/applications/apparel/App'));
 
 // وضع معاينة الكاشير: يفتح مسار /cashier/* فقط بدون تسجيل دخول، لمعاينة الواجهة (بيانات تجريبية) على Vercel Preview.
 // vite.config.js يمنع البناء تماماً لو اتفعّل مع بيئة الإنتاج، فلا يمكن أن يصل لمستخدمين حقيقيين.

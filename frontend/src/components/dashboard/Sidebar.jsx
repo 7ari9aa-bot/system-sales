@@ -16,7 +16,7 @@ import {
   ChevronDown,
   Loader2,
 } from "lucide-react";
-import { toCashierNav } from "@/cashier/components/layout/navItems";
+import { toCashierNav } from "@/applications/apparel/components/layout/navItems";
 import { useI18n, useT } from "@/lib/i18n";
 import { useTheme } from "@/lib/themeContext";
 import { cn } from "@/lib/utils";

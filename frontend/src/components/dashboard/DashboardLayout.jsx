@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import AnnouncementBanner from "./AnnouncementBanner";
-import ActivitySetupGate from "@/cashier/components/setup/ActivitySetupGate";
+import ActivitySetupGate from "@/applications/apparel/components/setup/ActivitySetupGate";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { cn } from "@/lib/utils";

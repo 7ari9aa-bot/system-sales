@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, getTokens, setTokens, prefetchDashboard, ApiError } from "@/lib/api";
 import { queryClientInstance } from "@/lib/query-client";
 import { currentVisitorId } from "@/lib/visitorId";
-import { setShopCurrency } from "@/cashier/lib/format";
+import { setShopCurrency } from "@/applications/apparel/lib/format";
 
 /** مصادقة حقيقية على /auth/* — login و register و logout و me.
  *  بيتحمل مرة واحدة: لو فيه توكنات بيجيب /auth/me، ولو فشلت بيمسح

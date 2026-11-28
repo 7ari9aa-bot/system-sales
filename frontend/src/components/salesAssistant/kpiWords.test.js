@@ -78,7 +78,7 @@ describe("windowLabel", () => {
 describe("every metric the server can send has a plain word", () => {
   // The server's own list, read from the file that builds the cards. A new metric added there
   // without a word here fails this test, instead of showing the owner an internal name.
-  const SERVER = readFileSync("../backend/app/modules/ai/agents/sales_intelligence/tools.py", "utf8");
+  const SERVER = readFileSync("../backend/app/applications/apparel/modules/ai/agents/sales_intelligence/tools.py", "utf8");
   const sent = [...SERVER.matchAll(/^\s+\("([a-z_]+)", [^\n]*"(?:money|count)", \{\}\),?$/gm)].map((m) => m[1]);
   it("finds the metrics in the server file (guards the guard)", () => {
     expect(sent.length).toBeGreaterThan(20);
