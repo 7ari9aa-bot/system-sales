@@ -107,6 +107,15 @@ class LiveCallLoop:
     def closed(self) -> bool:
         return self._closed
 
+    @property
+    def provider_session_id(self) -> str | None:
+        """The provider's id for this call, or ``None`` before the model session opened.
+
+        The control plane records this on the session row. Without it a session only
+        says "we asked for a call"; with it, the row names the call that actually ran.
+        """
+        return self._provider_session
+
     async def start(self, *, voice_session_id, config: dict[str, Any]) -> str:
         """Open the model session. Returns the provider's session id."""
         if self._provider_session is not None:

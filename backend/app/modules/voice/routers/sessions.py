@@ -19,7 +19,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.db import bind_tenant
 from app.core.errors import (
+    ConflictError,
     NotFoundError,
     PermissionDeniedError,
     StorageUnavailableError,
@@ -30,6 +32,7 @@ from app.modules.voice.application.session_manager import VoiceSessionManager
 from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.application.transport import VoiceTransportService
 from app.modules.voice.domain.personas import PrincipalType
+from app.modules.voice.domain.states import IllegalTransition
 from app.modules.voice.infrastructure.sql_store import SqlSessionStore
 from app.modules.voice.infrastructure.stream_grants import (
     StreamGrantMissing,
@@ -261,6 +264,60 @@ async def open_stream_ticket(ctx: VoiceCtx, session_id: uuid.UUID) -> StreamTick
     )
 
 
+def _session_factory():  # noqa: ANN202 - a sessionmaker, replaced in tests
+    """The sessionmaker the socket's own bookkeeping runs on.
+
+    Kept behind a function so a test can drive the wiring without a database: the
+    socket path is where the lifecycle is decided, and it must be testable on its own.
+    """
+    from app.core.db import get_sessionmaker
+
+    return get_sessionmaker()
+
+
+async def _lifecycle(tenant_id: uuid.UUID, step) -> None:  # noqa: ANN001 - a callable
+    """Run one session-state step on its own short transaction.
+
+    A socket that is already carrying audio is worth more than a tidy row, so a
+    bookkeeping failure is logged and the call continues. The sweeper exists for
+    exactly the rows this can leave behind.
+    """
+    try:
+        async with _session_factory()() as session:
+            await bind_tenant(session, tenant_id)
+            await step(VoiceSessionManager(SqlSessionStore(session)))
+            await session.commit()
+    except Exception:  # noqa: BLE001 - bookkeeping never breaks a live call
+        logger.warning("voice.lifecycle_step_failed tenant=%s", tenant_id, exc_info=True)
+
+
+async def _connect_session(manager, session_id, provider_session_id: str) -> None:  # noqa: ANN001
+    """Name the provider session, then say the call is live.
+
+    CONFIGURING cannot reach ACTIVE directly — the state machine refuses that move —
+    so both steps happen in one transaction: a row that records the provider and
+    stays CONNECTING is just as wrong, only quieter.
+    """
+    await manager.attach_provider(session_id, provider_session_id)
+    await manager.activate(session_id)
+
+
+async def _end_session(manager, session_id, tenant_id, reason: str) -> None:  # noqa: ANN001
+    """End the row the way the call actually ended.
+
+    A socket that dies before the provider connected never reaches CLOSING, and a
+    session that already ended needs nothing. Both become FAILED-with-a-reason or
+    stay terminal; neither is left sitting in CONFIGURING.
+    """
+    try:
+        await manager.close(session_id, reason=reason, tenant_id=tenant_id)
+    except (ConflictError, IllegalTransition):
+        try:
+            await manager.fail(session_id, reason=reason)
+        except (ConflictError, IllegalTransition):
+            logger.info("voice.session_already_ended session=%s", session_id)
+
+
 def control_frame(text: str) -> str | None:
     """The one control the browser may send on the audio socket: "interrupt".
 
@@ -288,12 +345,18 @@ async def _pump(call, websocket: WebSocket) -> None:
 
 @router.websocket("/sessions/{session_id}/stream")
 async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str = "") -> None:
-    """Carry one browser call: PCM in, model audio out.
+    """Carry one browser call: PCM in, model audio out — and record that it happened.
 
     The ticket is the whole authentication story for this socket, so it is
     verified before a single byte of audio is read; a ticket for another session
     is refused exactly like a forged one. If the voice runtime is not configured
     the socket closes with 1011 instead of pretending to listen.
+
+    This is also the only place a session's state can be true: the provider session
+    is named here, ACTIVE is claimed only once the transport really connected, and
+    every ending — a hangup, a protocol error, a provider that never came up — is
+    written as CLOSED or FAILED with its reason. A session that leaves here without
+    an ending is the one thing the sweeper should never have to find.
     """
     await websocket.accept()
     try:
@@ -307,6 +370,14 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
         await websocket.close(code=1008)
         return
 
+    tenant_id = uuid.UUID(str(grant.tenant_id))
+
+    async def finish(reason: str) -> None:
+        async def step(manager) -> None:  # noqa: ANN001 - the manager is the only argument
+            await _end_session(manager, session_id, tenant_id, reason)
+
+        await _lifecycle(tenant_id, step)
+
     try:
         config = await _voice_config(grant.tenant_id)
         call = await _call_factory()(
@@ -316,11 +387,24 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
             send_audio=websocket.send_bytes,
             config=config,
         )
-    except (GptLiveUnavailable, MediaPlaneUnavailable):
+    except (GptLiveUnavailable, MediaPlaneUnavailable) as exc:
+        # The call never became real. Say so on the row instead of leaving it CONFIGURING.
+        await finish(f"provider_unavailable:{type(exc).__name__}")
         await websocket.close(code=1011)
         return
 
+    # The provider session the model actually opened is the one fact the row was
+    # missing: without it a session cannot be resumed, reconnected or billed.
+    provider_session_id = getattr(call, "provider_session_id", None)
+    if provider_session_id:
+
+        async def connected(manager) -> None:  # noqa: ANN001 - the manager is the only argument
+            await _connect_session(manager, session_id, provider_session_id)
+
+        await _lifecycle(tenant_id, connected)
+
     pump = asyncio.create_task(_pump(call, websocket))
+    ending = "socket_closed"
     try:
         while True:
             message = await websocket.receive()
@@ -339,9 +423,11 @@ async def stream_audio(websocket: WebSocket, session_id: uuid.UUID, ticket: str 
             try:
                 await call.push_audio(chunk)
             except GptLiveProtocolError:
+                ending = "protocol_error"
                 break
     except WebSocketDisconnect:
         pass
     finally:
         pump.cancel()
         await call.close()
+        await finish(ending)
