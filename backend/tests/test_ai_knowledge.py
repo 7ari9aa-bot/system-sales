@@ -5,14 +5,14 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.knowledge import (
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.knowledge import (
     add_memory,
     ingest_knowledge,
     search_knowledge,
     search_memory,
 )
-from app.modules.ai.providers import EmbeddingProvider
+from app.applications.apparel.modules.ai.providers import EmbeddingProvider
 
 VECTOR_DIM = 1536
 

@@ -22,11 +22,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from app.modules.ai.agents.sales_intelligence.tools import _si_stock_status
-from app.modules.ai.tools import get_tool
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.customers.models import Customer
-from app.modules.inventory.models import InventoryBalance, VariantStockSetting, Warehouse
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_stock_status
+from app.applications.apparel.modules.ai.tools import get_tool
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.inventory.models import InventoryBalance, VariantStockSetting, Warehouse
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -277,23 +277,23 @@ async def test_one_shop_never_sees_another_shops_stock(db, tenant_ctx):
 
 
 def test_it_is_registered_and_gated_by_the_inventory_permission():
-    import app.modules.ai.agents.sales_intelligence.tools as tools
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as tools
 
     tools.register_si_tools()
-    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
 
     assert get_tool("si_shop") is not None
     assert _SHOP_VIEWS["stock"][0] == "inventory:read"
 
 
 def test_the_agent_kind_allows_the_tool():
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     assert AgentRegistry.is_tool_authorized("sales_intelligence", "si_shop")
 
 
 async def _sell(db, tenant_id, variant, *, days_ago, status="fulfilled", deleted=False):
-    from app.modules.orders.models import Order, OrderItem
+    from app.applications.apparel.modules.orders.models import Order, OrderItem
 
     placed = datetime.now(UTC) - timedelta(days=days_ago)
     customer = Customer(tenant_id=tenant_id, name="Buyer")
@@ -331,7 +331,7 @@ async def _sell(db, tenant_id, variant, *, days_ago, status="fulfilled", deleted
 async def test_the_stock_query_filters_by_tenant_on_every_table_it_reads(db, tenant_ctx):
     """RLS is the second lock, not the first: the query itself must be scoped, so that a pooled
     connection whose tenant binding is lost can never read another shop's stock."""
-    from app.modules.ai.agents.sales_intelligence.tools import _STOCK_SQL
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _STOCK_SQL
 
     for table in (
         "product_variants v",
@@ -413,7 +413,7 @@ async def test_the_gate_accepts_the_total_the_tool_measured_and_still_refuses_a_
 ):
     """The real failure: "how much stock do I have" was refused because 200 and 195 (the sums)
     were numbers no tool had produced. Now the tool measures them; an invented one is refused."""
-    from app.modules.ai.agents.sales_intelligence.response import (
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
         allowed_numbers_from_facts,
         validate_answer,
     )

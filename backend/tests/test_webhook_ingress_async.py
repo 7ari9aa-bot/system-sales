@@ -23,9 +23,9 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
-from app.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.models import Message
 from app.modules.platform.models import OutboxEvent, WebhookEvent
 from app.workers.platform_workers import ingest_queued_webhook_event
 from tests.test_webhook_retry import _wa_payload
@@ -53,8 +53,8 @@ async def _call_route(
 ) -> dict:
     """Drive the REAL route with the real WhatsApp payload shape; only the
     crypto signature and the SECURITY-DEFINER tenant lookup are stubbed."""
-    import app.modules.conversations.router as cr
-    from app.modules.conversations.routers import webhooks as webhook_routes
+    import app.applications.apparel.modules.conversations.router as cr
+    from app.applications.apparel.modules.conversations.routers import webhooks as webhook_routes
 
     async def _resolve(_session, _adapter, _key):
         return tenant_id

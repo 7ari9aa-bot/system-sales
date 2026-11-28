@@ -13,7 +13,7 @@ from pydantic import ValidationError as BodyError
 from app.core.errors import PermissionDeniedError
 from app.modules.errors import ConflictError
 from app.modules.identity.deps import require_permission
-from app.modules.pos.router import (
+from app.applications.apparel.modules.pos.router import (
     OpenStocktakeRequest,
     StocktakeCountsRequest,
     approve_stocktake,

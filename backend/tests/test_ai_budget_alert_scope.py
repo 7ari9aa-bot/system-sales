@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.core.model_registry  # noqa: F401  (loads every model so foreign keys resolve alone)
-import app.modules.ai.budget as budget_module
-from app.modules.ai.budget import reserve_budget
-from app.modules.ai.models import Agent, BudgetPolicy
+import app.applications.apparel.modules.ai.budget as budget_module
+from app.applications.apparel.modules.ai.budget import reserve_budget
+from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
 from app.modules.notifications.models import Notification
 
 

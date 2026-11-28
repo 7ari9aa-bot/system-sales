@@ -164,7 +164,7 @@ async def _materialize_segments(session: AsyncSession, job: Job) -> dict:
     existing ``SegmentService`` (which also stamps ``last_count`` /
     ``last_evaluated_at``), and progress is reported per segment.
     """
-    from app.modules.segments.service import Segment, SegmentService
+    from app.applications.apparel.modules.segments.service import Segment, SegmentService
 
     segments = (
         (
@@ -201,8 +201,8 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
     writes the summary into the shell + the job result. A failed run marks
     the shell FAILED — the merchant sees the honest outcome, never silence.
     """
-    from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-    from app.modules.analytics.persistence import load_analysis
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+    from app.applications.apparel.modules.analytics.persistence import load_analysis
 
     shell = await load_analysis(session, job.tenant_id, uuid.UUID(job.correlation_id))
     if shell is None:
@@ -214,7 +214,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
     if not await EntitlementService.can(session, job.tenant_id, "CanUseAI"):
         from sqlalchemy import update as _update
 
-        from app.modules.analytics.models import AnalysisEvidence
+        from app.applications.apparel.modules.analytics.models import AnalysisEvidence
 
         await session.execute(
             _update(AnalysisEvidence)
@@ -223,7 +223,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
         )
         return {"outcome": "FAILED", "error": "plan does not allow AI agents"}
 
-    from app.modules.ai.core.resolver import resolve_agent_by_kind
+    from app.applications.apparel.modules.ai.core.resolver import resolve_agent_by_kind
 
     try:
         agent = await resolve_agent_by_kind(session, job.tenant_id, "sales_intelligence")
@@ -238,7 +238,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
         logger.exception("si.deep_analysis.failed job=%s", job.id)
         from sqlalchemy import update as _update
 
-        from app.modules.analytics.models import AnalysisEvidence
+        from app.applications.apparel.modules.analytics.models import AnalysisEvidence
 
         await session.execute(
             _update(AnalysisEvidence)
@@ -249,7 +249,7 @@ async def _si_deep_analysis(session: AsyncSession, job: Job) -> dict:
 
     from sqlalchemy import update as _update
 
-    from app.modules.analytics.models import AnalysisEvidence
+    from app.applications.apparel.modules.analytics.models import AnalysisEvidence
 
     await session.execute(
         _update(AnalysisEvidence)

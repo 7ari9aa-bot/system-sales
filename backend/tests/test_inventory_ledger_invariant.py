@@ -35,14 +35,14 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.inventory import service as inventory_service
-from app.modules.inventory.models import (
+from app.applications.apparel.modules.inventory import service as inventory_service
+from app.applications.apparel.modules.inventory.models import (
     InventoryBalance,
     InventoryMovement,
     InventoryReservation,
     Warehouse,
 )
-from app.modules.inventory.service import (
+from app.applications.apparel.modules.inventory.service import (
     InventoryReservationService,
     InventoryService,
 )
@@ -62,7 +62,7 @@ async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
 
 
 async def _variant(db: AsyncSession, tenant_id: uuid.UUID):
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     product = await CatalogService.create_product(
         db, tenant_id, title="Reconcile Product", slug=f"r-{uuid.uuid4().hex[:10]}"
@@ -89,8 +89,8 @@ async def _restock(
 async def _order(
     db: AsyncSession, tenant_id: uuid.UUID, variant_id: uuid.UUID, wh_id: uuid.UUID, qty: int
 ):
-    from app.modules.customers.service import CustomerService
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     customer = await CustomerService.get_or_create_by_identity(
         db, tenant_id, "whatsapp", f"wa-{uuid.uuid4().hex[:10]}", name="Buyer"
@@ -233,7 +233,7 @@ async def test_the_ledger_reconciles_across_reserve_capture_and_release(
     await _assert_ledger_reconciles(db, tenant_id, variant.id, wh.id)
 
     cancelled = await _order(db, tenant_id, variant.id, wh.id, 2)
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.orders.service import OrderService
 
     await OrderService.cancel_order(db, tenant_id, cancelled.id)
     await _assert_ledger_reconciles(db, tenant_id, variant.id, wh.id)
@@ -294,7 +294,7 @@ async def test_a_drifted_position_refuses_the_capture_instead_of_hiding_it(
     await _assert_ledger_reconciles(db, tenant_id, variant.id, wh.id)
 
     before = await _rows(db, variant.id, wh.id)
-    from app.modules.orders.errors import InsufficientStockError
+    from app.applications.apparel.modules.orders.errors import InsufficientStockError
 
     with pytest.raises(InsufficientStockError, match="on_hand=2"):
         await InventoryReservationService.convert(db, tenant_id, order.id)
@@ -375,7 +375,7 @@ async def test_a_write_off_cannot_cut_into_reserved_stock_by_default(
     await _order(db, tenant_id, variant.id, wh.id, 3)
     before = await _rows(db, variant.id, wh.id)
 
-    from app.modules.orders.errors import InsufficientStockError
+    from app.applications.apparel.modules.orders.errors import InsufficientStockError
 
     with pytest.raises(InsufficientStockError, match="reserved for orders"):
         await InventoryService.move(

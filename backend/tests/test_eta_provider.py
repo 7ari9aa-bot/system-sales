@@ -16,11 +16,11 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from app.modules.einvoice.models import EInvoiceDevice
-from app.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
-from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
-from app.modules.einvoice.providers.eta.notifications import stored_status
-from app.modules.einvoice.providers.eta.provider import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+from app.applications.apparel.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
+from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
+from app.applications.apparel.modules.einvoice.providers.eta.notifications import stored_status
+from app.applications.apparel.modules.einvoice.providers.eta.provider import (
     STATUS_FAILED,
     STATUS_PENDING,
     STATUS_REJECTED,
@@ -28,7 +28,7 @@ from app.modules.einvoice.providers.eta.provider import (
     EtaEInvoiceProvider,
     EtaValidationError,
 )
-from app.modules.einvoice.providers.eta.uuid_ import is_valid_uuid_shape
+from app.applications.apparel.modules.einvoice.providers.eta.uuid_ import is_valid_uuid_shape
 
 ISSUED = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
 NOW = datetime(

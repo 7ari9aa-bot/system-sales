@@ -12,10 +12,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.modules.inventory.models import InventoryMovement
-from app.modules.inventory.service import InventoryService
-from app.modules.inventory.services import StocktakeService
-from app.modules.purchasing.service import PurchaseService
+from app.applications.apparel.modules.inventory.models import InventoryMovement
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.services import StocktakeService
+from app.applications.apparel.modules.purchasing.service import PurchaseService
 from tests._pos_sell import sell as pos_sell
 from tests.test_inventory_stock_view import _variant
 from tests.test_purchasing import _po, _supplier
@@ -93,7 +93,7 @@ async def test_purchase_created_and_received_at_once_records_the_creator(db, ten
 
 
 async def test_sale_and_return_record_the_cashier(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests.test_pos_exchange import _customer, _register, _sellable_variant
 
     register = await _register(db, tenant_ctx)

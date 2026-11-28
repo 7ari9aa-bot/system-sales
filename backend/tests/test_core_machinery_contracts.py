@@ -382,7 +382,7 @@ def test_a_legal_move_returns_the_target_and_allowed_lists_the_reach() -> None:
 async def test_keyset_pagination_resumes_without_duplicates_or_skips(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     suffix = uuid.uuid4().hex[:8]
     db.add_all(
@@ -407,7 +407,7 @@ async def test_a_cursor_behind_every_row_is_an_empty_page_not_an_error(
     """A cursor that points before the whole list (or outlives its rows) ends
     the list cleanly — the client gets a page and no next cursor, never a 500
     from a dangling position."""
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     db.add(Customer(tenant_id=tenant_ctx.tenant_id, name=f"tail-{uuid.uuid4().hex[:8]}"))
     await db.flush()
@@ -434,8 +434,8 @@ def test_a_malformed_cursor_is_a_client_error_with_a_code() -> None:
 
 
 async def test_search_never_crosses_the_tenant_boundary(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.catalog.models import Product
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.catalog.models import Product
+    from app.applications.apparel.modules.customers.models import Customer
     from app.modules.identity.models import Tenant
 
     suffix = uuid.uuid4().hex[:8]

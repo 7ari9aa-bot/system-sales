@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 from fastapi.encoders import jsonable_encoder
 
-from app.modules.ai.router import usage_summary
+from app.applications.apparel.modules.ai.router import usage_summary
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 

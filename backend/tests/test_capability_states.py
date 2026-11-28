@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.modules.customers import capability_states as cs
-from app.modules.customers.meta_channel_diagnostics import build_report
-from app.modules.customers.meta_oauth import subscribed_fields
+from app.applications.apparel.modules.customers import capability_states as cs
+from app.applications.apparel.modules.customers.meta_channel_diagnostics import build_report
+from app.applications.apparel.modules.customers.meta_oauth import subscribed_fields
 
 #: What our own connect flow subscribes the Page to, so the asset-subscription check is honest.
 OUR_FIELDS = subscribed_fields("messenger").split(",")

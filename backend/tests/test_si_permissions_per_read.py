@@ -14,9 +14,9 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.tools import TOOLS
 
 # (tool, parameter, value, extra args, the permission that read needs)
 READS = [

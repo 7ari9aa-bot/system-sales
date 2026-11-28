@@ -13,11 +13,11 @@ from decimal import Decimal
 
 import pytest
 
-import app.modules.purchasing.models  # noqa: F401 - registers the suppliers table
+import app.applications.apparel.modules.purchasing.models  # noqa: F401 - registers the suppliers table
 from app.core.errors import InsufficientStockError
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import InventoryLot, Warehouse
-from app.modules.inventory.services.valuation import ValuationService
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import InventoryLot, Warehouse
+from app.applications.apparel.modules.inventory.services.valuation import ValuationService
 
 pytestmark = pytest.mark.asyncio
 

@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
 from tests._pos_helpers import purge_test_tenant as _purge_test_tenant
@@ -33,8 +33,8 @@ async def shop(db_url, admin_url):
 
 
 async def _setup(factory, t):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     async def go(s):
         wh = await InventoryService.get_default_warehouse(s, t)

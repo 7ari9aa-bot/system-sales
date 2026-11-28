@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
 
 CREDS = {"api_key": "tok", "account_id": "111"}
 

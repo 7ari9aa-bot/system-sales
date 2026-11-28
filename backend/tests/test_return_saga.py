@@ -33,14 +33,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.saga import Saga, SagaManager, SagaStatus, SagaStepHandler
 from app.main import create_app
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.inventory.models import InventoryMovement, InventoryReservation, Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order, OrderStatusHistory
-from app.modules.orders.service import TRANSITIONS, OrderService
+from app.applications.apparel.modules.inventory.models import InventoryMovement, InventoryReservation, Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order, OrderStatusHistory
+from app.applications.apparel.modules.orders.service import TRANSITIONS, OrderService
 
 # ------------------------------------------------------------------ helpers ----
 
@@ -306,7 +306,7 @@ async def test_a_saga_of_another_tenant_is_not_found(
 
 
 async def test_returning_a_paid_order_puts_the_stock_back(db, tenant_ctx) -> None:
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "shipped", paid=True)
@@ -321,7 +321,7 @@ async def test_returning_a_paid_order_puts_the_stock_back(db, tenant_ctx) -> Non
 
 
 async def test_a_paid_return_writes_one_ledger_row_per_line(db, tenant_ctx) -> None:
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "delivered", paid=True)
@@ -335,7 +335,7 @@ async def test_a_paid_return_writes_one_ledger_row_per_line(db, tenant_ctx) -> N
 
 
 async def test_returning_closes_the_order_and_its_saga_state(db, tenant_ctx) -> None:
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, _variant, _warehouse = await _order_at(db, tenant_id, "shipped", paid=True)
@@ -361,7 +361,7 @@ async def test_returning_closes_the_order_and_its_saga_state(db, tenant_ctx) -> 
 
 
 async def test_the_return_is_recorded_as_a_completed_saga(db, tenant_ctx) -> None:
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, _variant, _warehouse = await _order_at(db, tenant_id, "shipped", paid=True)
@@ -378,7 +378,7 @@ async def test_the_return_is_recorded_as_a_completed_saga(db, tenant_ctx) -> Non
 
 
 async def test_a_returned_order_is_not_returnable_again(db, tenant_ctx) -> None:
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, _variant, _warehouse = await _order_at(db, tenant_id, "shipped", paid=True)
@@ -398,7 +398,7 @@ async def test_returning_an_unpaid_order_releases_the_hold(db, tenant_ctx) -> No
     Putting units back on the shelf here would invent stock: `on_hand` still
     carries them, and the only thing to undo is the reservation.
     """
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "shipped", paid=False)
@@ -434,7 +434,7 @@ async def test_when_the_close_step_fails_the_restock_is_undone(db, tenant_ctx, m
     """The reason the engine exists: units that went back on the shelf must come
     back off, or the ledger reports stock the warehouse does not have.
     """
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "shipped", paid=True)
@@ -475,7 +475,7 @@ async def test_an_undone_release_restores_the_reservation_it_released(
     durable §140 row — so a retry reads "this order never held anything" and
     puts units on the shelf that were never taken off it.
     """
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "shipped", paid=False)
@@ -547,7 +547,7 @@ async def test_a_carrier_return_runs_the_same_process(db, tenant_ctx) -> None:
 
 async def test_an_unshipped_order_cannot_be_returned(db, tenant_ctx) -> None:
     """The refusal must happen before the process starts, not half-way."""
-    from app.modules.orders.returns import ReturnsService
+    from app.applications.apparel.modules.orders.returns import ReturnsService
 
     tenant_id = tenant_ctx.tenant_id
     order, variant, warehouse = await _order_at(db, tenant_id, "processing", paid=True)
@@ -578,7 +578,7 @@ def test_returned_is_a_state_both_machines_know() -> None:
     assert "returned" in TRANSITIONS["shipped"]
     assert "returned" in TRANSITIONS["delivered"]
 
-    from app.modules.orders.service import _PROCESS_TRANSITIONS
+    from app.applications.apparel.modules.orders.service import _PROCESS_TRANSITIONS
 
     for state in ("paid", "stock_reserved", "fulfilled"):
         assert "returned" in _PROCESS_TRANSITIONS[state], (

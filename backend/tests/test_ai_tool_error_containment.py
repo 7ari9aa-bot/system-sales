@@ -21,11 +21,11 @@ import pytest
 from pydantic import BaseModel
 
 from app.core.errors import ConflictError
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.tools import ToolSpec, register_tool
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentTool
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.tools import ToolSpec, register_tool
 
 # A fingerprint no legitimate tool output would carry — each matrix entry
 # raises an exception whose message embeds it, and the assertions check that
@@ -97,7 +97,7 @@ def _ensure_test_kind() -> None:
     """The runtime's registry deny runs BEFORE the AgentTool row, so the boom
     tool must be authorized for the agent's kind or every call dies as
     `denied` and the containment path is never exercised."""
-    from app.modules.ai.core.registry import AgentDefinition, AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentDefinition, AgentRegistry
 
     kind = "tool-error-containment-test"
     if AgentRegistry.get_or_none(kind) is None:
@@ -152,7 +152,7 @@ async def test_unexpected_tool_error_leaks_nothing_to_the_model(
     agent = await _agent_for(db, tenant_ctx.tenant_id)
     calls = _patch_gateway(monkeypatch)
 
-    with caplog.at_level("ERROR", logger="app.modules.ai.runtime"):
+    with caplog.at_level("ERROR", logger="app.applications.apparel.modules.ai.runtime"):
         result = await _run(db, tenant_ctx.tenant_id, agent)
 
     # The model's tool message carries only the fixed generic outcome.
@@ -201,7 +201,7 @@ async def test_a_db_failure_inside_the_tool_does_not_poison_the_run(db, tenant_c
 
     from sqlalchemy import text
 
-    from app.modules.ai.models import ToolCall
+    from app.applications.apparel.modules.ai.models import ToolCall
 
     async def _db_boom(session, tenant_id, **kwargs):
         # A real statement-level failure (division by zero is a runtime

@@ -102,7 +102,7 @@ async def _record_ai_usage(
 ) -> None:
     """Insert an `ai_usage` row with raw SQL.
 
-    Raw SQL rather than `app.modules.ai.models`: billing deliberately does not
+    Raw SQL rather than `app.applications.apparel.modules.ai.models`: billing deliberately does not
     import that module (see `BillingSnapshotService.aggregate_period`), and the
     test should exercise the same access path the service uses.
     """

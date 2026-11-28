@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.customers import meta_unsubscribe as mu
-from app.modules.customers.meta_oauth import subscribed_fields
+from app.applications.apparel.modules.customers import meta_unsubscribe as mu
+from app.applications.apparel.modules.customers.meta_oauth import subscribed_fields
 
 
 def _client(handler) -> httpx.AsyncClient:

@@ -96,7 +96,7 @@ async def test_a_staff_member_who_sells_can_read_it(db, tenant_ctx) -> None:
 
 async def test_starting_the_day_returns_the_same_rules(db, tenant_ctx) -> None:
     """The screen reads the rules from whichever call opened the day, not only from a later read."""
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
     from tests._pos_helpers import till
 
     shift, _variant, _customer = await till(db, tenant_ctx)
@@ -127,7 +127,7 @@ async def test_the_payloads_the_cashier_screen_builds_are_what_the_server_accept
     would have caught first."""
     from decimal import Decimal
 
-    from app.modules.customer_accounts.service import CustomerAccountService as Accounts
+    from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
 
     register, variant, customer = await _shop(db, tenant_ctx, methods=("cash", "card"))
     svc = SettingsService(db, tenant_ctx.tenant_id)

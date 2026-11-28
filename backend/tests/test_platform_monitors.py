@@ -17,8 +17,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-import app.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
-import app.modules.customers.models  # noqa: F401 — registers notifications' customers FK
+import app.applications.apparel.modules.conversations.models  # noqa: F401 — registers agent_runs' conversations FK
+import app.applications.apparel.modules.customers.models  # noqa: F401 — registers notifications' customers FK
 from app.modules.notifications.models import Notification
 from app.modules.platform.models import VisitorEvent
 from app.modules.platform.services import monitors
@@ -216,8 +216,8 @@ async def test_tenant_monitor_ai_cap_near_notifies_owners(db, tenant_ctx) -> Non
     health notification in the OWNER's bell (via the console registry)."""
     from decimal import Decimal
 
-    from app.modules.ai.models import Agent, BudgetPolicy
-    from app.modules.ai.usage import record_usage
+    from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
+    from app.applications.apparel.modules.ai.usage import record_usage
     from app.modules.platform.services.monitors import evaluate_tenant_monitors
 
     agent = Agent(

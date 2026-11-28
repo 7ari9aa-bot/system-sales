@@ -12,13 +12,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.whatsapp_structured import (
+from app.applications.apparel.modules.conversations.gateway.whatsapp_structured import (
     parse_contacts,
     parse_location,
     parse_selection,
     structured_payload,
 )
-from app.modules.conversations.routers.inbox import _present_structured
+from app.applications.apparel.modules.conversations.routers.inbox import _present_structured
 
 
 def test_a_location_keeps_its_coordinates():

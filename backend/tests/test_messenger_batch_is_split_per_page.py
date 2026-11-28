@@ -8,7 +8,7 @@ two stores was filed entirely under the first one (the same leak WhatsApp had un
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
 
 def _event(mid: str, sender: str, page: str) -> dict:

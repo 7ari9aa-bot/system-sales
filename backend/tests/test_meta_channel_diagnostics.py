@@ -12,9 +12,9 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from app.modules.customers import meta_channel_diagnostics as d
-from app.modules.customers.meta_oauth import subscribed_fields
-from app.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
+from app.applications.apparel.modules.customers import meta_channel_diagnostics as d
+from app.applications.apparel.modules.customers.meta_oauth import subscribed_fields
+from app.applications.apparel.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
 
 NOW = datetime(2026, 11, 22, 12, 0, tzinfo=UTC)
 ALL_MESSENGER = MESSENGER_SCOPES.split(",")

@@ -11,8 +11,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.main import create_app
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.taxation.models import BusinessProfile, TaxClass
-from app.modules.taxation.service import TaxationService, normalise_tax_number
+from app.applications.apparel.modules.taxation.models import BusinessProfile, TaxClass
+from app.applications.apparel.modules.taxation.service import TaxationService, normalise_tax_number
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
 from tests._pos_helpers import purge_test_tenant as _purge_test_tenant

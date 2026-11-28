@@ -1,6 +1,6 @@
 """WS-GATEWAY — inbound webhook authenticity, replay, and provider-response handling.
 
-Audit of `app/modules/conversations/gateway/**` against the three things a channel
+Audit of `app/applications/apparel/modules/conversations/gateway/**` against the three things a channel
 gateway must never get wrong:
 
 1. **Signature verification on EVERY channel.** WhatsApp = app-secret HMAC over
@@ -37,18 +37,18 @@ from app.core.circuit_breaker import (
     reset_breakers,
 )
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway.base import (
+from app.applications.apparel.modules.conversations.gateway.base import (
     InboundMessage,
     OutboundMessage,
     ProviderCredentials,
 )
-from app.modules.conversations.gateway.email import EmailAdapter, email_adapter
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.instagram import instagram_adapter
-from app.modules.conversations.gateway.messenger import messenger_adapter
-from app.modules.conversations.gateway.registry import get_adapter
-from app.modules.conversations.gateway.telegram import telegram_adapter
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.gateway.email import EmailAdapter, email_adapter
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
+from app.applications.apparel.modules.conversations.gateway.telegram import telegram_adapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 _THRESHOLD = 2
 
@@ -119,7 +119,7 @@ def _wa_sign(secret: str, raw: bytes) -> str:
 def test_whatsapp_signature_is_hmac_over_the_raw_body(monkeypatch):
     """A byte of tampering after signing must invalidate the delivery."""
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings", lambda: _Settings()
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings", lambda: _Settings()
     )
     raw = json.dumps({"entry": [{"changes": []}]}).encode()
     headers = {"x-hub-signature-256": _wa_sign(_Settings.whatsapp_app_secret, raw)}
@@ -144,10 +144,10 @@ def test_meta_channel_signature_is_hmac_over_the_bare_digest(monkeypatch, adapte
     while the WhatsApp-only tests stayed green."""
     import importlib
 
-    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
+    module = importlib.import_module(f"app.applications.apparel.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
-        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        f"app.applications.apparel.modules.conversations.gateway.{adapter_name}.get_settings",
         lambda: _Settings(),
     )
     raw = json.dumps({"entry": [{"id": "acc-1", "changes": []}]}).encode()
@@ -166,7 +166,7 @@ def test_meta_channel_signature_is_hmac_over_the_bare_digest(monkeypatch, adapte
 def test_whatsapp_signature_fails_closed_without_a_configured_secret(monkeypatch):
     """No secret configured must reject ALL traffic, not accept ALL traffic."""
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type(
             "S", (), {"whatsapp_app_secret": "", "whatsapp_verify_token": "verify-token"}
         )(),
@@ -178,7 +178,7 @@ def test_whatsapp_signature_fails_closed_without_a_configured_secret(monkeypatch
 
 def test_telegram_secret_token_is_required_and_compared_exactly(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.telegram.get_settings", lambda: _Settings()
+        "app.applications.apparel.modules.conversations.gateway.telegram.get_settings", lambda: _Settings()
     )
     header = {"x-telegram-bot-api-secret-token": _Settings.telegram_webhook_secret}
     assert telegram_adapter.check_signature(header, b"{}") is True
@@ -198,7 +198,7 @@ def test_telegram_secret_token_is_required_and_compared_exactly(monkeypatch):
 
 def test_telegram_signature_fails_closed_without_a_configured_secret(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.telegram.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.telegram.get_settings",
         lambda: type("S", (), {"telegram_webhook_secret": ""})(),
     )
     assert (
@@ -215,10 +215,10 @@ def test_meta_channel_handshake_fails_closed_without_a_verify_token(monkeypatch,
     caller's own challenge. Not configured = cannot verify = reject."""
     import importlib
 
-    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
+    module = importlib.import_module(f"app.applications.apparel.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
-        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        f"app.applications.apparel.modules.conversations.gateway.{adapter_name}.get_settings",
         lambda: type("S", (), {f"{adapter_name}_verify_token": ""})(),
     )
     for params in (
@@ -234,10 +234,10 @@ def test_meta_channel_handshake_completes_only_with_the_configured_token(monkeyp
     """The fail-closed guard must not take the happy path down with it."""
     import importlib
 
-    module = importlib.import_module(f"app.modules.conversations.gateway.{adapter_name}")
+    module = importlib.import_module(f"app.applications.apparel.modules.conversations.gateway.{adapter_name}")
     adapter = getattr(module, f"{adapter_name}_adapter")
     monkeypatch.setattr(
-        f"app.modules.conversations.gateway.{adapter_name}.get_settings",
+        f"app.applications.apparel.modules.conversations.gateway.{adapter_name}.get_settings",
         lambda: type("S", (), {f"{adapter_name}_verify_token": "s3cret"})(),
     )
     assert (
@@ -259,7 +259,7 @@ def test_every_generic_webhook_channel_rejects_an_unsigned_body():
     """Registry-wide guard: a channel reachable on the generic dispatcher must
     refuse a body it cannot authenticate. Catches a future adapter that ships
     with a permissive `check_signature`."""
-    from app.modules.conversations.router import _WEBHOOK_CHANNELS
+    from app.applications.apparel.modules.conversations.router import _WEBHOOK_CHANNELS
 
     assert _WEBHOOK_CHANNELS, "the dispatcher accepts no channel at all"
     for channel in sorted(_WEBHOOK_CHANNELS):
@@ -270,7 +270,7 @@ def test_every_generic_webhook_channel_rejects_an_unsigned_body():
 
 def test_webchat_is_not_reachable_on_the_generic_webhook_dispatcher():
     """Webchat has no provider signature, so it must not be on the shared route."""
-    from app.modules.conversations.router import _WEBHOOK_CHANNELS
+    from app.applications.apparel.modules.conversations.router import _WEBHOOK_CHANNELS
 
     assert "webchat" not in _WEBHOOK_CHANNELS
 
@@ -448,11 +448,11 @@ class _AllSecrets:
 def _patch_all_secret_settings(monkeypatch) -> None:
     """Point every adapter's settings reader at _AllSecrets."""
     for module in (
-        "app.modules.conversations.gateway.whatsapp",
-        "app.modules.conversations.gateway.messenger",
-        "app.modules.conversations.gateway.instagram",
-        "app.modules.conversations.gateway.telegram",
-        "app.modules.conversations.gateway.email",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp",
+        "app.applications.apparel.modules.conversations.gateway.messenger",
+        "app.applications.apparel.modules.conversations.gateway.instagram",
+        "app.applications.apparel.modules.conversations.gateway.telegram",
+        "app.applications.apparel.modules.conversations.gateway.email",
     ):
         monkeypatch.setattr(f"{module}.get_settings", lambda: _AllSecrets())
 
@@ -530,7 +530,7 @@ def test_a_hostile_non_ascii_signature_header_is_rejected_not_a_500(monkeypatch,
 def test_email_signature_fails_closed_without_a_configured_secret(monkeypatch):
     """No EMAIL_WEBHOOK_SECRET must reject ALL traffic — both ESP schemes."""
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.email.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.email.get_settings",
         lambda: type("S", (), {"email_webhook_secret": ""})(),
     )
     raw = b'{"from": "x@y.z"}'
@@ -544,7 +544,7 @@ def test_email_signature_accepts_only_the_configured_credential(monkeypatch):
     """The happy path: the exact configured bearer / HMAC, and nothing else."""
     secret = "sec-email"
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.email.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.email.get_settings",
         lambda: type("S", (), {"email_webhook_secret": secret})(),
     )
     raw = b'{"from": "x@y.z"}'
@@ -615,12 +615,12 @@ def test_every_signed_channel_fails_closed_without_its_secret(monkeypatch, schem
     traffic in ANY environment — there is no permissive mode to reach."""
     empty = type("S", (), {attr: "" for attr in _ALL_SECRETS})()
     for module, channel in (
-        ("app.modules.conversations.gateway.whatsapp", "whatsapp"),
-        ("app.modules.conversations.gateway.messenger", "messenger"),
-        ("app.modules.conversations.gateway.instagram", "instagram"),
-        ("app.modules.conversations.gateway.telegram", "telegram"),
-        ("app.modules.conversations.gateway.email", "email-sendgrid"),
-        ("app.modules.conversations.gateway.email", "email-mailgun"),
+        ("app.applications.apparel.modules.conversations.gateway.whatsapp", "whatsapp"),
+        ("app.applications.apparel.modules.conversations.gateway.messenger", "messenger"),
+        ("app.applications.apparel.modules.conversations.gateway.instagram", "instagram"),
+        ("app.applications.apparel.modules.conversations.gateway.telegram", "telegram"),
+        ("app.applications.apparel.modules.conversations.gateway.email", "email-sendgrid"),
+        ("app.applications.apparel.modules.conversations.gateway.email", "email-mailgun"),
     ):
         if channel == scheme:
             monkeypatch.setattr(f"{module}.get_settings", lambda: empty)

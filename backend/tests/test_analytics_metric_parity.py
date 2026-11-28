@@ -46,11 +46,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
 from app.main import create_app
-from app.modules.analytics import router as analytics_router
-from app.modules.analytics import service as analytics_service
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.analytics import router as analytics_router
+from app.applications.apparel.modules.analytics import service as analytics_service
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.marketing.service import MarketingService
 from app.modules.platform.metrics import MetricRegistry
 
 SEALED_TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")

@@ -7,7 +7,7 @@ like (POST /{id}/likes). So the screen can show the breakdown; it cannot offer t
 import httpx
 import pytest
 
-from app.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
 
 CREDS = {"api_key": "tok", "account_id": "111"}
 
@@ -72,7 +72,7 @@ async def test_the_summary_is_what_is_asked_for_not_the_people():
 
 
 # ---- the route: GET /facebook/objects/{id}/reactions ----
-from app.modules.conversations.routers import facebook_pages as router  # noqa: E402
+from app.applications.apparel.modules.conversations.routers import facebook_pages as router  # noqa: E402
 
 
 def test_the_breakdown_route_exists_and_needs_the_read_permission():

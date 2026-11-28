@@ -15,12 +15,12 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService, QualityInspectionService
-from app.modules.purchasing.models import PurchaseOrderLine
-from app.modules.purchasing.service import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService, QualityInspectionService
+from app.applications.apparel.modules.purchasing.models import PurchaseOrderLine
+from app.applications.apparel.modules.purchasing.service import (
     GoodsReceiptService,
     PurchaseService,
     SupplierService,

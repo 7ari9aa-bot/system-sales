@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.today import today_context
+from app.applications.apparel.modules.ai.agents.sales_intelligence.today import today_context
 
 CAIRO = ZoneInfo("Africa/Cairo")
 
@@ -65,7 +65,7 @@ def test_on_the_first_there_is_no_completed_day_of_this_month():
 def test_yesterday_is_one_day_and_last_seven_is_seven():
     """These two counts never change, so they live in the main prompt (the stable part of the
     message) and not in the daily date block. Each is read from ITS OWN clause."""
-    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
 
     assert "Yesterday is days=1" in P and "days=2" not in P.split("Yesterday is days=1")[1][:12]
     assert "last week is days=7" in P and "days=8" not in P
@@ -92,8 +92,8 @@ def test_last_month_across_a_year_boundary():
 
 
 def test_the_longest_window_the_tools_accept_is_stated_so_it_is_never_exceeded():
-    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
-    from app.modules.ai.agents.sales_intelligence.today import MONEY_MAX_DAYS, SALES_MAX_DAYS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.today import MONEY_MAX_DAYS, SALES_MAX_DAYS
 
     assert f"{SALES_MAX_DAYS} days" in P and str(MONEY_MAX_DAYS) in P
     assert (
@@ -104,7 +104,7 @@ def test_the_longest_window_the_tools_accept_is_stated_so_it_is_never_exceeded()
 def test_the_daily_block_holds_only_what_changes_so_the_cache_prefix_survives():
     """The date block rides last. Everything fixed is in the main prompt, so two different days
     share the whole prompt and the dialect and differ only inside this short block."""
-    from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT as P
 
     a = today_context(_at(2026, 11, 15))
     b = today_context(_at(2026, 12, 3))
@@ -132,9 +132,9 @@ def test_it_never_contains_text_meant_to_be_said_to_the_owner():
 
 
 async def _messages_sent(db, tenant_ctx, monkeypatch, *, question="مبيعات الشهر ده؟", kind=None):
-    from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-    from app.modules.ai.gateway import AIGateway
-    from app.modules.ai.providers import ChatCompletionResult
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+    from app.applications.apparel.modules.ai.gateway import AIGateway
+    from app.applications.apparel.modules.ai.providers import ChatCompletionResult
     from tests.test_si_tools_reach_the_chat_agent import _agent
 
     seen = {}
@@ -166,7 +166,7 @@ def _system(messages) -> str:
 
 
 async def test_the_model_is_told_today_on_the_real_path(db, tenant_ctx, monkeypatch):
-    from app.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
 
     monkeypatch.setattr(A, "_shop_now", lambda zone: _at(2026, 11, 15, 2, 26, zone))
     system = _system(await _messages_sent(db, tenant_ctx, monkeypatch))
@@ -178,7 +178,7 @@ async def test_the_model_is_told_today_on_the_real_path(db, tenant_ctx, monkeypa
 async def test_the_date_comes_after_the_rules_and_alongside_the_dialect(
     db, tenant_ctx, monkeypatch
 ):
-    from app.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
 
     monkeypatch.setattr(A, "_shop_now", lambda zone: _at(2026, 11, 15, 12, 0, zone))
     system = _system(await _messages_sent(db, tenant_ctx, monkeypatch))
@@ -189,7 +189,7 @@ async def test_the_date_comes_after_the_rules_and_alongside_the_dialect(
 
 
 async def test_a_failure_in_the_date_never_costs_the_owner_an_answer(db, tenant_ctx, monkeypatch):
-    from app.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
 
     def boom(zone):
         raise RuntimeError("clock unavailable")
@@ -205,8 +205,8 @@ async def test_a_failure_in_the_date_never_costs_the_owner_an_answer(db, tenant_
 
 
 async def test_a_failure_in_the_dialect_never_costs_the_date(db, tenant_ctx, monkeypatch):
-    from app.modules.ai.agents.sales_intelligence import agent as A
-    from app.modules.ai.agents.sales_intelligence import dialect
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
 
     def boom(*args, **kwargs):
         raise RuntimeError("dialect unavailable")
@@ -221,11 +221,11 @@ async def test_a_failure_in_the_dialect_never_costs_the_date(db, tenant_ctx, mon
 
 async def test_the_customer_agent_is_never_given_the_owner_date_block(db, tenant_ctx, monkeypatch):
     """Another agent kind goes through the same runner but must be composed exactly as before."""
-    from app.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
 
     monkeypatch.setattr(A, "_shop_now", lambda zone: _at(2026, 11, 15, 12, 0, zone))
-    from app.modules.ai.models import Agent
-    from app.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     cust = Agent(
         tenant_id=tenant_ctx.tenant_id, name="C", model="fast", system_prompt="رد", kind="customer"
@@ -289,7 +289,7 @@ def test_every_weekday_has_its_own_name(day, name):
 
 async def test_the_dialect_comes_before_the_date_in_the_real_message(db, tenant_ctx, monkeypatch):
     """Measured on the text the model receives, not by reading the source."""
-    from app.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
 
     monkeypatch.setattr(A, "_shop_now", lambda zone: _at(2026, 11, 15, 12, 0, zone))
     system = _system(await _messages_sent(db, tenant_ctx, monkeypatch))
@@ -329,9 +329,9 @@ async def _regen_system_text(monkeypatch, **extra) -> str:
     """The system message the corrective regeneration sends to the model."""
     import uuid
 
-    from app.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
-    from app.modules.ai.gateway import AIGateway
-    from app.modules.ai.providers import ChatCompletionResult
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
+    from app.applications.apparel.modules.ai.gateway import AIGateway
+    from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 
     agent = _regen_agent()
     seen = {}
@@ -384,8 +384,8 @@ async def test_the_real_caller_hands_the_second_draft_the_directive_it_built(
     db, tenant_ctx, monkeypatch
 ):
     """Wired end to end: the regeneration gets the directive built for the first draft."""
-    from app.modules.ai.agents.sales_intelligence import agent as A
-    from app.modules.ai.agents.sales_intelligence import coverage as C
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as A
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import coverage as C
 
     got = {}
 

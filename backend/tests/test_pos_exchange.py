@@ -30,7 +30,7 @@ def test_exchanges_route_is_mounted() -> None:
 def test_exchange_wire_requires_both_halves() -> None:
     from pydantic import ValidationError as PydanticValidationError
 
-    from app.modules.pos.router import ExchangeRequest
+    from app.applications.apparel.modules.pos.router import ExchangeRequest
 
     with pytest.raises(PydanticValidationError):
         ExchangeRequest(
@@ -50,13 +50,13 @@ def test_exchange_wire_requires_both_halves() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -69,8 +69,8 @@ async def _register(db, tenant_ctx):
 
 
 async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -95,7 +95,7 @@ async def _sellable_variant(db, tenant_ctx, price="25.00", stock=10):
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون الاستبدال", source="pos"
@@ -103,7 +103,7 @@ async def _customer(db, tenant_ctx):
 
 
 async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -149,7 +149,7 @@ async def test_equal_value_swap_moves_no_money(db, tenant_ctx):
 
 
 async def test_exchange_for_a_pricier_item_charges_the_difference(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -179,7 +179,7 @@ async def test_exchange_for_a_pricier_item_charges_the_difference(db, tenant_ctx
 
 
 async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -214,7 +214,7 @@ async def test_exchange_never_demands_or_takes_tenders_for_the_difference(db, te
 
 
 async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(
@@ -251,7 +251,7 @@ async def test_exchange_for_a_cheaper_item_refunds_nothing_new(db, tenant_ctx):
 
 async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
     from app.modules.errors import ConflictError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -286,7 +286,7 @@ async def test_exchange_is_capped_like_a_return(db, tenant_ctx):
 
 async def test_exchange_event_is_staged(db, tenant_ctx):
     from app.modules.platform.models import OutboxEvent
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)

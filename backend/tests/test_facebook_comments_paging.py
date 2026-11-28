@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.conversations import facebook_service as fs
-from app.modules.conversations.facebook_service import FacebookService
-from app.modules.conversations.models import SocialComment
+from app.applications.apparel.modules.conversations import facebook_service as fs
+from app.applications.apparel.modules.conversations.facebook_service import FacebookService
+from app.applications.apparel.modules.conversations.models import SocialComment
 
 CREDS = {"api_key": "t", "account_id": "111"}
 

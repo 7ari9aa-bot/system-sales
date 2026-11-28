@@ -18,7 +18,7 @@ WIDE = {"since": date(2000, 1, 1), "until": date(2100, 1, 1)}
 
 
 async def _till(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -116,7 +116,7 @@ async def test_outside_the_window_is_excluded_and_limit_is_respected(db, tenant_
 
 
 async def test_nothing_sold_is_an_empty_list(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     assert await PosService.top_products(db, tenant_ctx.tenant_id, **WIDE) == []
 

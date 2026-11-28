@@ -15,11 +15,11 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.models import Attachment, Message
-from app.modules.conversations.routers._deps import SendMessageRequest
-from app.modules.conversations.routers.inbox import send_message
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.models import Attachment, Message
+from app.applications.apparel.modules.conversations.routers._deps import SendMessageRequest
+from app.applications.apparel.modules.conversations.routers.inbox import send_message
 from app.workers.message_worker import MessageWorker, PermanentError
 from tests._pos_helpers import ctx_for
 from tests.test_whatsapp_staff_reply_send import _customer_message
@@ -131,7 +131,7 @@ class _FakeStorage:
 def storage(monkeypatch):
     fake = _FakeStorage()
     monkeypatch.setattr(
-        "app.modules.conversations.outbound_media_service.get_storage", lambda: fake
+        "app.applications.apparel.modules.conversations.outbound_media_service.get_storage", lambda: fake
     )
     return fake
 
@@ -151,8 +151,8 @@ async def _upload(
     name="Invoice.pdf",
     sticker=False,
 ):
-    from app.modules.conversations.outbound_media import check_outbound_media
-    from app.modules.conversations.outbound_media_service import OutboundMediaService
+    from app.applications.apparel.modules.conversations.outbound_media import check_outbound_media
+    from app.applications.apparel.modules.conversations.outbound_media_service import OutboundMediaService
 
     spec = check_outbound_media(content_type=mime, data=data, filename=name, as_sticker=sticker)
     return await OutboundMediaService.store_upload(
@@ -355,21 +355,21 @@ def _row(**kw):
 
 
 def test_the_list_returns_the_name_a_document_was_sent_under() -> None:
-    from app.modules.conversations.routers.inbox import _present_messages
+    from app.applications.apparel.modules.conversations.routers.inbox import _present_messages
 
     [item] = _present_messages([_row()], {})
     assert item["filename"] == "فاتورة مايو.pdf"
 
 
 def test_a_deleted_message_does_not_leak_its_file_name() -> None:
-    from app.modules.conversations.routers.inbox import _present_messages
+    from app.applications.apparel.modules.conversations.routers.inbox import _present_messages
 
     [item] = _present_messages([_row(deleted=True)], {})
     assert item["filename"] is None
 
 
 def test_a_message_with_no_metadata_has_no_file_name() -> None:
-    from app.modules.conversations.routers.inbox import _present_messages
+    from app.applications.apparel.modules.conversations.routers.inbox import _present_messages
 
     [item] = _present_messages([_row(provider_metadata=None)], {})
     assert item["filename"] is None

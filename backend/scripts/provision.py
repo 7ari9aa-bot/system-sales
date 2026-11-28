@@ -896,7 +896,7 @@ async def main() -> None:
 
     try:
         from app.core.db import get_sessionmaker
-        from app.modules.ai.core.provisioning import backfill_all_tenants
+        from app.applications.apparel.modules.ai.core.provisioning import backfill_all_tenants
 
         async with get_sessionmaker()() as sa_session:
             async with sa_session.begin():

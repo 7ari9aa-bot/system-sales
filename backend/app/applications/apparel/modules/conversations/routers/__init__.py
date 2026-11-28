@@ -1,0 +1,123 @@
+"""Conversations routers package — aggregator for inbox, webchat, webhooks, stream, and templates."""  # noqa: E501
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from app.applications.apparel.modules.conversations.routers._deps import (
+    AssignRequest,
+    ListStateRequest,
+    ReactionRequest,
+    SendMessageRequest,
+    _inbox_page,
+    _redact_inbox_item,
+)
+from app.applications.apparel.modules.conversations.routers.facebook_pages import router as _facebook_pages_router
+from app.applications.apparel.modules.conversations.routers.inbox import (
+    assign,
+    close,
+    inbox_query,
+    list_conversations,
+    list_messages,
+    mark_read,
+    reconcile_messages,
+    send_message,
+)
+from app.applications.apparel.modules.conversations.routers.inbox import (
+    router as _inbox_router,
+)
+from app.applications.apparel.modules.conversations.routers.messenger_profile import (
+    router as _messenger_profile_router,
+)
+from app.applications.apparel.modules.conversations.routers.social import router as _social_router
+from app.applications.apparel.modules.conversations.routers.stream import (
+    _stream_auth,
+    stream_conversations,
+)
+from app.applications.apparel.modules.conversations.routers.stream import (
+    router as _stream_router,
+)
+from app.applications.apparel.modules.conversations.routers.templates import (
+    TemplateApproveRequest,
+    TemplateRejectRequest,
+    TemplateUpsertRequest,
+    _template_input,
+    _template_out,
+    approve_template,
+    archive_template,
+    create_template,
+    get_template,
+    list_templates,
+    pause_template,
+    reject_template,
+    resume_template,
+    submit_template,
+    templates_router,
+    update_template,
+)
+from app.applications.apparel.modules.conversations.routers.webchat import (
+    WebchatInbound,
+    public_router,
+    webchat_inbound,
+    webchat_list_messages,
+)
+from app.applications.apparel.modules.conversations.routers.webhooks import (
+    _WEBHOOK_CHANNELS,
+    channel_webhook,
+    verify_webhook,
+    webhook_router,
+)
+from app.applications.apparel.modules.conversations.routers.whatsapp_flows import router as _whatsapp_flows_router
+
+# Combine inbox and stream routes into the canonical conversations `router`
+router = APIRouter(tags=["inbox"])
+router.routes.extend(_inbox_router.routes)
+router.routes.extend(_stream_router.routes)
+router.routes.extend(_social_router.routes)
+router.routes.extend(_facebook_pages_router.routes)
+router.routes.extend(_messenger_profile_router.routes)
+router.routes.extend(_whatsapp_flows_router.routes)
+
+__all__ = [
+    "AssignRequest",
+    "ListStateRequest",
+    "ReactionRequest",
+    "SendMessageRequest",
+    "TemplateApproveRequest",
+    "TemplateRejectRequest",
+    "TemplateUpsertRequest",
+    "WebchatInbound",
+    "_WEBHOOK_CHANNELS",
+    "_inbox_page",
+    "_redact_inbox_item",
+    "_stream_auth",
+    "_template_input",
+    "_template_out",
+    "approve_template",
+    "archive_template",
+    "assign",
+    "channel_webhook",
+    "close",
+    "create_template",
+    "get_template",
+    "inbox_query",
+    "list_conversations",
+    "list_messages",
+    "list_templates",
+    "mark_read",
+    "pause_template",
+    "public_router",
+    "reconcile_messages",
+    "reject_template",
+    "resume_template",
+    "router",
+    "send_message",
+    "stream_conversations",
+    "submit_template",
+    "templates_router",
+    "update_template",
+    "verify_webhook",
+    "webchat_inbound",
+    "webchat_list_messages",
+    "webhook_router",
+]

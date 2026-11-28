@@ -7,7 +7,7 @@ confident-wrong rate, and the threshold proposal from score distributions.
 
 from __future__ import annotations
 
-from app.modules.ai.agents.customer.evaluation.metrics import (
+from app.applications.apparel.modules.ai.agents.customer.evaluation.metrics import (
     CaseResult,
     confident_wrong_rate,
     hit_at_k,

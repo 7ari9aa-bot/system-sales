@@ -23,8 +23,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.customers.service import CustomerService
-from app.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
 
 # A fixed epoch far from "now" is not enough: the window functions read the
 # columns we set explicitly, so every seed below places its own instants.
@@ -43,13 +43,13 @@ def _at(minutes: int) -> datetime:
 
 
 def test_net_of_a_full_refund_is_zero_with_no_excess() -> None:
-    from app.modules.analytics.service import net_of
+    from app.applications.apparel.modules.analytics.service import net_of
 
     assert net_of(Decimal("100.00"), Decimal("100.00")) == (Decimal("0.00"), Decimal("0.00"))
 
 
 def test_net_of_a_partial_refund_keeps_the_remainder() -> None:
-    from app.modules.analytics.service import net_of
+    from app.applications.apparel.modules.analytics.service import net_of
 
     assert net_of(Decimal("100.00"), Decimal("40.00")) == (
         Decimal("60.00"),
@@ -61,7 +61,7 @@ def test_net_of_never_goes_negative_and_reports_the_excess() -> None:
     """A refund that leaves in a window with no matching gross must not turn
     that window's *revenue* negative — the part that could not be subtracted
     is reported separately instead of vanishing."""
-    from app.modules.analytics.service import net_of
+    from app.applications.apparel.modules.analytics.service import net_of
 
     assert net_of(Decimal("0.00"), Decimal("60.00")) == (
         Decimal("0.00"),
@@ -70,7 +70,7 @@ def test_net_of_never_goes_negative_and_reports_the_excess() -> None:
 
 
 def test_net_of_quantizes_to_money_scale() -> None:
-    from app.modules.analytics.service import net_of
+    from app.applications.apparel.modules.analytics.service import net_of
 
     net, excess = net_of(Decimal("10"), Decimal("3.333"))
     assert net == Decimal("6.67")
@@ -92,8 +92,8 @@ def test_gross_and_net_read_one_payment_status_vocabulary() -> None:
     RENDERED from the registry, and the registry's list is pinned against
     orders' own money rule set.
     """
-    from app.modules.analytics import service as analytics
-    from app.modules.orders import money as orders_money
+    from app.applications.apparel.modules.analytics import service as analytics
+    from app.applications.apparel.modules.orders import money as orders_money
     from app.modules.platform.metrics import MetricRegistry
 
     revenue_status = MetricRegistry.get("revenue").filters["status"]
@@ -112,7 +112,7 @@ def test_the_order_existence_filter_is_rendered_from_the_registry_too() -> None:
     """``orders_count`` is the AOV denominator, so its status filter is part of
     the money story: a cancelled order excluded there must not be excluded
     differently by hand somewhere else."""
-    from app.modules.analytics import service as analytics
+    from app.applications.apparel.modules.analytics import service as analytics
     from app.modules.platform.metrics import MetricRegistry
 
     excluded = MetricRegistry.get("orders_count").filters["status_excluded"]
@@ -122,7 +122,7 @@ def test_the_order_existence_filter_is_rendered_from_the_registry_too() -> None:
 def test_a_status_that_is_not_a_word_cannot_reach_the_sql() -> None:
     """The fragment is built from source-controlled text, but building SQL by
     string means the builder is the seam that must hold."""
-    from app.modules.analytics.service import _status_sql
+    from app.applications.apparel.modules.analytics.service import _status_sql
 
     assert _status_sql(["captured", "refunded"]) == "('captured', 'refunded')"
     with pytest.raises(ValueError):
@@ -136,7 +136,7 @@ def test_a_status_that_is_not_a_word_cannot_reach_the_sql() -> None:
 
 def test_merchant_day_pushes_a_late_utc_sale_into_the_next_day() -> None:
     """23:30 UTC is 03:30 the NEXT day in UTC+4 — the register's exact bug."""
-    from app.modules.analytics.timekit import merchant_day
+    from app.applications.apparel.modules.analytics.timekit import merchant_day
 
     late = datetime(2026, 3, 14, 23, 30, tzinfo=UTC)
     assert merchant_day(late, "UTC") == date(2026, 3, 14)
@@ -144,7 +144,7 @@ def test_merchant_day_pushes_a_late_utc_sale_into_the_next_day() -> None:
 
 
 def test_merchant_day_pulls_an_early_utc_sale_back_a_day_west_of_prime() -> None:
-    from app.modules.analytics.timekit import merchant_day
+    from app.applications.apparel.modules.analytics.timekit import merchant_day
 
     early = datetime(2026, 3, 14, 0, 30, tzinfo=UTC)
     assert merchant_day(early, "America/New_York") == date(2026, 3, 13)
@@ -153,7 +153,7 @@ def test_merchant_day_pulls_an_early_utc_sale_back_a_day_west_of_prime() -> None
 def test_merchant_day_boundary_is_exactly_at_local_midnight() -> None:
     """The boundary itself is where bugs live: 20:00 UTC is local midnight in
     UTC+4, so 19:59 is day N and 20:00 is day N+1."""
-    from app.modules.analytics.timekit import merchant_day
+    from app.applications.apparel.modules.analytics.timekit import merchant_day
 
     assert merchant_day(datetime(2026, 3, 14, 19, 59, tzinfo=UTC), "Asia/Dubai") == date(
         2026, 3, 14
@@ -162,7 +162,7 @@ def test_merchant_day_boundary_is_exactly_at_local_midnight() -> None:
 
 
 def test_merchant_day_window_returns_utc_instants_for_the_bucket() -> None:
-    from app.modules.analytics.timekit import merchant_day_window
+    from app.applications.apparel.modules.analytics.timekit import merchant_day_window
 
     since, until = merchant_day_window(date(2026, 3, 14), "Asia/Dubai")
     assert since == datetime(2026, 3, 13, 20, 0, tzinfo=UTC)
@@ -172,7 +172,7 @@ def test_merchant_day_window_returns_utc_instants_for_the_bucket() -> None:
 def test_resolve_timezone_falls_back_to_the_deployment_zone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.modules.analytics import timekit
+    from app.applications.apparel.modules.analytics import timekit
 
     monkeypatch.delenv(timekit.REPORTING_TZ_ENV, raising=False)
     assert timekit.resolve_timezone(None) == timekit.FALLBACK_TIMEZONE
@@ -183,7 +183,7 @@ def test_resolve_timezone_falls_back_to_the_deployment_zone(
 
 
 def test_resolve_timezone_refuses_a_zone_that_does_not_exist() -> None:
-    from app.modules.analytics.timekit import UnknownTimezoneError, resolve_timezone
+    from app.applications.apparel.modules.analytics.timekit import UnknownTimezoneError, resolve_timezone
 
     with pytest.raises(UnknownTimezoneError):
         resolve_timezone("Mars/Olympus_Mons")
@@ -287,7 +287,7 @@ async def test_full_refund_leaves_gross_untouched_and_net_zero(
 ) -> None:
     """The figure labelled gross must still contain the refunded money (that is
     what makes `net = gross - refund` hold); only net may drop it."""
-    from app.modules.analytics.service import revenue, revenue_summary
+    from app.applications.apparel.modules.analytics.service import revenue, revenue_summary
 
     tid = tenant_ctx.tenant_id
     payment = await _collected(db, tid, amount="100.00", paid_at=_at(60))
@@ -302,7 +302,7 @@ async def test_full_refund_leaves_gross_untouched_and_net_zero(
 
 
 async def test_partial_refund_nets_the_unreturned_part(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.analytics.service import revenue_summary
+    from app.applications.apparel.modules.analytics.service import revenue_summary
 
     tid = tenant_ctx.tenant_id
     payment = await _collected(db, tid, amount="100.00", paid_at=_at(60))
@@ -324,7 +324,7 @@ async def test_second_refund_in_a_later_window_is_not_double_subtracted(
     (never -60.00) with the 60.00 surfaced as refund_excess. Across the whole
     period the refund total is 100.00 and net is 0.00 — one subtraction.
     """
-    from app.modules.analytics.service import net_revenue, revenue_summary
+    from app.applications.apparel.modules.analytics.service import net_revenue, revenue_summary
 
     tid = tenant_ctx.tenant_id
     payment = await _collected(db, tid, amount="100.00", paid_at=_at(60))
@@ -356,7 +356,7 @@ async def test_refund_without_a_processed_stamp_is_not_dropped(
     """`approved` is an allowed refund status and is counted by the metric, but
     an approved row can legitimately carry no processed_at yet. Bucketing on
     processed_at alone makes that money invisible, so net stays overstated."""
-    from app.modules.analytics.service import revenue_summary
+    from app.applications.apparel.modules.analytics.service import revenue_summary
 
     tid = tenant_ctx.tenant_id
     payment = await _collected(db, tid, amount="100.00", paid_at=_at(60))
@@ -379,7 +379,7 @@ async def test_summary_reports_the_tenants_currency_not_a_literal(
     db: AsyncSession, tenant_ctx
 ) -> None:
     from app.core.tenancy import resolve_tenant_currency
-    from app.modules.analytics.service import revenue_summary
+    from app.applications.apparel.modules.analytics.service import revenue_summary
 
     tid = tenant_ctx.tenant_id
     summary = await revenue_summary(db, tid, since=W1_SINCE, until=W1_UNTIL)
@@ -392,7 +392,7 @@ async def test_summary_reports_the_tenants_currency_not_a_literal(
 async def test_daily_series_buckets_a_late_utc_sale_in_the_merchant_day(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.analytics.service import daily_revenue_series
+    from app.applications.apparel.modules.analytics.service import daily_revenue_series
 
     tid = tenant_ctx.tenant_id
     # 23:30 UTC on 14 March = 03:30 on 15 March in UTC+4.
@@ -412,7 +412,7 @@ async def test_daily_series_buckets_a_late_utc_sale_in_the_merchant_day(
 async def test_daily_series_net_never_goes_negative_on_a_refund_only_day(
     db: AsyncSession, tenant_ctx
 ) -> None:
-    from app.modules.analytics.service import daily_revenue_series
+    from app.applications.apparel.modules.analytics.service import daily_revenue_series
 
     tid = tenant_ctx.tenant_id
     payment = await _collected(
@@ -439,8 +439,8 @@ async def test_daily_series_net_never_goes_negative_on_a_refund_only_day(
 
 
 async def _balance(db: AsyncSession, tenant_id: uuid.UUID, *, on_hand: int, reserved: int):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.models import InventoryBalance, Warehouse
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
 
     product = await CatalogService.create_product(
         db, tenant_id, title=f"P-{uuid.uuid4().hex[:8]}", slug=f"p-{uuid.uuid4().hex[:8]}"
@@ -469,7 +469,7 @@ async def test_zero_available_is_out_of_stock_not_low_stock(db: AsyncSession, te
     """The register's complaint: `available <= 2` folds an empty shelf into
     "low stock", so the alert is noise. The two must be separate counts and the
     field names must say which is which."""
-    from app.modules.analytics.service import stock_health
+    from app.applications.apparel.modules.analytics.service import stock_health
 
     tid = tenant_ctx.tenant_id
     await _balance(db, tid, on_hand=0, reserved=0)  # empty shelf
@@ -485,7 +485,7 @@ async def test_zero_available_is_out_of_stock_not_low_stock(db: AsyncSession, te
 
 
 async def test_negative_available_is_counted_as_out_of_stock(db: AsyncSession, tenant_ctx) -> None:
-    from app.modules.analytics.service import stock_health
+    from app.applications.apparel.modules.analytics.service import stock_health
 
     tid = tenant_ctx.tenant_id
     await _balance(db, tid, on_hand=1, reserved=4)

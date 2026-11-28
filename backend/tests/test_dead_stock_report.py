@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import text
 
 from app.core.dead_stock_report import DeadStockReportService
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.service import InventoryService
 from app.modules.settings.registry import ENFORCED_KEYS, REGISTRY
 from app.modules.settings.service import SettingsService
 from tests.test_profit_report import _return, _sale, _variant, _wh
@@ -59,7 +59,7 @@ async def _stock(db, tid, wh, variant, qty, shop: Shop) -> None:
 async def _cost(db, tid, variant, avg):
     from decimal import Decimal
 
-    from app.modules.purchasing.models import VariantCost
+    from app.applications.apparel.modules.purchasing.models import VariantCost
 
     db.add(VariantCost(tenant_id=tid, variant_id=variant.id, avg_cost=Decimal(str(avg))))
     await db.flush()
@@ -299,7 +299,7 @@ async def test_stock_with_no_stock_in_movement_ages_from_the_variants_own_birth(
 
 async def _movement(db, tid, wh, v, *, direction, at):
     """A ledger row with an explicit time (an INSERT may carry one; an UPDATE is not allowed)."""
-    from app.modules.inventory.models import InventoryMovement
+    from app.applications.apparel.modules.inventory.models import InventoryMovement
 
     db.add(
         InventoryMovement(

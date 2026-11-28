@@ -11,8 +11,8 @@ from __future__ import annotations
 import uuid
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.agents.customer.vision import pipeline
-from app.modules.ai.agents.customer.vision.schemas import Candidate, Confidence
+from app.applications.apparel.modules.ai.agents.customer.vision import pipeline
+from app.applications.apparel.modules.ai.agents.customer.vision.schemas import Candidate, Confidence
 
 
 def _candidate(rank: int) -> Candidate:

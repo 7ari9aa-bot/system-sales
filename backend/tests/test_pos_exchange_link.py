@@ -19,7 +19,7 @@ from tests.test_pos_exchange import (
 
 
 async def _exchanged(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)

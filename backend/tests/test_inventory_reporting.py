@@ -7,15 +7,15 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import (
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import (
     InventoryReportingService,
     InventoryService,
     ReplenishmentService,
     ValuationService,
 )
-from app.modules.inventory.stock_view import StockLevelService
+from app.applications.apparel.modules.inventory.stock_view import StockLevelService
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:

@@ -10,8 +10,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from app.modules.conversations import whatsapp_sync as sync
-from app.modules.conversations.models import WhatsAppSyncRun
+from app.applications.apparel.modules.conversations import whatsapp_sync as sync
+from app.applications.apparel.modules.conversations.models import WhatsAppSyncRun
 
 GUIDE = (
     Path(__file__).resolve().parents[2] / "docs" / "channels" / "whatsapp-coexistence.md"

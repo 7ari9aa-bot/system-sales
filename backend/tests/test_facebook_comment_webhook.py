@@ -7,8 +7,8 @@ feed. The adapter already parses `feed` comments (it inherits Messenger's parser
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.facebook import facebook_adapter
-from app.modules.customers.meta_oauth import subscribed_fields
+from app.applications.apparel.modules.conversations.gateway.facebook import facebook_adapter
+from app.applications.apparel.modules.customers.meta_oauth import subscribed_fields
 
 
 def _feed(value: dict) -> dict:

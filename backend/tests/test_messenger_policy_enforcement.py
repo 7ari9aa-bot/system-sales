@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 
-from app.modules.conversations.gateway.messenger import MessengerAdapter
+from app.applications.apparel.modules.conversations.gateway.messenger import MessengerAdapter
 
 
 def _payload(field: str, value: dict, *, entry_time: int = 1_760_000_000) -> dict:
@@ -104,8 +104,8 @@ class _FakeSession:
 @pytest.fixture()
 def recorded(monkeypatch):
     """Capture the notification rows the hook writes."""
-    from app.modules.conversations import page_activity_service as activity
-    from app.modules.conversations.gateway import ingest as ingest_mod
+    from app.applications.apparel.modules.conversations import page_activity_service as activity
+    from app.applications.apparel.modules.conversations.gateway import ingest as ingest_mod
 
     rows: list[dict] = []
 
@@ -173,7 +173,7 @@ async def test_a_disconnected_channel_is_not_moved_back_or_forward(recorded):
 @pytest.mark.asyncio
 async def test_a_redelivery_uses_the_same_dedup_key(recorded):
     """Meta retries for days; the owner must not be nagged once per delivery."""
-    from app.modules.conversations.page_activity_service import _dedup_key
+    from app.applications.apparel.modules.conversations.page_activity_service import _dedup_key
 
     first = _dedup_key("messenger", "policy", "111", _at(1_760_000_000))
     again = _dedup_key("messenger", "policy", "111", _at(1_760_000_000))

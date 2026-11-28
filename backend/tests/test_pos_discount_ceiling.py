@@ -18,8 +18,8 @@ from tests.test_pos_phase6 import _sellable_variant, _warehouse
 
 
 async def _till(db, tenant_ctx, *, ceiling):
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     profile = await PosProfileService.create(
@@ -45,7 +45,7 @@ async def _till(db, tenant_ctx, *, ceiling):
 async def _sell(
     db, tenant_ctx, register, variant, *, discount_total=None, pct=None, override=False
 ):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     line = {"variant_id": str(variant.id), "quantity": 1}
     if pct is not None:
@@ -108,7 +108,7 @@ async def test_a_refused_sale_leaves_no_order_and_no_stock_movement(db, tenant_c
     import sqlalchemy as sa
 
     from app.modules.errors import ValidationError
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
 
     register, _ = await _till(db, tenant_ctx, ceiling="20")
     variant = await _sellable_variant(db, tenant_ctx, price="100.00")
@@ -128,7 +128,7 @@ async def test_a_manager_is_not_held_to_the_ceiling(db, tenant_ctx):
 
 async def test_the_quote_refuses_it_before_the_sale_is_even_tried(db, tenant_ctx):
     from app.modules.errors import ValidationError
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register, _ = await _till(db, tenant_ctx, ceiling="20")
     variant = await _sellable_variant(db, tenant_ctx, price="100.00")
@@ -147,7 +147,7 @@ async def test_the_quote_refuses_it_before_the_sale_is_even_tried(db, tenant_ctx
 @pytest.mark.parametrize("bad", ["-1", "101", "abc", "", "nan", "20.555"])
 async def test_the_owner_cannot_save_a_nonsense_ceiling(db, tenant_ctx, bad):
     from app.modules.errors import ValidationError
-    from app.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
 
     warehouse = await _warehouse(db, tenant_ctx)
     with pytest.raises(ValidationError):
@@ -162,7 +162,7 @@ async def test_the_owner_cannot_save_a_nonsense_ceiling(db, tenant_ctx, bad):
 
 
 async def test_the_owner_can_set_change_and_clear_it(db, tenant_ctx):
-    from app.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
 
     _, profile = await _till(db, tenant_ctx, ceiling="10")
     assert str(profile.max_discount_pct) == "10.00"

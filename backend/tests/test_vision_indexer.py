@@ -12,9 +12,9 @@ import uuid
 from sqlalchemy import func, select
 
 from app.core.errors import ExternalProviderError
-from app.modules.ai.agents.customer.vision.indexer import index_product_images
-from app.modules.ai.models import ProductEmbedding
-from app.modules.catalog.models import Product, ProductImage
+from app.applications.apparel.modules.ai.agents.customer.vision.indexer import index_product_images
+from app.applications.apparel.modules.ai.models import ProductEmbedding
+from app.applications.apparel.modules.catalog.models import Product, ProductImage
 
 
 def _unit(dim: int) -> list[float]:

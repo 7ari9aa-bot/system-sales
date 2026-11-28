@@ -8,7 +8,7 @@ in core, parameter-bound, and the owning module REGISTERS its implementation
 at import time.
 
 Contract: the provider receives ``(session, tenant_ids)`` and returns a
-dict keyed by tenant id — see ``app.modules.ai.spend_read`` for the
+dict keyed by tenant id — see ``app.applications.apparel.modules.ai.spend_read`` for the
 reference implementation and its RLS caveat (each per-tenant aggregate must
 run under the tenant's own GUC).
 """

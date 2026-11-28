@@ -16,17 +16,17 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import app.modules.purchasing.models  # noqa: F401 - registers the suppliers table
+import app.applications.apparel.modules.purchasing.models  # noqa: F401 - registers the suppliers table
 from app.core.tenancy import reset_current_scope, set_current_scope
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.identity.models import Workspace
-from app.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
-from app.modules.inventory.service import InventoryReservationService, InventoryService
-from app.modules.inventory.services.expiry import consumption_order
-from app.modules.inventory.services.transfers import TransferServiceMixin
-from app.modules.inventory.services.valuation import ValuationService
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryReservationService, InventoryService
+from app.applications.apparel.modules.inventory.services.expiry import consumption_order
+from app.applications.apparel.modules.inventory.services.transfers import TransferServiceMixin
+from app.applications.apparel.modules.inventory.services.valuation import ValuationService
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio

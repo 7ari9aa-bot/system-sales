@@ -22,8 +22,8 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import DomainError
-from app.modules.ai.agents.customer.tools import CUSTOMER_TOOL_SPECS
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.agents.customer.tools import CUSTOMER_TOOL_SPECS
+from app.applications.apparel.modules.ai.tools import get_tool
 
 pytestmark = [pytest.mark.gate]
 

@@ -24,10 +24,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.customers.models import Customer
-from app.modules.marketing.attribution_service import AttributionService
-from app.modules.marketing.models import Attribution
-from app.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.marketing.attribution_service import AttributionService
+from app.applications.apparel.modules.marketing.models import Attribution
+from app.applications.apparel.modules.marketing.service import MarketingService
 
 
 def _numbers(payload: object) -> list[float]:

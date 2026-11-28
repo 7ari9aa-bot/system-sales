@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.agents.customer.vision.decision import ScoredCandidate, decide
-from app.modules.ai.agents.customer.vision.schemas import Candidate, Confidence
-from app.modules.ai.agents.customer.vision.thresholds import VisionThresholds
+from app.applications.apparel.modules.ai.agents.customer.vision.decision import ScoredCandidate, decide
+from app.applications.apparel.modules.ai.agents.customer.vision.schemas import Candidate, Confidence
+from app.applications.apparel.modules.ai.agents.customer.vision.thresholds import VisionThresholds
 
 _T = VisionThresholds.DEFAULT
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.response import validate_answer
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import validate_answer
 
 ALLOWED = {"999"}
 

@@ -16,7 +16,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_helpers import start_day, till
 

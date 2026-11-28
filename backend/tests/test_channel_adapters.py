@@ -19,15 +19,15 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway import registry as gateway_registry
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.email import email_adapter
-from app.modules.conversations.gateway.instagram import instagram_adapter
-from app.modules.conversations.gateway.messenger import messenger_adapter
-from app.modules.conversations.gateway.registry import ADAPTERS
-from app.modules.conversations.gateway.telegram import telegram_adapter
-from app.modules.conversations.gateway.webchat import webchat_adapter
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.gateway import registry as gateway_registry
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.email import email_adapter
+from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.registry import ADAPTERS
+from app.applications.apparel.modules.conversations.gateway.telegram import telegram_adapter
+from app.applications.apparel.modules.conversations.gateway.webchat import webchat_adapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 
 def _wa_payload_with_messages(messages: list[dict]) -> dict:
@@ -260,8 +260,8 @@ def test_whatsapp_partition_keeps_unattributed_changes_out_of_known_tenant():
 
 
 def test_messenger_and_instagram_parse_every_message_in_a_batch():
-    from app.modules.conversations.gateway.instagram import instagram_adapter
-    from app.modules.conversations.gateway.messenger import messenger_adapter
+    from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+    from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
     def event(message_id, sender, account):
         return {
@@ -347,7 +347,7 @@ def test_whatsapp_resolve_tenant_key():
 def test_whatsapp_signature_check(monkeypatch):
     secret = "test-secret"
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type(
             "S",
             (),
@@ -363,7 +363,7 @@ def test_whatsapp_signature_check(monkeypatch):
 
 def test_whatsapp_verify_handshake(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type("S", (), {"whatsapp_app_secret": "", "whatsapp_verify_token": "tok"})(),
     )
     challenge = whatsapp_adapter.verify_request(
@@ -700,7 +700,7 @@ def test_adapter_contract_empty_payload_normalizes_to_an_empty_list(adapter):
 @pytest.mark.parametrize("adapter", ALL_ADAPTERS, ids=ALL_ADAPTER_IDS)
 def test_adapter_contract_canonical_payload_normalizes_to_one_message(adapter):
     """One canonical delivery → one normalized message, channel-stamped."""
-    from app.modules.conversations.gateway.base import InboundMessage
+    from app.applications.apparel.modules.conversations.gateway.base import InboundMessage
 
     messages = adapter.parse_inbound(_CANONICAL_INBOUND[adapter.name])
     assert isinstance(messages, list) and len(messages) == 1

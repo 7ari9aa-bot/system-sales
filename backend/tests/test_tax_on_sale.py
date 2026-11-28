@@ -6,9 +6,9 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.modules.catalog.models import Product
-from app.modules.orders.models import Order, OrderItem
-from app.modules.taxation.service import TaxationService
+from app.applications.apparel.modules.catalog.models import Product
+from app.applications.apparel.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.taxation.service import TaxationService
 from tests._pos_helpers import start_day, till
 from tests._pos_sell import sell
 

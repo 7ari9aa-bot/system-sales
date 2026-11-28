@@ -15,12 +15,12 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.errors import PermissionDeniedError
-from app.modules.conversations.gateway.base import ExternalProviderError, ProviderCredentials
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.models import Conversation, Message
-from app.modules.conversations.read_signal_service import ReadSignalService
-from app.modules.conversations.routers._deps import ReadSignalRequest
-from app.modules.conversations.routers.inbox import router, send_read_signal
+from app.applications.apparel.modules.conversations.gateway.base import ExternalProviderError, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.models import Conversation, Message
+from app.applications.apparel.modules.conversations.read_signal_service import ReadSignalService
+from app.applications.apparel.modules.conversations.routers._deps import ReadSignalRequest
+from app.applications.apparel.modules.conversations.routers.inbox import router, send_read_signal
 from tests._pos_helpers import ctx_for
 from tests.test_whatsapp_staff_reply_send import _customer_message
 
@@ -113,7 +113,7 @@ class _Spy:
 @pytest.fixture
 def spy(monkeypatch):
     s = _Spy()
-    monkeypatch.setattr("app.modules.conversations.read_signal_service.get_adapter", lambda name: s)
+    monkeypatch.setattr("app.applications.apparel.modules.conversations.read_signal_service.get_adapter", lambda name: s)
 
     async def _decrypt(session, integration):
         return {"phone_number_id": "1065", "access_token": "tok"}

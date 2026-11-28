@@ -134,9 +134,9 @@ async def test_message_worker_dead_letter_lands_a_durable_handover(
     # when this module is imported after the fixture ran. Point the worker's own name at the test
     # connection too, whatever order the suite imported things in.
     monkeypatch.setattr("app.workers.message_worker.SessionLocal", app_sessions_on_test_connection)
-    from app.modules.ai.models import AIHandover
-    from app.modules.conversations.service import ConversationService
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.ai.models import AIHandover
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.customers.models import Customer
     from app.workers.message_worker import MessageWorker
 
     tenant_id = tenant_ctx.tenant_id

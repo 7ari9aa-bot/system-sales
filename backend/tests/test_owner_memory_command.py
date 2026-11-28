@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.owner_memory_command import MemoryCommand, parse_memory_command
+from app.applications.apparel.modules.ai.owner_memory_command import MemoryCommand, parse_memory_command
 
 SAVE = [
     ("افتكر إن المورد الرئيسي اسمه حسين", "المورد الرئيسي اسمه حسين"),

@@ -14,9 +14,9 @@ from sqlalchemy import select, text
 
 from app.core.errors import DomainError, NotFoundError, ValidationError
 from app.core.lease import conversation_lease
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
-from app.modules.customers.service import IdentityMergeService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import IdentityMergeService
 from app.modules.platform.models import ProcessedEvent
 
 pytestmark = [pytest.mark.gate]
@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.gate]
 
 # --- 1. Cross-tenant RLS (§11/§176.1) — verified in rls_smoke_test too ---
 async def test_gate_cross_tenant_rls(db, tenant_ctx):
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     foreign = uuid.uuid4()
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Gate")
@@ -73,7 +73,7 @@ async def test_gate_duplicate_event_dedupe(db):
 async def test_gate_worker_replay_skips_sent(db, tenant_ctx):
     """MessageWorker._deliver_one must not resend non-queued messages."""
 
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
     from app.workers.message_worker import MessageWorker
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Replay")
@@ -120,11 +120,11 @@ async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
     status (§130): provider, outcome, the provider's id and any error land on
     the delivery_attempts row — no invisible sends."""
 
-    from app.modules.conversations.gateway.base import (
+    from app.applications.apparel.modules.conversations.gateway.base import (
         OutboundMessage,
         ProviderCredentials,
     )
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
     from app.modules.platform.models import DeliveryAttempt
     from app.workers.message_worker import MessageWorker
 
@@ -181,7 +181,7 @@ async def test_gate_send_attempt_writes_a_delivery_attempt_row(db, tenant_ctx):
 
 # --- 5. Conversation race serialization (§126/§176.7) ---
 async def test_gate_conversation_lease_exclusive(db, tenant_ctx):
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Race")
     db.add(customer)
@@ -214,8 +214,8 @@ async def test_gate_conversation_lease_exclusive(db, tenant_ctx):
 async def test_gate_ai_budget_block(db, tenant_ctx, monkeypatch):
     from datetime import UTC, datetime
 
-    from app.modules.ai.gateway import enforce_budget
-    from app.modules.ai.models import AIUsage, BudgetPolicy
+    from app.applications.apparel.modules.ai.gateway import enforce_budget
+    from app.applications.apparel.modules.ai.models import AIUsage, BudgetPolicy
 
     db.add(
         BudgetPolicy(
@@ -244,8 +244,8 @@ async def test_gate_ai_budget_block(db, tenant_ctx, monkeypatch):
 
 # --- 7. Identity merge preserves history (§28) ---
 async def test_gate_merge_remaps_and_tombstones(db, tenant_ctx):
-    from app.modules.customers.models import Customer
-    from app.modules.customers.service import (
+    from app.applications.apparel.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.service import (
         CustomerService,
     )
 
@@ -303,7 +303,7 @@ async def test_gate_merge_remaps_and_tombstones(db, tenant_ctx):
 
 # --- 8. Segments DSL is injection-safe (§82) ---
 async def test_gate_segment_dsl_whitelist(db, tenant_ctx):
-    from app.modules.segments.service import validate_dsl
+    from app.applications.apparel.modules.segments.service import validate_dsl
 
     with pytest.raises(ValidationError):
         validate_dsl({"all": [{"field": "password_hash", "op": "eq", "value": "x"}]})
@@ -313,7 +313,7 @@ async def test_gate_segment_dsl_whitelist(db, tenant_ctx):
 
 # --- 9. Prompt injection / untrusted input (§132/§176.10) ---
 async def test_gate_prompt_injection_guarded():
-    from app.modules.ai.guardrails import default_guardrail
+    from app.applications.apparel.modules.ai.guardrails import default_guardrail
 
     chain = default_guardrail()
     verdict = chain.evaluate(
@@ -333,8 +333,8 @@ async def test_gate_approval_expiry(db, tenant_ctx):
     and a row flipped EXPIRED without its parked run closed would vanish from
     the sweep's scan while the customer keeps waiting. The sweep is the only
     writer of EXPIRED (§135 lifecycle)."""
-    from app.modules.ai.approvals import ApprovalService
-    from app.modules.ai.models import ApprovalRequest
+    from app.applications.apparel.modules.ai.approvals import ApprovalService
+    from app.applications.apparel.modules.ai.models import ApprovalRequest
 
     request = await ApprovalService.request(
         db,
@@ -366,7 +366,7 @@ async def test_gate_approval_expiry(db, tenant_ctx):
 
 # --- 11. Webhook tenant resolution (§125/§176.3) ---
 async def test_gate_webhook_tenant_resolution(db, tenant_ctx):
-    from app.modules.conversations.gateway.ingest import IngestService
+    from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
     from app.modules.platform.models import Integration
 
     public_key = f"pk-gate-{uuid.uuid4().hex[:10]}"
@@ -391,8 +391,8 @@ async def test_gate_webhook_tenant_resolution(db, tenant_ctx):
 async def test_gate_deletion_propagation(db, tenant_ctx):
     from sqlalchemy import func
 
-    from app.modules.customers.models import Customer
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.service import CustomerService
     from app.modules.platform.models import AuditLog
     from app.modules.privacy.service import DeletionService
 
@@ -473,9 +473,9 @@ async def test_gate_ai_stale_run_cancellation(db, tenant_ctx):
     newer message arrives. The conversation lease serializes runs so only
     the newest run's reply goes out."""
     from app.core.lease import conversation_lease
-    from app.modules.ai.runtime import AgentRunner
-    from app.modules.conversations.service import ConversationService
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.customers.models import Customer
 
     # Create a customer + conversation to hold the lease
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Stale Run Test")
@@ -510,7 +510,7 @@ async def test_gate_ai_stale_run_cancellation(db, tenant_ctx):
 # --- 16. AI tool-scope attack (§132) ---
 async def test_gate_ai_tool_scope(db, tenant_ctx):
     """AI tool call with wrong tenant/customer scope must be rejected."""
-    from app.modules.ai.guardrails import default_guardrail
+    from app.applications.apparel.modules.ai.guardrails import default_guardrail
 
     chain = default_guardrail()
     # An AI output that tries to access another tenant's data must be blocked
@@ -526,7 +526,7 @@ async def test_gate_automation_isolation():
     """The message request path does not synchronously execute workflows."""
     import inspect
 
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     # Workflow execution remains outside the synchronous message path.
     source = inspect.getsource(ConversationService.add_message)
@@ -596,9 +596,9 @@ async def test_gate_payment_unknown_reconciliation(db, tenant_ctx):
     effects once."""
     from decimal import Decimal
 
-    from app.modules.customers.service import CustomerService
-    from app.modules.orders.models import Order, OrderPayment
-    from app.modules.orders.service import OrderService
+    from app.applications.apparel.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.orders.models import Order, OrderPayment
+    from app.applications.apparel.modules.orders.service import OrderService
 
     # Create a customer + order with a payment in 'unknown' state
     customer = await CustomerService.get_or_create_by_identity(
@@ -661,8 +661,8 @@ async def test_gate_inventory_oversell(db, tenant_ctx):
     oversell. Reserve more than available -> ConflictError."""
     from decimal import Decimal
 
-    from app.modules.catalog.models import Product, ProductVariant
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     # Create a product + variant with small stock
     product = Product(

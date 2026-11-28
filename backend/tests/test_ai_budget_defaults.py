@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.core.model_registry  # noqa: F401  (loads every model so foreign keys resolve alone)
 from app.core.errors import RateLimitExceededError
-from app.modules.ai.gateway import (
+from app.applications.apparel.modules.ai.gateway import (
     BUDGET_ALERT_THRESHOLDS,
     MONTHLY_BUDGET_CAP,
     _default_cap,
@@ -179,7 +179,7 @@ async def test_a_tenant_with_no_policy_is_still_capped(db: AsyncSession, tenant_
     """The default must actually block, not just be reported."""
     # The budget logic lives in `budget`; `gateway` only re-exports its names. Patching the
     # re-export changes nothing `reserve_budget` reads, so the patch must target `budget`.
-    import app.modules.ai.budget as gateway
+    import app.applications.apparel.modules.ai.budget as gateway
 
     monkeypatch.setattr(gateway, "_month_spend", _spend(Decimal("1000")))
     monkeypatch.setattr(gateway, "_reserved_spend", _spend(Decimal("0")))
@@ -200,7 +200,7 @@ async def test_a_tenant_below_the_default_cap_can_reserve(
 ):
     # The budget logic lives in `budget`; `gateway` only re-exports its names. Patching the
     # re-export changes nothing `reserve_budget` reads, so the patch must target `budget`.
-    import app.modules.ai.budget as gateway
+    import app.applications.apparel.modules.ai.budget as gateway
 
     monkeypatch.setattr(gateway, "_month_spend", _spend(Decimal("0")))
     monkeypatch.setattr(gateway, "_reserved_spend", _spend(Decimal("0")))
@@ -216,8 +216,8 @@ async def test_an_agent_cap_is_judged_against_that_agents_own_spend(db: AsyncSes
     """B2: an agent-specific ceiling used to be measured against the WHOLE
     tenant's spend — agent A got blocked because agent B spent money. The
     reservation must judge A by A's own ledger."""
-    from app.modules.ai.models import Agent, BudgetPolicy
-    from app.modules.ai.usage import record_usage
+    from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
+    from app.applications.apparel.modules.ai.usage import record_usage
 
     tenant_id = tenant_ctx.tenant_id
     agent_a = Agent(
@@ -263,9 +263,9 @@ async def test_an_agent_cap_is_judged_against_that_agents_own_spend(db: AsyncSes
 
 
 async def test_an_agent_cap_still_blocks_when_that_agent_exceeds_it(db: AsyncSession, tenant_ctx):
-    from app.modules.ai.gateway import AIBudgetExhaustedError
-    from app.modules.ai.models import Agent, BudgetPolicy
-    from app.modules.ai.usage import record_usage
+    from app.applications.apparel.modules.ai.gateway import AIBudgetExhaustedError
+    from app.applications.apparel.modules.ai.models import Agent, BudgetPolicy
+    from app.applications.apparel.modules.ai.usage import record_usage
 
     tenant_id = tenant_ctx.tenant_id
     agent_a = Agent(
@@ -299,8 +299,8 @@ async def test_a_zero_hard_cap_means_zero_not_unlimited(db: AsyncSession, tenant
     read as unlimited — no reservation, no cap — a fail-open on an explicit
     instruction. With on_exceed="block" the reserve must refuse; with
     "warn" it must allow (the merchant asked to be told, not stopped)."""
-    from app.modules.ai.gateway import AIBudgetExhaustedError
-    from app.modules.ai.models import BudgetPolicy
+    from app.applications.apparel.modules.ai.gateway import AIBudgetExhaustedError
+    from app.applications.apparel.modules.ai.models import BudgetPolicy
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -318,7 +318,7 @@ async def test_a_zero_hard_cap_means_zero_not_unlimited(db: AsyncSession, tenant
 
 
 async def test_a_zero_hard_cap_with_warn_policy_still_allows(db: AsyncSession, tenant_ctx):
-    from app.modules.ai.models import BudgetPolicy
+    from app.applications.apparel.modules.ai.models import BudgetPolicy
 
     tenant_id = tenant_ctx.tenant_id
     db.add(
@@ -355,7 +355,7 @@ def test_the_budget_expiry_sweep_is_a_recurring_job_with_a_handler() -> None:
 
 def test_the_budget_expiry_handler_imports_the_owning_module() -> None:
     """The README warns re-exports break patching: the handler must call
-    `app.modules.ai.budget.expire_stale_reservations`, not the gateway alias."""
+    `app.applications.apparel.modules.ai.budget.expire_stale_reservations`, not the gateway alias."""
     import ast
     import pathlib
 
@@ -373,7 +373,7 @@ def test_the_budget_expiry_handler_imports_the_owning_module() -> None:
                 if isinstance(stmt, ast.ImportFrom)
                 for alias in stmt.names
             }
-            assert "app.modules.ai.budget" in {
+            assert "app.applications.apparel.modules.ai.budget" in {
                 stmt.module for stmt in ast.walk(node) if isinstance(stmt, ast.ImportFrom)
             }, "the handler no longer imports from the owning budget module"
             assert "expire_stale_reservations" in sources
@@ -384,7 +384,7 @@ def test_the_budget_expiry_handler_imports_the_owning_module() -> None:
 async def test_the_scheduler_sweep_expires_a_stale_reservation(db: AsyncSession, tenant_ctx):
     """A reservation orphaned by a crash (expires_at in the past) must flip to
     expired when the scheduler handler runs — and a live one must survive."""
-    from app.modules.ai.models import AIBudgetReservation
+    from app.applications.apparel.modules.ai.models import AIBudgetReservation
     from app.workers.scheduler_worker import _HANDLERS
 
     tenant_id = tenant_ctx.tenant_id
@@ -423,9 +423,9 @@ async def test_the_scheduler_sweep_expires_a_stale_reservation(db: AsyncSession,
 async def test_a_tenant_cap_still_sees_every_agents_spend(db: AsyncSession, tenant_ctx):
     """The reverse direction: a tenant-level ceiling must count ALL agents —
     scoping the measurement to the caller's agent would hide the others."""
-    from app.modules.ai.gateway import AIBudgetExhaustedError
-    from app.modules.ai.models import Agent
-    from app.modules.ai.usage import record_usage
+    from app.applications.apparel.modules.ai.gateway import AIBudgetExhaustedError
+    from app.applications.apparel.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.usage import record_usage
 
     tenant_id = tenant_ctx.tenant_id
     agent_a = Agent(

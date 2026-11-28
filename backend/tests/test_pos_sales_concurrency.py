@@ -18,7 +18,7 @@ from app.core.db import bind_tenant
 from app.core.errors import InsufficientStockError
 from app.core.security import hash_password
 from app.modules.identity.models import Role, Tenant, TenantUser, User
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 
 RACERS = 6
@@ -149,8 +149,8 @@ async def _shelf(factory, tenant_id, stock: int):
     """An open shift and one variant with exactly `stock` units on the shelf."""
 
     async def setup(s):
-        from app.modules.catalog.service import CatalogService
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.catalog.service import CatalogService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, tenant_id)
         reg = await PosService.create_register(

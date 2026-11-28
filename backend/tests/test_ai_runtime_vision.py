@@ -14,14 +14,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentTool
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.catalog.models import Product, ProductImage, ProductVariant
-from app.modules.conversations import models as conv_models
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentTool
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.catalog.models import Product, ProductImage, ProductVariant
+from app.applications.apparel.modules.conversations import models as conv_models
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 
 def _patch_gateway(monkeypatch, results: list[ChatCompletionResult]) -> dict:

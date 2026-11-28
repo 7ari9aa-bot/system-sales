@@ -1,5 +1,5 @@
-from app.modules.customers.meta_oauth import _INSTAGRAM_SCOPES, subscribed_fields
-from app.modules.customers.meta_scopes import missing_instagram_scopes
+from app.applications.apparel.modules.customers.meta_oauth import _INSTAGRAM_SCOPES, subscribed_fields
+from app.applications.apparel.modules.customers.meta_scopes import missing_instagram_scopes
 
 # Every field below exists on Meta's `page` object. Instagram's own fields do not.
 INSTAGRAM_ONLY_FIELDS = {
@@ -49,7 +49,7 @@ def test_a_staff_reply_from_metas_own_inbox_is_subscribed_where_it_exists():
 
 
 def test_the_diagnostics_ask_for_the_fields_the_app_actually_subscribes():
-    from app.modules.customers.meta_channel_diagnostics import DASHBOARD_FIELDS
+    from app.applications.apparel.modules.customers.meta_channel_diagnostics import DASHBOARD_FIELDS
 
     page = set(DASHBOARD_FIELDS["page"])
     assert {"message_echoes", "messaging_handovers", "message_edits", "message_reactions"} <= page

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.modules.customers import meta_oauth as mo
+from app.applications.apparel.modules.customers import meta_oauth as mo
 
 # The connect flow moved out of the channels screen into its own module (ee7a730 / 055e94d), so
 # the waits are armed in the hook and its helpers now, not in ChannelsSettings.jsx.

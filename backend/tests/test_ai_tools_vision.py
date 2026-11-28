@@ -14,10 +14,10 @@ import uuid
 import pytest
 
 from app.core.errors import DomainError, NotFoundError
-from app.modules.ai.agents.customer.vision import pipeline
-from app.modules.ai.agents.customer.vision.schemas import MatchResult
-from app.modules.ai.tools import _find_product_by_image, _get_product_photos, get_tool
-from app.modules.catalog.models import Product, ProductImage
+from app.applications.apparel.modules.ai.agents.customer.vision import pipeline
+from app.applications.apparel.modules.ai.agents.customer.vision.schemas import MatchResult
+from app.applications.apparel.modules.ai.tools import _find_product_by_image, _get_product_photos, get_tool
+from app.applications.apparel.modules.catalog.models import Product, ProductImage
 
 
 async def test_registry_exposes_both_vision_tools_as_low_risk():
@@ -60,7 +60,7 @@ async def test_product_match_result_is_business_only(monkeypatch, db, tenant_ctx
         assert text_hint == "abaya كحلي"
         return MatchResult(
             confidence=__import__(
-                "app.modules.ai.agents.customer.vision.schemas", fromlist=["Confidence"]
+                "app.applications.apparel.modules.ai.agents.customer.vision.schemas", fromlist=["Confidence"]
             ).Confidence.HIGH,
             candidates=[
                 {
@@ -174,7 +174,7 @@ async def test_server_side_classification_overrides_the_model_proposal(db, tenan
 async def test_precomputed_match_is_reused_not_reanalyzed(db, tenant_ctx):
     """The coordinator's pipeline result is served from the tool context —
     the paid embedding+rerank runs ONCE per photo, not again per tool call."""
-    from app.modules.ai.agents.customer.vision.schemas import Confidence, MatchResult
+    from app.applications.apparel.modules.ai.agents.customer.vision.schemas import Confidence, MatchResult
 
     cached = MatchResult(
         confidence=Confidence.HIGH,

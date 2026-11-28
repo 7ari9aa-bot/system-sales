@@ -12,10 +12,10 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401
-from app.modules.catalog.service import CatalogService
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
-from app.modules.pos.models import PosReceipt
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
+from app.applications.apparel.modules.pos.models import PosReceipt
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
@@ -107,7 +107,7 @@ class TestTheMerchantMustConfirmTheMoneySettings:
         assert await _docs(db, tid) == []
 
     async def test_the_reason_names_what_to_do(self, db, tenant_ctx):
-        from app.modules.pos.eta_adapter import issue_for_receipt
+        from app.applications.apparel.modules.pos.eta_adapter import issue_for_receipt
 
         tid = tenant_ctx.tenant_id
         register, shift, variant, ctx = await _shop(
@@ -127,7 +127,7 @@ class TestTheMerchantMustConfirmTheMoneySettings:
         assert len(await _docs(db, tid)) == 1
 
     async def test_a_new_shop_starts_unconfirmed(self, db, tenant_ctx):
-        from app.modules.pos.eta_adapter import eta_settings
+        from app.applications.apparel.modules.pos.eta_adapter import eta_settings
 
         assert (await eta_settings(db, tenant_ctx.tenant_id)).settings_confirmed is False
 
@@ -256,7 +256,7 @@ class TestTheSaleAlwaysGoesThrough:
     async def test_a_crash_inside_the_e_receipt_code_never_reaches_the_cashier(
         self, db, tenant_ctx, monkeypatch
     ):
-        import app.modules.einvoice.service as svc_mod
+        import app.applications.apparel.modules.einvoice.service as svc_mod
 
         async def boom(*a, **k):
             raise ValueError("builder exploded")
@@ -272,7 +272,7 @@ class TestTheSaleAlwaysGoesThrough:
     ):
         from sqlalchemy.exc import IntegrityError
 
-        import app.modules.einvoice.service as svc_mod
+        import app.applications.apparel.modules.einvoice.service as svc_mod
 
         async def boom(session, *a, **k):
             await session.execute(sa.text("select 1/0"))  # a real database error
@@ -296,16 +296,16 @@ class TestTheRealErrorTypes:
             lambda: __import__("app.core.errors", fromlist=["x"]).ConflictError("already issued"),
             lambda: __import__("app.core.errors", fromlist=["x"]).NotFoundError("no device"),
             lambda: __import__(
-                "app.modules.einvoice.providers.eta.client", fromlist=["x"]
+                "app.applications.apparel.modules.einvoice.providers.eta.client", fromlist=["x"]
             ).EtaTransientError("authority is down"),
             lambda: __import__(
-                "app.modules.einvoice.providers.eta.client", fromlist=["x"]
+                "app.applications.apparel.modules.einvoice.providers.eta.client", fromlist=["x"]
             ).EtaAuthError("bad credentials"),
         ],
         ids=["duplicate-number", "device-missing", "authority-down", "bad-credentials"],
     )
     async def test_none_of_them_reaches_the_cashier(self, db, tenant_ctx, monkeypatch, make):
-        import app.modules.einvoice.service as svc_mod
+        import app.applications.apparel.modules.einvoice.service as svc_mod
 
         async def boom(*a, **k):
             raise make()
@@ -427,9 +427,9 @@ class TestReturnOnASaleFromBeforeTheShopJoined:
 
         import httpx
 
-        from app.modules.einvoice.providers.eta.delivery import deliver_device
-        from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
-        from app.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
+        from app.applications.apparel.modules.einvoice.providers.eta.delivery import deliver_device
+        from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
+        from app.applications.apparel.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
 
         tid = tenant_ctx.tenant_id
         register, shift, variant, ctx = await _shop(db, tid, enabled=False)
@@ -482,8 +482,8 @@ class TestReferenceLessReturnAgainstTheOfficialPage:
         import copy
         from datetime import UTC, datetime
 
-        from app.modules.einvoice.providers.eta import builder
-        from app.modules.einvoice.providers.eta.codes import ReceiptType, ReturnReason
+        from app.applications.apparel.modules.einvoice.providers.eta import builder
+        from app.applications.apparel.modules.einvoice.providers.eta.codes import ReceiptType, ReturnReason
         from tests.test_eta_ereceipt_core import _receipt
 
         base = _receipt(
@@ -498,7 +498,7 @@ class TestReferenceLessReturnAgainstTheOfficialPage:
 
     def _errors(self, doc):
         """Only the rules this class is about (CF332-CF335); the rest of the document is not."""
-        from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
+        from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
 
         found = MockAuthority()._validate(doc, {})
         return {e["code"] for e in found if e["code"] in {"CF332", "CF333", "CF334", "CF335"}}

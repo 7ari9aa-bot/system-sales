@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.modules.analytics.engines import detect_anomalies
+from app.applications.apparel.modules.analytics.engines import detect_anomalies
 
 START = date(2026, 8, 1)
 

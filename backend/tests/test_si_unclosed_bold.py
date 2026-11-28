@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.plain_words import plain_words
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.plain_words import plain_words
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from tests.test_si_agent import _seed
 
 DIGITS = "299.98 425.00 1112.98 2026-11-15"

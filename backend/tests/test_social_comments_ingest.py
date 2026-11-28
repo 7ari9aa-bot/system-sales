@@ -16,11 +16,11 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from app.modules.conversations.gateway.base import parse_meta_comment_changes
-from app.modules.conversations.gateway.facebook import facebook_adapter
-from app.modules.conversations.gateway.instagram import instagram_adapter
-from app.modules.conversations.gateway.messenger import messenger_adapter
-from app.modules.conversations.models import SocialComment
+from app.applications.apparel.modules.conversations.gateway.base import parse_meta_comment_changes
+from app.applications.apparel.modules.conversations.gateway.facebook import facebook_adapter
+from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.models import SocialComment
 
 FB_ADD = {
     "object": "page",
@@ -192,7 +192,7 @@ def test_meta_adapters_expose_the_comment_parser():
 
 
 async def test_ingest_is_idempotent_and_edits_update(db, tenant_ctx) -> None:
-    from app.modules.conversations.social_comments import SocialCommentService
+    from app.applications.apparel.modules.conversations.social_comments import SocialCommentService
 
     tenant_id = tenant_ctx.tenant_id
     first = parse_meta_comment_changes(FB_ADD)[0]
@@ -257,7 +257,7 @@ async def test_ingest_is_idempotent_and_edits_update(db, tenant_ctx) -> None:
 
 
 async def test_remove_marks_removed_and_a_late_add_cannot_resurrect(db, tenant_ctx) -> None:
-    from app.modules.conversations.social_comments import SocialCommentService
+    from app.applications.apparel.modules.conversations.social_comments import SocialCommentService
 
     tenant_id = tenant_ctx.tenant_id
     parser_input = lambda verb: {  # noqa: E731
@@ -316,7 +316,7 @@ async def test_remove_marks_removed_and_a_late_add_cannot_resurrect(db, tenant_c
 async def test_process_webhook_event_persists_comments_without_fanout(db, tenant_ctx) -> None:
     """The webhook sync block stores the comment and marks the ingress row
     processed — comments never become messages, so no AI run can trigger."""
-    from app.modules.conversations.gateway.ingest import IngestService
+    from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
     from app.modules.platform.models import WebhookEvent
 
     tenant_id = tenant_ctx.tenant_id
@@ -377,7 +377,7 @@ async def test_process_webhook_event_persists_comments_without_fanout(db, tenant
 async def test_same_comment_on_two_platforms_is_two_rows(db, tenant_ctx) -> None:
     """The dedupe key is (tenant, platform, comment_id): a comment that also
     surfaces through a second integration is not silently dropped."""
-    from app.modules.conversations.social_comments import SocialCommentService
+    from app.applications.apparel.modules.conversations.social_comments import SocialCommentService
 
     tenant_id = tenant_ctx.tenant_id
     comment = parse_meta_comment_changes(IG_ADD)[0]

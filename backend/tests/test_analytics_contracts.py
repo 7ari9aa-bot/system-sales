@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.contracts import (
     AnalysisPeriod,
     AnswerDraft,
     Finding,
@@ -94,7 +94,7 @@ def test_answer_draft_placeholders_live_in_text_not_findings():
 
 
 def test_metric_definition_is_an_execution_contract_not_a_dictionary():
-    from app.modules.analytics.contracts import MetricDefinition
+    from app.applications.apparel.modules.analytics.contracts import MetricDefinition
 
     definition = MetricDefinition(
         name="delivered_revenue",

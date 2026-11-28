@@ -11,7 +11,7 @@ Sources (read, not remembered):
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway import whatsapp_templates as wa
+from app.applications.apparel.modules.conversations.gateway import whatsapp_templates as wa
 
 
 def _by_type(components, kind):

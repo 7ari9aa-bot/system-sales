@@ -9,15 +9,15 @@ import pytest
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import ProductPrice
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.models import ProductPrice
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.models import InventoryBalance, Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.errors import InsufficientStockError
-from app.modules.orders.models import OrderItem, OrderPayment, OrderStatusHistory
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.models import InventoryBalance, Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.errors import InsufficientStockError
+from app.applications.apparel.modules.orders.models import OrderItem, OrderPayment, OrderStatusHistory
+from app.applications.apparel.modules.orders.service import OrderService
 from app.modules.platform.models import OutboxEvent
 
 
@@ -591,8 +591,8 @@ async def test_checkout_reserves_in_variant_id_order(db: AsyncSession, tenant_ct
     customer's line order (reproduced 25/25 pre-fix). The line order is data;
     the lock order is a global rule — asserted here by recording the calls.
     """
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     tenant_id = tenant_ctx.tenant_id
     customer, variant_a, wh = await _customer_and_variant(db, tenant_id, stock=10)

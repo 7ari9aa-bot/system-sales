@@ -15,12 +15,12 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.errors import ValidationError as DomainValidationError
-from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunResult
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunResult
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 
 class _ReplyRunner:
@@ -42,13 +42,13 @@ class _ReplyRunner:
 
 
 async def _product_classifier(session, tid, url):
-    from app.modules.ai.agents.customer.vision.schemas import ImageKind
+    from app.applications.apparel.modules.ai.agents.customer.vision.schemas import ImageKind
 
     return ImageKind.PRODUCT
 
 
 async def test_a_failing_vision_provider_degrades_instead_of_dying(db, tenant_ctx, monkeypatch):
-    import app.modules.ai.agents.customer.turn as turn_module
+    import app.applications.apparel.modules.ai.agents.customer.turn as turn_module
 
     async def broken_vision(*args, **kwargs):
         # EXACTLY what AIGateway.embed_vision raises when the key is absent.

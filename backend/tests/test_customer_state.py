@@ -13,13 +13,13 @@ import uuid
 import pytest
 
 from app.core.errors import DomainError
-from app.modules.ai.agents.customer.state import (
+from app.applications.apparel.modules.ai.agents.customer.state import (
     StaleStateError,
     apply_patch,
     load_state,
 )
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 
 async def _seed_conversation(db, tenant_id) -> uuid.UUID:

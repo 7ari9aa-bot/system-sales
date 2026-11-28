@@ -14,7 +14,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.errors import RateLimitExceededError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import till
 from tests._pos_sell import sell
 

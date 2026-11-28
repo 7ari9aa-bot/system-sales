@@ -19,8 +19,8 @@ from datetime import UTC, datetime
 import pytest
 
 from app.core.db import bind_tenant
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.tools import get_tool
 from app.modules.identity.models import Tenant
 from tests.test_si_finance_tools import _category, _expense, _variant
 from tests.test_si_why_tool import _two_periods
@@ -125,7 +125,7 @@ async def test_one_shop_never_sees_another_shops_counts(db, tenant_ctx):
 async def test_a_deleted_order_is_not_counted(db, tenant_ctx):
     from sqlalchemy import update
 
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
     from tests.test_si_why_tool import _orders
 
     await _orders(db, tenant_ctx.tenant_id, n=3, days_ago=2, total="10.00", tag="del")

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.modules.pos.router import HoldCartRequest, QuoteRequest, RecordSaleRequest
+from app.applications.apparel.modules.pos.router import HoldCartRequest, QuoteRequest, RecordSaleRequest
 
 VID = "5b6f0b9e-1c1d-4f5e-9a47-0a8f6d2c1e11"
 
@@ -46,7 +46,7 @@ def test_a_good_line_passes_and_extra_keys_are_dropped(model) -> None:
     assert "title" not in line.model_dump()
 
 
-from app.modules.pos.router import ExchangeRequest, ReturnRequest  # noqa: E402
+from app.applications.apparel.modules.pos.router import ExchangeRequest, ReturnRequest  # noqa: E402
 
 OID = "7c1f0b9e-1c1d-4f5e-9a47-0a8f6d2c1e22"
 

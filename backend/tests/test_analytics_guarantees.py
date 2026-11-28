@@ -13,17 +13,17 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.analytics.confidence import compute_confidence
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.confidence import compute_confidence
+from app.applications.apparel.modules.analytics.contracts import (
     AnswerDraft,
     Finding,
     MaturityStatus,
     Relationship,
 )
-from app.modules.analytics.coverage import missing_coverage
-from app.modules.analytics.maturity import maturity_status
-from app.modules.analytics.numbers import NumberPolicy, free_numerals, render_answer
-from app.modules.analytics.validators import validate_finding, validate_response
+from app.applications.apparel.modules.analytics.coverage import missing_coverage
+from app.applications.apparel.modules.analytics.maturity import maturity_status
+from app.applications.apparel.modules.analytics.numbers import NumberPolicy, free_numerals, render_answer
+from app.applications.apparel.modules.analytics.validators import validate_finding, validate_response
 
 # ------------------------------------------------------------- maturity ---
 
@@ -49,7 +49,7 @@ def test_maturity_ratio_outside_unit_interval_fails():
 def _fact(value: str, fact_id: str = "F1") -> object:
     from datetime import timedelta
 
-    from app.modules.analytics.contracts import AnalysisPeriod, MetricFact
+    from app.applications.apparel.modules.analytics.contracts import AnalysisPeriod, MetricFact
 
     now = datetime(2026, 10, 1, tzinfo=UTC)
     return MetricFact(

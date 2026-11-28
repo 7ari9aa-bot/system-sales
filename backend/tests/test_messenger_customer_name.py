@@ -12,9 +12,9 @@ import uuid
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.base import InboundMessage
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.base import InboundMessage
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
 TENANT = uuid.uuid4()
 
@@ -245,8 +245,8 @@ async def test_no_redis_still_works(monkeypatch) -> None:
 
 
 def test_only_messenger_can_look_a_person_up() -> None:
-    from app.modules.conversations.gateway.instagram import instagram_adapter
-    from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
+    from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+    from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
     assert callable(getattr(messenger_adapter, "fetch_profile", None))
     assert not hasattr(whatsapp_adapter, "fetch_profile")

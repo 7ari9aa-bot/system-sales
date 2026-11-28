@@ -18,11 +18,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import app.core.model_registry  # noqa: F401  (every table must be known: a payment points at pos_sessions)
 from app.core.db import bind_tenant
 from app.core.security import hash_password
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
 from app.modules.identity.models import Role, Tenant, TenantUser, User
-from app.modules.inventory.service import InventoryService
-from app.modules.purchasing.service import (
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.purchasing.service import (
     CostService,
     PurchaseService,
     SupplierPaymentService,

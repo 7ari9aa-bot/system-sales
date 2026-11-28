@@ -20,7 +20,7 @@ from app.modules.imports.apply import apply_batch
 from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
 from app.modules.imports.models import ImportRow, ImportSession
 from app.modules.imports.verdicts import encode_values, values_of
-from app.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.models import Warehouse
 from app.workers.import_runner import PORTS
 
 pytestmark = pytest.mark.asyncio
@@ -128,7 +128,7 @@ async def test_the_files_category_and_brand_become_the_shops_own(db, tenant_ctx)
 
 async def test_an_existing_category_is_reused_not_forked(db, tenant_ctx):
     t = tenant_ctx.tenant_id
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     existing = await CatalogService.create_category(db, t, name="بناطيل")
     await db.flush()

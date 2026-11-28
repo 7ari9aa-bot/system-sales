@@ -8,10 +8,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import app.modules.purchasing.models  # noqa: F401
-from app.modules.catalog.service import CatalogService
+import app.applications.apparel.modules.purchasing.models  # noqa: F401
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.inventory.service import TraceabilityService
+from app.applications.apparel.modules.inventory.service import TraceabilityService
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 6.3 Tracking Policy and Mandatory Expiry Enforcement

@@ -214,7 +214,7 @@ class TestSerializerLeakage:
         # fail — the serialized dict is exactly what the API returns.
         from types import SimpleNamespace
 
-        from app.modules.customers.router import _integration_output
+        from app.applications.apparel.modules.customers.router import _integration_output
 
         integration = SimpleNamespace(
             id="00000000-0000-0000-0000-000000000001",

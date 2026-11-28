@@ -273,8 +273,8 @@ async def test_a_suspended_tenant_job_is_deferred_not_run(db, tenant_ctx):
 
 async def test_the_segment_handler_recomputes_and_records_a_real_result(db, tenant_ctx):
     """Prove the registered handler does real work, not just return a stub."""
-    from app.modules.customers.models import Customer
-    from app.modules.segments.service import Segment, SegmentService
+    from app.applications.apparel.modules.customers.models import Customer
+    from app.applications.apparel.modules.segments.service import Segment, SegmentService
 
     db.add(Customer(tenant_id=tenant_ctx.tenant_id, name="Ada", email="ada@example.com"))
     await db.flush()

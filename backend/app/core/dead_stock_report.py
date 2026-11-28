@@ -29,10 +29,10 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profit_report import _NOT_A_SALE, ProfitCtx
-from app.modules.catalog.apparel.matrix import color_column, size_column
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import InventoryMovement
-from app.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.catalog.apparel.matrix import color_column, size_column
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import InventoryMovement
+from app.applications.apparel.modules.orders.models import Order, OrderItem
 
 # Declared light, like the stock view: this report reads two columns of each.
 _InventoryBalance = table(

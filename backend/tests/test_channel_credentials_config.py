@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.modules.conversations.read_signal_service import ReadSignalService
+from app.applications.apparel.modules.conversations.read_signal_service import ReadSignalService
 from app.modules.platform.models import Integration
 from app.modules.platform.services import channel_access
 from tests.test_whatsapp_read_signal import _chat, _conversation, _Spy
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.asyncio
 def spy(monkeypatch):
     """A stand-in provider adapter, so no network is touched."""
     s = _Spy()
-    monkeypatch.setattr("app.modules.conversations.read_signal_service.get_adapter", lambda name: s)
+    monkeypatch.setattr("app.applications.apparel.modules.conversations.read_signal_service.get_adapter", lambda name: s)
     return s
 
 

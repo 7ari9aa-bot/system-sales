@@ -13,10 +13,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import InsufficientStockError
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import (
     InventoryBundleService,
     InventoryService,
 )

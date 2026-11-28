@@ -12,16 +12,16 @@ import uuid
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as si
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _recorded_summary,
     _with_data_recorded,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.tools import TOOLS
 from app.modules.settings.service import SettingsService
 from tests.test_si_agent import _seed
 

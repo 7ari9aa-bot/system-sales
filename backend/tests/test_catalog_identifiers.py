@@ -16,7 +16,7 @@ import uuid
 
 import pytest
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
 
 

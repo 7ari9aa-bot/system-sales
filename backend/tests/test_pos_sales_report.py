@@ -17,7 +17,7 @@ from tests.test_pos_exchange import _customer, _register, _sellable_variant
 
 
 async def _shift_with_sale(db, tenant_ctx, qty=2, price="50.00"):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -118,7 +118,7 @@ async def test_the_range_is_inclusive_and_excludes_other_days(db, tenant_ctx):
 
 
 async def test_no_activity_means_no_rows(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     assert (
         await PosService.sales_by_day(

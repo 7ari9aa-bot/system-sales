@@ -29,12 +29,12 @@ from typing import Any
 import httpx
 import pytest
 
-from app.modules.catalog.external import shopify_adapter as sa
-from app.modules.catalog.external.shopify_adapter import (
+from app.applications.apparel.modules.catalog.external import shopify_adapter as sa
+from app.applications.apparel.modules.catalog.external.shopify_adapter import (
     ShopifyAdapter,
     _normalize_shopify_order,
 )
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
 
 ADAPTER_SOURCE = pathlib.Path(sa.__file__)

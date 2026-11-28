@@ -19,11 +19,11 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.modules.conversations.gateway.base import StatusUpdate
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.conversations.gateway.base import StatusUpdate
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 # §22 moved the state machine out of router._apply_status_updates.
 _apply_status_updates = IngestService.apply_status_updates

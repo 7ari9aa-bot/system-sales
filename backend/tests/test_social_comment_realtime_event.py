@@ -35,7 +35,7 @@ def test_the_envelope_builds_with_the_post_it_belongs_to() -> None:
 
 
 def test_the_announcement_carries_ids_only_never_the_comment_text() -> None:
-    from app.modules.conversations.social_comments import comment_changed_payload
+    from app.applications.apparel.modules.conversations.social_comments import comment_changed_payload
 
     payload = comment_changed_payload(
         platform="facebook",
@@ -56,7 +56,7 @@ def test_the_announcement_carries_ids_only_never_the_comment_text() -> None:
 
 def test_a_comment_with_no_post_is_not_announced() -> None:
     """A screen refetches by post, so an announcement without one has nobody to wake."""
-    from app.modules.conversations.social_comments import comment_changed_payload
+    from app.applications.apparel.modules.conversations.social_comments import comment_changed_payload
 
     assert (
         comment_changed_payload(
@@ -67,7 +67,7 @@ def test_a_comment_with_no_post_is_not_announced() -> None:
 
 
 async def test_announce_stages_one_outbox_event_on_the_comment_stream(monkeypatch) -> None:
-    from app.modules.conversations import social_comments as mod
+    from app.applications.apparel.modules.conversations import social_comments as mod
 
     staged: list[dict] = []
 
@@ -95,7 +95,7 @@ async def test_announce_stages_one_outbox_event_on_the_comment_stream(monkeypatc
 
 
 async def test_announce_does_nothing_without_a_post(monkeypatch) -> None:
-    from app.modules.conversations import social_comments as mod
+    from app.applications.apparel.modules.conversations import social_comments as mod
 
     async def boom(*a, **k):
         raise AssertionError("must not stage an event with no post")

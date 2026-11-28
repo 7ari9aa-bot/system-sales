@@ -15,14 +15,14 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_find_customer,
     _si_find_order,
 )
-from app.modules.ai.tools import TOOLS
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order, OrderItem
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -385,12 +385,12 @@ async def test_a_customer_match_is_backed_by_evidence(db, tenant_ctx):
 
 
 def test_both_tools_are_registered_read_only_and_gated():
-    import app.modules.ai.agents.sales_intelligence.tools as si
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
 
     spec = TOOLS["si_shop"]
     assert spec.risk_level == "LOW"
@@ -402,7 +402,7 @@ def test_both_tools_are_registered_read_only_and_gated():
 
 
 def test_every_lookup_query_is_tenant_scoped_and_skips_deleted_rows():
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     for name in ("_FIND_ORDER_SQL", "_FIND_ORDER_ITEMS_SQL", "_FIND_CUSTOMER_SQL"):
         sql = getattr(si, name)
@@ -469,7 +469,7 @@ def test_every_table_in_a_lookup_query_is_tenant_matched():
     sharing the alias ``o`` must not be covered by one match)."""
     import re
 
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     for name in ("_FIND_ORDER_SQL", "_FIND_ORDER_ITEMS_SQL", "_FIND_CUSTOMER_SQL"):
         sql = getattr(si, name)

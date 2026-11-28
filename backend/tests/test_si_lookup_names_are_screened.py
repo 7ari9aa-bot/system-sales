@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_find_customer,
     _si_find_order,
     _untrusted_text,

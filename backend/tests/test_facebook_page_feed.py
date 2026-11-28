@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.facebook_feed import PageEventProcessor
-from app.modules.conversations.gateway.facebook import FacebookPageAdapter
+from app.applications.apparel.modules.conversations.facebook_feed import PageEventProcessor
+from app.applications.apparel.modules.conversations.gateway.facebook import FacebookPageAdapter
 
 TENANT = uuid.uuid4()
 

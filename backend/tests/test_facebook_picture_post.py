@@ -17,13 +17,13 @@ from app.core.middleware import (
     MAX_FACEBOOK_POST_BYTES,
     BodySizeLimitMiddleware,
 )
-from app.modules.conversations import facebook_service as fs
-from app.modules.conversations.facebook_service import (
+from app.applications.apparel.modules.conversations import facebook_service as fs
+from app.applications.apparel.modules.conversations.facebook_service import (
     MAX_PICTURE_BYTES,
     FacebookService,
     picture_kind,
 )
-from app.modules.conversations.routers.facebook_pages import PublishRequest, _decode_picture
+from app.applications.apparel.modules.conversations.routers.facebook_pages import PublishRequest, _decode_picture
 
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64

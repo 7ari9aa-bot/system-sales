@@ -45,12 +45,12 @@ from app.core.circuit_breaker import (
     reset_breakers,
 )
 from app.core.errors import CircuitOpenError, ExternalProviderError
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.email import email_adapter
-from app.modules.conversations.gateway.instagram import instagram_adapter
-from app.modules.conversations.gateway.messenger import messenger_adapter
-from app.modules.conversations.gateway.telegram import telegram_adapter
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.email import email_adapter
+from app.applications.apparel.modules.conversations.gateway.instagram import instagram_adapter
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.telegram import telegram_adapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY_DIR = BACKEND_ROOT / "app" / "modules" / "conversations" / "gateway"

@@ -51,13 +51,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.analytics.service import revenue_summary
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.customers.timeline import Customer360Service
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.analytics.service import revenue_summary
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.timeline import Customer360Service
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.service import OrderService
 
 # --- documented budgets (ms). Keep in sync with the module docstring. --------
 BUDGET_CREATE_ORDER_MS = 300.0

@@ -5,12 +5,12 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import event
 
-from app.modules.conversations import inbox as inbox_mod
-from app.modules.conversations.inbox import InboxQuery
-from app.modules.conversations.models import Conversation
-from app.modules.conversations.routers._deps import _redact_inbox_item
-from app.modules.customers.models import CustomerIdentity
-from app.modules.customers.services.customer import CustomerService
+from app.applications.apparel.modules.conversations import inbox as inbox_mod
+from app.applications.apparel.modules.conversations.inbox import InboxQuery
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.conversations.routers._deps import _redact_inbox_item
+from app.applications.apparel.modules.customers.models import CustomerIdentity
+from app.applications.apparel.modules.customers.services.customer import CustomerService
 
 
 async def _chat(db, t, channel, ext, name, extra=None):

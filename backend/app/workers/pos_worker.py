@@ -18,7 +18,7 @@ from app.core.db import SessionLocal, bind_tenant
 from app.core.errors import ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import EventEnvelope, deserialize_event
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from app.workers.base import StreamWorker
 
 logger = logging.getLogger(__name__)

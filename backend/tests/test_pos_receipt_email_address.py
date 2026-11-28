@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from app.modules.errors import ValidationError
-from app.modules.pos.router import ReceiptEmailRequest
+from app.applications.apparel.modules.pos.router import ReceiptEmailRequest
 
 BAD = [
     "a@",
@@ -36,14 +36,14 @@ def test_the_request_accepts_a_real_address_and_trims_it():
 
 @pytest.mark.parametrize("address", BAD)
 def test_the_service_refuses_it_too(address):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     with pytest.raises(ValidationError):
         PosService._clean_receipt_email(address)
 
 
 def test_the_service_returns_the_cleaned_address():
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     assert (
         PosService._clean_receipt_email(" Customer@Example.com ") == "Customer@example.com"

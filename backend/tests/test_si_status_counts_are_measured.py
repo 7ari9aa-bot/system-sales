@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as si
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.agents.sales_intelligence.tools import _si_data_status, _si_metric
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_data_status, _si_metric
 from tests.test_si_why_tool import _orders
 
 pytestmark = pytest.mark.usefixtures("db")
@@ -97,7 +97,7 @@ async def test_no_amount_travels_with_the_counts(db, tenant_ctx):
 
 async def test_the_registered_status_tool_carries_the_counts_and_the_note(db, tenant_ctx):
     """Through the tool the model reaches, with the wrappers it really has."""
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     t = tenant_ctx.tenant_id
     await _orders(db, t, n=3, days_ago=2, total="10.00", tag="wired")

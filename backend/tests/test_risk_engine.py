@@ -43,11 +43,11 @@ def test_registry_actions_classify_at_their_base_level(action, expected):
 # tools (purge_customer_data) into the module-global TOOLS and unregister
 # nothing, so a snapshot taken inside a test body runs AFTER their pollution
 # and sees an action that exists nowhere in the app.
-_SHIPPED_TOOLS = frozenset(__import__("app.modules.ai.tools", fromlist=["TOOLS"]).TOOLS)
+_SHIPPED_TOOLS = frozenset(__import__("app.applications.apparel.modules.ai.tools", fromlist=["TOOLS"]).TOOLS)
 
 
 def test_registry_covers_every_ai_tool_without_disagreement():
-    from app.modules.ai import tools as ai_tools
+    from app.applications.apparel.modules.ai import tools as ai_tools
 
     for name in sorted(_SHIPPED_TOOLS):
         spec = ai_tools.TOOLS[name]

@@ -19,17 +19,17 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_expenses_summary,
     _si_profit_summary,
 )
-from app.modules.ai.tools import TOOLS
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.customers.models import Customer
-from app.modules.expenses.models import Expense, ExpenseCategory
-from app.modules.orders.models import Order, OrderItem, Shipment
-from app.modules.pos import models as _pos_models  # noqa: F401  (expenses.session_id FK)
-from app.modules.purchasing.models import VariantCost
+from app.applications.apparel.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.expenses.models import Expense, ExpenseCategory
+from app.applications.apparel.modules.orders.models import Order, OrderItem, Shipment
+from app.applications.apparel.modules.pos import models as _pos_models  # noqa: F401  (expenses.session_id FK)
+from app.applications.apparel.modules.purchasing.models import VariantCost
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -384,9 +384,9 @@ async def test_one_shop_never_sees_another_shops_money(db, tenant_ctx):
 
 
 def test_the_money_tool_is_registered_gated_low_risk_and_allowed():
-    import app.modules.ai.agents.sales_intelligence.tools as si
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
     for name in ("si_finance",):
@@ -397,7 +397,7 @@ def test_the_money_tool_is_registered_gated_low_risk_and_allowed():
 
 
 def test_the_sql_is_scoped_to_the_tenant_on_every_table():
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     for sql in (si._EXPENSES_SQL, si._PROFIT_REVENUE_SQL, si._PROFIT_LINES_SQL):
         assert ":tenant_id" in sql

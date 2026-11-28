@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import partitioning
 from app.core.db import bind_tenant
-from app.modules.analytics import retention
+from app.applications.apparel.modules.analytics import retention
 from app.modules.platform.models import ScheduledJob
 from app.workers import scheduler_worker as sw
 

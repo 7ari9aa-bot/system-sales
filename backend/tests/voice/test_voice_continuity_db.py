@@ -19,8 +19,8 @@ import sqlalchemy as sa
 
 from app.core.db import bind_tenant
 from app.core.errors import NotFoundError
-from app.modules.ai.chat import service as chat_service
-from app.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.models import Agent
 from app.modules.voice.application.session_manager import VoiceSessionManager
 from app.modules.voice.application.session_thread import ensure_session_thread
 from app.modules.voice.domain.models import VoiceSessionRow

@@ -8,9 +8,9 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ConflictError, ExternalProviderError, NotFoundError, ValidationError
-from app.modules.conversations import social_service as ss
-from app.modules.conversations.models import SocialComment, SocialPost
-from app.modules.conversations.social_service import SocialService
+from app.applications.apparel.modules.conversations import social_service as ss
+from app.applications.apparel.modules.conversations.models import SocialComment, SocialPost
+from app.applications.apparel.modules.conversations.social_service import SocialService
 
 CREDS = {"api_key": "t", "account_id": "ig1"}
 

@@ -33,17 +33,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from app.core.events.schemas import deserialize
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, ValidationError
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.identity.models import Tenant
 from app.modules.identity.service import TenantSettingsService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import money as order_money
-from app.modules.orders.models import Order, OrderItem
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import money as order_money
+from app.applications.apparel.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.orders.service import OrderService
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -375,7 +375,7 @@ async def test_a_tier_in_another_currency_never_prices_this_tenants_order(
     now refuses (§47) — this is the legacy row that already exists in a database
     written before that rule, and checkout must still ignore it.
     """
-    from app.modules.catalog.models import ProductPrice
+    from app.applications.apparel.modules.catalog.models import ProductPrice
 
     customer = await _buyer(db, tenant_ctx.tenant_id)
     variant, warehouse = await _stocked_variant(db, tenant_ctx.tenant_id, price="100.00")

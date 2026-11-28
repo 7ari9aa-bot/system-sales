@@ -23,13 +23,13 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.tools import _si_cashier_summary
-from app.modules.ai.tools import TOOLS
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.customers.models import Customer
-from app.modules.inventory.models import Warehouse
-from app.modules.orders.models import Order
-from app.modules.pos.models import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_cashier_summary
+from app.applications.apparel.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.pos.models import (
     PosHeldCart,
     PosProfile,
     PosReceipt,
@@ -213,7 +213,7 @@ async def test_a_sale_made_a_minute_ago_is_in_todays_numbers(db, tenant_ctx):
 
 
 async def test_a_one_day_window_does_not_reach_back_to_yesterday(db, tenant_ctx):
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     t = tenant_ctx.tenant_id
     sh = await _shift(db, t)
@@ -352,7 +352,7 @@ async def test_the_window_is_exactly_the_days_asked_for_counting_today(db, tenan
     Without the one-day shift the window is 31 days long."""
     from zoneinfo import ZoneInfo
 
-    from app.modules.analytics.service import resolve_report_timezone
+    from app.applications.apparel.modules.analytics.service import resolve_report_timezone
 
     t = tenant_ctx.tenant_id
     sh = await _shift(db, t)
@@ -477,12 +477,12 @@ async def test_one_shop_never_sees_another_shops_till(db, tenant_ctx):
 
 
 def test_registered_with_the_same_permission_the_till_reports_use():
-    import app.modules.ai.agents.sales_intelligence.tools as si
+    import app.applications.apparel.modules.ai.agents.sales_intelligence.tools as si
     from app.core.risk import known_actions
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     si.register_si_tools()
-    from app.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _SHOP_VIEWS
 
     spec = TOOLS["si_shop"]
     # the permission is the READ's: the till is read with the same permission the till reports use
@@ -493,7 +493,7 @@ def test_registered_with_the_same_permission_the_till_reports_use():
 
 
 def test_every_cashier_query_is_tenant_scoped():
-    from app.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
 
     for name in ("_CASHIER_SALES_SQL", "_CASHIER_RETURNS_SQL", "_CASHIER_SHIFTS_SQL"):
         assert "tenant_id = :tenant_id" in getattr(si, name), name

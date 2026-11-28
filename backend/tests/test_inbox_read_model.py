@@ -84,7 +84,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.db import Base
-from app.modules.conversations.inbox import INBOX_PREVIEW_CHARS, InboxQuery
+from app.applications.apparel.modules.conversations.inbox import INBOX_PREVIEW_CHARS, InboxQuery
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 OTHER_TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -328,7 +328,7 @@ async def test_a_cursor_into_the_null_tail_narrows_by_id() -> None:
 
 
 def test_keyset_cursor_round_trips_a_null_instant() -> None:
-    from app.modules.conversations.inbox import decode_keyset, encode_keyset
+    from app.applications.apparel.modules.conversations.inbox import decode_keyset, encode_keyset
 
     assert decode_keyset(encode_keyset(None, CONVERSATION)) == (None, CONVERSATION)
     assert decode_keyset(encode_keyset(NOW, CONVERSATION)) == (NOW, CONVERSATION)
@@ -344,7 +344,7 @@ def test_keyset_cursor_still_accepts_the_shape_it_shipped_with() -> None:
     import json
 
     from app.core.pagination import decode_cursor
-    from app.modules.conversations.inbox import decode_keyset
+    from app.applications.apparel.modules.conversations.inbox import decode_keyset
 
     legacy = (
         base64.urlsafe_b64encode(
@@ -358,7 +358,7 @@ def test_keyset_cursor_still_accepts_the_shape_it_shipped_with() -> None:
 
 def test_keyset_cursor_rejects_garbage_as_the_other_lists_do() -> None:
     from app.core.errors import InvalidCursorError
-    from app.modules.conversations.inbox import decode_keyset
+    from app.applications.apparel.modules.conversations.inbox import decode_keyset
 
     with pytest.raises(InvalidCursorError):
         decode_keyset("not-a-cursor")
@@ -394,7 +394,7 @@ def test_write_service_no_longer_performs_inbox_reads() -> None:
     mark_read). It must not also own the inbox projection: that is what makes
     a read cheap to fix and expensive to forget.
     """
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     assert not hasattr(ConversationService, "inbox_query"), (
         "the §137 inbox read still lives on the write service"
@@ -403,7 +403,7 @@ def test_write_service_no_longer_performs_inbox_reads() -> None:
         "the §137 inbox read still lives on the write service"
     )
     service_src = (
-        pathlib.Path(__file__).resolve().parents[1] / "app/modules/conversations/service.py"
+        pathlib.Path(__file__).resolve().parents[1] / "app/applications/apparel/modules/conversations/service.py"
     ).read_text(encoding="utf-8")
     assert "FROM conversations" not in service_src.lower(), (
         "the write service is still hand-writing inbox SQL"
@@ -428,7 +428,7 @@ def test_mark_read_fetches_nothing_it_throws_away() -> None:
     (does this system even track per-message reads?) inside a line that looked
     like an answer.
     """
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     body = inspect.getsource(ConversationService.mark_read)
     # Comments excluded on purpose: the function now DOCUMENTS the statement it
@@ -450,7 +450,7 @@ def test_read_model_imports_no_other_module() -> None:
     projection, and the one the boundary ratchet in
     ``tests/test_module_boundaries.py`` exists to route around.
     """
-    path = pathlib.Path(__file__).resolve().parents[1] / "app/modules/conversations/inbox.py"
+    path = pathlib.Path(__file__).resolve().parents[1] / "app/applications/apparel/modules/conversations/inbox.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     offenders = []
     for node in ast.walk(tree):
@@ -535,7 +535,7 @@ def test_phone_is_redacted_without_pii_read() -> None:
     here is ``customer_phone``, which is not the bare ``phone`` in
     ``PII_FIELDS``, so the default set would silently ship it.
     """
-    from app.modules.conversations.router import _redact_inbox_item
+    from app.applications.apparel.modules.conversations.router import _redact_inbox_item
 
     item = {
         "id": str(CONVERSATION),
@@ -550,7 +550,7 @@ def test_phone_is_redacted_without_pii_read() -> None:
 
 
 def test_phone_survives_for_a_pii_reader() -> None:
-    from app.modules.conversations.router import _redact_inbox_item
+    from app.applications.apparel.modules.conversations.router import _redact_inbox_item
 
     item = {"id": "x", "customer_name": "منى", "customer_phone": "+201000000000"}
     assert _redact_inbox_item(item, permission_codes={"pii:read"})["customer_phone"]
@@ -605,8 +605,8 @@ async def inbox_seed(db):
       the id is left unset.
     """
     from app.core.db import bind_tenant
-    from app.modules.conversations.models import Conversation, Message
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.customers.models import Customer
     from app.modules.identity.models import Tenant
     from app.modules.operations.models import SLAEvent
 
@@ -679,7 +679,7 @@ async def test_a_deleted_last_message_is_reported_as_deleted(db, inbox_seed) -> 
     """
     from sqlalchemy import select
 
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     newest = (
         await db.execute(
@@ -703,7 +703,7 @@ async def test_a_media_last_message_reports_its_kind_without_a_body(db, inbox_se
     The row must carry the kind so the list can say "Photo" instead of showing
     nothing under the customer's name.
     """
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     db.add(
         Message(
@@ -736,7 +736,7 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     assertion that keeps a future projection honest: after a write, the very
     next page already shows it — no lag window at all.
     """
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     before = await InboxQuery.page(db, TENANT, limit=50)
     assert before[0]["unread_count"] == 2
@@ -757,7 +757,7 @@ async def test_unread_cannot_drift_from_the_facts_it_projects(db, inbox_seed) ->
     from sqlalchemy import func
     from sqlalchemy import select as sa_select
 
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     inbound = (
         await db.execute(
@@ -787,8 +787,8 @@ async def test_page_is_tenant_isolated(db, inbox_seed) -> None:
     absent tenant.
     """
     from app.core.db import bind_tenant
-    from app.modules.conversations.models import Conversation
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.customers.models import Customer
     from app.modules.identity.models import Tenant
 
     db.add(
@@ -836,7 +836,7 @@ async def test_one_page_costs_one_statement_on_a_real_database(db, inbox_seed) -
 
 async def test_preview_is_bounded_in_sql(db, inbox_seed) -> None:
     """§110 "No huge payloads": the preview is truncated WHERE it is read."""
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     long_body = "ل" * (INBOX_PREVIEW_CHARS * 5)
     db.add(

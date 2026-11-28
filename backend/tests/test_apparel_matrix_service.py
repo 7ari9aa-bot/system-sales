@@ -7,12 +7,12 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
-from app.modules.catalog.apparel.service import ApparelMatrixService as M
-from app.modules.catalog.models import ProductOption, ProductVariant, ProductVariantOptionValue
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.apparel.matrix import COLOR_AXIS, SIZE_AXIS
+from app.applications.apparel.modules.catalog.apparel.service import ApparelMatrixService as M
+from app.applications.apparel.modules.catalog.models import ProductOption, ProductVariant, ProductVariantOptionValue
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.service import InventoryService
 from tests.test_pos_returns import _warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -188,7 +188,7 @@ async def test_one_shop_cannot_build_on_anothers_garment(db, tenant_ctx) -> None
 
 
 async def test_availability_applies_the_quarantine_and_reservation_rules(db, tenant_ctx) -> None:
-    from app.modules.inventory.service import InventoryService as Inv
+    from app.applications.apparel.modules.inventory.service import InventoryService as Inv
 
     t = tenant_ctx.tenant_id
     warehouse = await _warehouse(db, tenant_ctx)
@@ -206,7 +206,7 @@ async def test_availability_applies_the_quarantine_and_reservation_rules(db, ten
 
 
 async def test_one_shop_never_sees_anothers_stock_levels(db, tenant_ctx) -> None:
-    from app.modules.inventory.service import InventoryService as Inv
+    from app.applications.apparel.modules.inventory.service import InventoryService as Inv
 
     t = tenant_ctx.tenant_id
     warehouse = await _warehouse(db, tenant_ctx)

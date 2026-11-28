@@ -11,8 +11,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.customers import instagram_login
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.customers import instagram_login
 
 
 def test_the_authorize_url_is_instagrams_own_and_asks_for_no_page_scope():

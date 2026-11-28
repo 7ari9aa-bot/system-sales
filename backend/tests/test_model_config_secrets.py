@@ -5,9 +5,9 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.secrets import InMemorySecretStore, get_envelope_store
-from app.modules.ai.gateway import resolve_model_config
-from app.modules.ai.models import ModelConfig
-from app.modules.ai.secret_backfill import (
+from app.applications.apparel.modules.ai.gateway import resolve_model_config
+from app.applications.apparel.modules.ai.models import ModelConfig
+from app.applications.apparel.modules.ai.secret_backfill import (
     backfill_model_config_secrets,
     model_config_vault_key,
     set_model_config_secret,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.owner_habits import (
+from app.applications.apparel.modules.ai.owner_habits import (
     MIN_PERIOD_QUESTIONS,
     PERIOD_SHARE,
     detect_period_habit,

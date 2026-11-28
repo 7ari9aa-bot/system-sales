@@ -11,12 +11,12 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import app.modules.purchasing.models  # noqa: F401
-from app.modules.catalog.models import Product
-from app.modules.catalog.service import CatalogService
+import app.applications.apparel.modules.purchasing.models  # noqa: F401
+from app.applications.apparel.modules.catalog.models import Product
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.deps import TenantContext
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.router import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.router import (
     ChannelAllocationIn,
     delete_channel_allocation,
     get_channel_availability,
@@ -26,13 +26,13 @@ from app.modules.inventory.router import (
     mark_serials_sold,
     set_channel_allocation,
 )
-from app.modules.inventory.service import (
+from app.applications.apparel.modules.inventory.service import (
     ChannelAllocationService,
     InsufficientStockError,
     InventoryService,
     TraceabilityService,
 )
-from app.modules.orders.service import OrderService
+from app.applications.apparel.modules.orders.service import OrderService
 
 
 def _ctx(db, tenant_ctx) -> TenantContext:
@@ -181,7 +181,7 @@ async def test_channel_allocation_orders_integration(db: AsyncSession, tenant_ct
         db, tid, warehouse_id=wh.id, variant_id=var.id, channel="website", quantity=2
     )
 
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     cust, _ = await CustomerService.find_or_create_by_phone(
         db, tid, phone="+201012345678", name="Online Shopper"
@@ -279,7 +279,7 @@ async def test_checkout_traceability_and_serials_endpoints(db: AsyncSession, ten
     assert trace_info["serials"][0]["serial_code"] in ("SN-001", "SN-002")
 
     # Mark SN-001 as sold
-    from app.modules.inventory.router import MarkSerialsRequest
+    from app.applications.apparel.modules.inventory.router import MarkSerialsRequest
 
     sold_res = await mark_serials_sold(var.id, MarkSerialsRequest(serial_codes=["SN-001"]), ctx)
     assert sold_res["ok"] is True

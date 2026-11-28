@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway import ingest as ingest_mod
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
+from app.applications.apparel.modules.conversations.gateway import ingest as ingest_mod
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter as adapter
 from app.modules.platform.diagnostics import channel_problems
 
 

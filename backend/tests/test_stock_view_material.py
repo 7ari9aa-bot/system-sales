@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.pos.router import StockRow
-from app.modules.pos.stock_view import StockViewService
+from app.applications.apparel.modules.pos.router import StockRow
+from app.applications.apparel.modules.pos.stock_view import StockViewService
 from tests.test_inventory_stock_view import _variant
 
 pytestmark = pytest.mark.asyncio

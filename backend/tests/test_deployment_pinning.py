@@ -29,11 +29,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun, AgentVersion, Deployment
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.versions import AIAgentVersionService
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentVersion, Deployment
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.versions import AIAgentVersionService
 
 pytestmark = pytest.mark.usefixtures("db")
 

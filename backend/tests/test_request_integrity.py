@@ -688,7 +688,7 @@ async def test_idempotency_scope_isolates_tenants(db, tenant_ctx) -> None:
 
 
 async def test_stale_version_fails_with_409_and_does_not_write(db, tenant_ctx) -> None:
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Acme")
     db.add(customer)
@@ -706,7 +706,7 @@ async def test_stale_version_fails_with_409_and_does_not_write(db, tenant_ctx) -
 
 
 async def test_current_version_update_succeeds(db, tenant_ctx) -> None:
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Acme")
     db.add(customer)
@@ -730,7 +730,7 @@ async def test_version_check_is_atomic_against_a_concurrent_writer(db, tenant_ct
     check-then-act guard using that in-memory value would pass and clobber the
     concurrent write; the atomic WHERE-clause update must not.
     """
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Acme")
     db.add(customer)

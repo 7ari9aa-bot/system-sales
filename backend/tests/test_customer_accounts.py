@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
-from app.modules.customer_accounts.service import CustomerAccountService as S
+from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as S
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 from tests._pos_helpers import in_tx as _in_tx
 from tests._pos_helpers import make_tenant as _make_tenant
@@ -195,7 +195,7 @@ async def two_tenants(db_url, admin_url):
 
 
 async def _make_customer(factory, tenant_id):
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     async def make(s):
         c = Customer(tenant_id=tenant_id, name="عميل")

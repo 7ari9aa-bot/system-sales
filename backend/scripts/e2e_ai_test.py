@@ -21,11 +21,11 @@ from _bootstrap import load_settings, session_factory
 
 from app.core.db import bind_tenant
 from app.core.model_registry import Base  # noqa: F401 — register FK targets
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.knowledge import search_knowledge
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Conversation, Message
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.knowledge import search_knowledge
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.models import Conversation, Message
 from app.modules.identity.models import Tenant
 
 

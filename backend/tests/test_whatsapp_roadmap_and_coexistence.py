@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.modules.customers import whatsapp_roadmap as roadmap
-from app.modules.customers.capability_states import (
+from app.applications.apparel.modules.customers import whatsapp_roadmap as roadmap
+from app.applications.apparel.modules.customers.capability_states import (
     ACCOUNT_INELIGIBLE,
     AVAILABLE,
     NEEDS_APP_REVIEW,
@@ -22,7 +22,7 @@ from app.modules.customers.capability_states import (
     STATES,
     evaluate,
 )
-from app.modules.customers.meta_whatsapp_signup import WhatsAppSignupCompleteBody
+from app.applications.apparel.modules.customers.meta_whatsapp_signup import WhatsAppSignupCompleteBody
 
 
 def test_every_gated_feature_is_declared_with_evidence_and_an_action():

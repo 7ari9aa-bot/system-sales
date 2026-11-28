@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.tools import get_tool
 
 
 def _description() -> str:
@@ -22,7 +22,7 @@ def _description() -> str:
 
 def _allowed() -> dict[str, list[str]]:
     """What a breakdown call can actually run: declared by the registry AND compiled."""
-    from app.modules.analytics import compiler as C
+    from app.applications.apparel.modules.analytics import compiler as C
 
     registry, names, _ = T._metric_registry()
     reg = registry() if callable(registry) else registry
@@ -61,7 +61,7 @@ def test_a_breakdown_nobody_supports_is_named_as_unavailable_not_left_to_a_faile
 
 
 def test_the_listing_follows_the_registry_not_a_typed_copy(monkeypatch):
-    from app.modules.analytics import compiler as C
+    from app.applications.apparel.modules.analytics import compiler as C
 
     monkeypatch.setitem(C._BREAKDOWN_STATEMENTS, "orders_placed", ("select 1", "zzz_dim"))
     registry, _, _ = T._metric_registry()
@@ -98,7 +98,7 @@ def test_the_metrics_are_separated_so_one_cannot_run_into_the_next():
 
 def test_a_compiled_breakdown_the_registry_does_not_allow_is_not_offered(monkeypatch):
     """The compiler refuses a dimension the registry does not declare, so offering it would fail."""
-    from app.modules.analytics import compiler as C
+    from app.applications.apparel.modules.analytics import compiler as C
 
     monkeypatch.setitem(C._BREAKDOWN_STATEMENTS, "orders_placed", ("select 1", "zzz_undeclared"))
     assert "zzz_undeclared" not in T._split_table()

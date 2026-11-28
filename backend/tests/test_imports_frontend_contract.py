@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.models import Warehouse
 from app.modules.platform.models import Job
 from app.workers.import_runner import run_batch
 from tests.test_imports_http import BOTH, XLSX, _xlsx, api  # noqa: F401, F811  (api is a fixture)

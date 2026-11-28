@@ -11,8 +11,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
 PAGE = "PAGE-1"
 USER = "PSID-9"

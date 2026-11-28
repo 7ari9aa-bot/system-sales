@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
-from app.modules.einvoice.ports import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
+from app.applications.apparel.modules.einvoice.ports import (
     EInvoiceContext,
     InvoiceLineItem,
     PartyInfo,
 )
-from app.modules.einvoice.providers.zatca.tlv import decode_zatca_tlv
-from app.modules.einvoice.service import EInvoiceService
+from app.applications.apparel.modules.einvoice.providers.zatca.tlv import decode_zatca_tlv
+from app.applications.apparel.modules.einvoice.service import EInvoiceService
 
 
 @pytest.mark.asyncio

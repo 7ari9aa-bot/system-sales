@@ -11,11 +11,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.main import create_app
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.errors import InsufficientStockError
-from app.modules.purchasing.service import (
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.errors import InsufficientStockError
+from app.applications.apparel.modules.purchasing.service import (
     CostService,
     PurchaseService,
     SupplierPaymentService,
@@ -101,7 +101,7 @@ async def _variant(db, tenant_ctx, price="100.00"):
 
 
 async def _shift(db, tenant_ctx, opening="500.00"):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     wh = await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
     reg = await PosService.create_register(
@@ -111,7 +111,7 @@ async def _shift(db, tenant_ctx, opening="500.00"):
 
 
 async def _cash_totals(db, tenant_ctx, shift):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     return await PosService._cash_totals(db, tenant_ctx.tenant_id, shift.id)
 

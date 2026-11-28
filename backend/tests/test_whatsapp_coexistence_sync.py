@@ -21,8 +21,8 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.conversations import whatsapp_sync as sync
-from app.modules.conversations.models import WhatsAppSyncRun
+from app.applications.apparel.modules.conversations import whatsapp_sync as sync
+from app.applications.apparel.modules.conversations.models import WhatsAppSyncRun
 
 
 def _client(handler) -> httpx.AsyncClient:

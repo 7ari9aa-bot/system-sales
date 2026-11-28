@@ -11,9 +11,9 @@ import uuid
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.gateway.whatsapp_templates import build_send_components as build
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp_templates import build_send_components as build
 
 
 def test_no_variables_means_no_components():

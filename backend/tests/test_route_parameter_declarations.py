@@ -1,6 +1,6 @@
 """The parameter-declaration rule, swept across the WHOLE app.
 
-The defect class (see the long header in ``app/modules/analytics/router.py``)
+The defect class (see the long header in ``app/applications/apparel/modules/analytics/router.py``)
 --------------------------------------------------------------------------
 ``async def endpoint(limit: int = Query(default=50))`` puts a ``fastapi.params.Query``
 object — a pydantic ``FieldInfo``, which is neither an int nor anything the
@@ -35,7 +35,7 @@ Two things keep the sweep honest:
   named routers, because a sweep of an empty route list also passes.
 
 There used to be a third item here: a SHRINK-ONLY ``DEFERRED_DECLARATIONS``
-baseline naming the eight ``app/modules/ai/router.py`` sites this lane was told
+baseline naming the eight ``app/applications/apparel/modules/ai/router.py`` sites this lane was told
 not to edit while the W4-T3 money lane held them open. The money lane converted
 all eight, so the baseline emptied and was deleted — which is what a shrink-only
 list is for. The sweep is now unconditional: any route parameter anywhere that
@@ -140,14 +140,14 @@ def test_sweep_is_not_vacuous() -> None:
 
     modules = {ep.__module__ for ep in endpoints}
     for owned in (
-        "app.modules.ai.router",
-        "app.modules.analytics.router",
+        "app.applications.apparel.modules.ai.router",
+        "app.applications.apparel.modules.analytics.router",
         "app.modules.automation.router",
-        "app.modules.conversations.router",
-        "app.modules.customers.router",
-        "app.modules.marketing.router",
+        "app.applications.apparel.modules.conversations.router",
+        "app.applications.apparel.modules.customers.router",
+        "app.applications.apparel.modules.marketing.router",
         "app.modules.operations.router",
-        "app.modules.orders.router",
+        "app.applications.apparel.modules.orders.router",
         "app.modules.platform.router",
         "app.modules.privacy.router",
     ):

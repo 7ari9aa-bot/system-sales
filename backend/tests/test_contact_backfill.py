@@ -43,9 +43,9 @@ from app.core.contact_norm import (
     find_canonical_collisions,
     legacy_fabrication,
 )
-from app.modules.customers.models import Customer
-from app.modules.customers.router import router
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.router import router
+from app.applications.apparel.modules.customers.service import CustomerService
 
 EGYPT = "+201001234567"
 IRAQI_MOBILE = "+9647701234567"
@@ -446,7 +446,7 @@ async def test_the_endpoint_redacts_every_phone_column_it_returns(db: AsyncSessi
     renamed keys have to be on the redaction list too."""
     from types import SimpleNamespace
 
-    from app.modules.customers.router import list_contact_data_issues
+    from app.applications.apparel.modules.customers.router import list_contact_data_issues
 
     tenant_id = tenant_ctx.tenant_id
     await _legacy(db, tenant_id, phone=FABRICATED)
@@ -481,7 +481,7 @@ async def test_the_if_match_patch_branch_stores_a_canonical_phone(db: AsyncSessi
 
     from fastapi import Response
 
-    from app.modules.customers.router import CustomerUpdate, update_customer
+    from app.applications.apparel.modules.customers.router import CustomerUpdate, update_customer
 
     tenant_id = tenant_ctx.tenant_id
     # A legacy row: stored raw, because the old code stored whatever was typed.

@@ -8,16 +8,16 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.einvoice.models import EInvoiceDevice
-from app.modules.einvoice.ports import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+from app.applications.apparel.modules.einvoice.ports import (
     EInvoiceContext,
     InvoiceLineItem,
     PartyInfo,
 )
-from app.modules.einvoice.providers.sandbox import INITIAL_PIH_SEED
-from app.modules.einvoice.providers.zatca.provider import ZatcaEInvoiceProvider
-from app.modules.einvoice.providers.zatca.tlv import decode_zatca_tlv, encode_zatca_tlv
-from app.modules.einvoice.providers.zatca.ubl import build_zatca_ubl_xml
+from app.applications.apparel.modules.einvoice.providers.sandbox import INITIAL_PIH_SEED
+from app.applications.apparel.modules.einvoice.providers.zatca.provider import ZatcaEInvoiceProvider
+from app.applications.apparel.modules.einvoice.providers.zatca.tlv import decode_zatca_tlv, encode_zatca_tlv
+from app.applications.apparel.modules.einvoice.providers.zatca.ubl import build_zatca_ubl_xml
 
 
 def _sample_saudi_context(

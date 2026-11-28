@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.modules.conversations.routers.webhooks import webhook_fields
-from app.modules.customers.meta_channel_diagnostics import (
+from app.applications.apparel.modules.conversations.routers.webhooks import webhook_fields
+from app.applications.apparel.modules.customers.meta_channel_diagnostics import (
     DASHBOARD_FIELDS,
     REQUIRED_FIELDS,
     build_report,
 )
-from app.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
+from app.applications.apparel.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES, MESSENGER_SCOPES
 
 NOW = datetime(2026, 11, 23, 9, 0, tzinfo=UTC)
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     MEASURED_FIGURES_NOTE,
     NO_FIGURES_NOTE,
     _only_measured_figures,
@@ -77,8 +77,8 @@ def test_the_note_names_the_numbers_the_model_actually_invented():
 
 async def test_every_registered_tool_is_wrapped():
     """The wiring: a wrapper that is never applied would pass every test above."""
-    from app.modules.ai.agents.sales_intelligence import tools as si
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     TOOLS.pop("si_shop", None)
     si.register_si_tools()
@@ -93,11 +93,11 @@ async def test_the_real_top_customers_tool_carries_it_with_its_measured_total(db
     from datetime import UTC, datetime, timedelta
     from decimal import Decimal
 
-    from app.modules.ai.agents.sales_intelligence import tools as si
-    from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-    from app.modules.ai.tools import TOOLS
-    from app.modules.customers.models import Customer
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+    from app.applications.apparel.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.customers.models import Customer
+    from app.applications.apparel.modules.orders.models import Order
 
     t = tenant_ctx.tenant_id
     c = Customer(tenant_id=t, name="Real", phone="+201000000042")

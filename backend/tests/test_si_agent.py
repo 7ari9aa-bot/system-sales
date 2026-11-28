@@ -13,17 +13,17 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.coverage import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import (
     build_corrective_instruction,
     coverage_gaps,
     regenerate_on_coverage_gap,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, AgentRun, AgentTool
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AgentTool
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order
 from app.modules.settings.registry import Scope
 from app.modules.settings.service import SettingsService
 
@@ -104,8 +104,8 @@ async def _seed(db, tenant_id, agent_with_tools: bool = True):
 
 
 async def test_si_tools_registered_in_the_platform_registry():
-    from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
-    from app.modules.ai.tools import TOOLS
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+    from app.applications.apparel.modules.ai.tools import TOOLS
 
     # A fixed count here went stale with every new tool. What must hold is that the tools that
     # are REGISTERED and the tools the agent is ALLOWED to call are the same set: a tool that is
@@ -228,7 +228,7 @@ async def test_the_si_agent_runs_the_prompt_stored_on_its_row(db, tenant_ctx, mo
     assert system_message["role"] == "system"
     # The row governs: the message is the stored prompt, then the shop's fixed dialect directive,
     # then today's date, and nothing else. (An override here would make the stored prompt inert.)
-    from app.modules.ai.agents.sales_intelligence import dialect
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import dialect
 
     content = system_message["content"]
     prefix = "analyze\n\n" + dialect.directive_for_shop(None, "EGP")
@@ -542,8 +542,8 @@ def test_corrective_instruction_names_the_gaps_and_forbids_new_numbers():
 async def test_si_definition_still_resolves_with_the_coverage_module_wired():
     """Pin: the SI kind registers, and the coverage module the orchestrator
     depends on exposes the exact callables the wiring uses."""
-    from app.modules.ai.agents.sales_intelligence import coverage as coverage_module
-    from app.modules.ai.core.registry import AgentRegistry
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import coverage as coverage_module
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry
 
     defn = AgentRegistry.get("sales_intelligence")
     assert defn.kind == "sales_intelligence"
@@ -653,7 +653,7 @@ async def test_the_askers_permissions_reach_the_runner(db, tenant_ctx, monkeypat
     ``actor_permissions`` the runner sees an unknown asker, and every permission-gated tool
     silently disappears for the OWNER too. The chat-level test mocks this function away, so only
     a test through it can see the loss."""
-    from app.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     tenant_id = tenant_ctx.tenant_id
     agent = await _seed(db, tenant_id)

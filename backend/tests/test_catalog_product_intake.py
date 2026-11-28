@@ -17,8 +17,8 @@ from sqlalchemy import select
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.middleware import RateLimitMiddleware
 from app.main import create_app
-from app.modules.catalog.service import CatalogService
-from app.modules.catalog.services.variants import ConflictError
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.services.variants import ConflictError
 from app.modules.identity.deps import get_db, get_tenant_ctx
 from tests._pos_helpers import _warehouse, ctx_for
 
@@ -144,7 +144,7 @@ async def test_a_variant_that_fails_takes_the_whole_product_down_with_it(db, ten
     endpoint raises. The test session is already inside the test's transaction, so the rollback
     is proven here with the equivalent savepoint around the endpoint call itself.
     """
-    from app.modules.catalog.routers.products import ProductIntakeRequest, intake_product
+    from app.applications.apparel.modules.catalog.routers.products import ProductIntakeRequest, intake_product
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     slug = f"t-{uuid.uuid4().hex[:10]}"
@@ -201,7 +201,7 @@ async def test_the_category_brand_season_and_fabric_land_in_the_same_request(db,
 
 async def test_the_alert_level_the_merchant_typed_is_saved_with_the_variants(db, tenant_ctx):
     """حد التنبيه كان ظاهر في النموذج وبيتبعت للسيرفر ومبيتحفظش: الحقل كان بيترمي في الطلب."""
-    from app.modules.inventory.stock_view import StockLevelService
+    from app.applications.apparel.modules.inventory.stock_view import StockLevelService
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     wh = await _warehouse(db, tenant_ctx)
@@ -243,7 +243,7 @@ async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refus
 
     الحد بقى واحد من catalog/limits.py، فالـAPI بيرفض قبل ما يبدأ أي كتابة، والرسالة واحدة.
     """
-    from app.modules.catalog.limits import MATERIAL_MAX_LENGTH
+    from app.applications.apparel.modules.catalog.limits import MATERIAL_MAX_LENGTH
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     wh = await _warehouse(db, tenant_ctx)
@@ -263,7 +263,7 @@ async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refus
     # ومفيش منتج اتحفظ بالخامة اللي كانت في الطلب المرفوض
     from sqlalchemy import select
 
-    from app.modules.catalog.models import Product
+    from app.applications.apparel.modules.catalog.models import Product
 
     rows = (
         await db.execute(
@@ -275,7 +275,7 @@ async def test_a_fabric_at_the_limit_is_accepted_and_one_character_more_is_refus
     assert rows == []
 
     # والخدمة بترفض نفس الطول بنفس الرقم
-    from app.modules.catalog.services.products import _clean_material
+    from app.applications.apparel.modules.catalog.services.products import _clean_material
 
     with pytest.raises(ValueError) as exc:
         _clean_material(too_long)
@@ -289,7 +289,7 @@ async def test_the_opening_balance_carries_its_unit_cost(db, tenant_ctx):
     """
     from decimal import Decimal
 
-    from app.modules.inventory.models import InventoryMovement
+    from app.applications.apparel.modules.inventory.models import InventoryMovement
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     wh = await _warehouse(db, tenant_ctx)
@@ -319,7 +319,7 @@ async def test_the_opening_balance_carries_its_unit_cost(db, tenant_ctx):
 
 
 async def test_an_opening_balance_without_a_cost_stays_unknown_not_zero(db, tenant_ctx):
-    from app.modules.inventory.models import InventoryMovement
+    from app.applications.apparel.modules.inventory.models import InventoryMovement
 
     owner = await ctx_for(db, tenant_ctx, "owner")
     wh = await _warehouse(db, tenant_ctx)

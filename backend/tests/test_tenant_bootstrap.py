@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.models import BudgetPolicy
+from app.applications.apparel.modules.ai.models import BudgetPolicy
 from app.modules.billing.models import Entitlement, Subscription
 from app.modules.identity.bootstrap import (
     DEFAULT_HOURS,

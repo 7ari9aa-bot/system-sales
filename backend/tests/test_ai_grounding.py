@@ -7,11 +7,11 @@ workaround, and that failed/denied tool calls never become quotable facts.
 
 from __future__ import annotations
 
-from app.modules.ai.agents.customer.grounding import (
+from app.applications.apparel.modules.ai.agents.customer.grounding import (
     check_grounding,
     extract_numerals,
 )
-from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
+from app.applications.apparel.modules.ai.agents.customer.ledger import facts_from_tool_calls
 
 
 def test_arabic_indic_digits_fold_before_matching():
@@ -102,7 +102,7 @@ def test_restock_label_grounded_but_iso_date_not():
     matches the label verbatim (facts are not digit-folded)."""
     from datetime import date
 
-    from app.modules.ai.agents.customer.tools import _restock_label
+    from app.applications.apparel.modules.ai.agents.customer.tools import _restock_label
 
     label = _restock_label(date(2026, 10, 25), "confirmed")
     assert label == "مؤكد: 25 أكتوبر 2026"

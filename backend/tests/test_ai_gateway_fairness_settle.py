@@ -15,9 +15,9 @@ from fakeredis.aioredis import FakeRedis
 
 from app.core import fairness
 from app.core.errors import ExternalProviderError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.budget import AIBudgetExhaustedError
-from app.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.budget import AIBudgetExhaustedError
+from app.applications.apparel.modules.ai.gateway import AIGateway
 
 AI = fairness.ResourceType.AI_TOKENS
 MESSAGES = [{"role": "user", "content": "hi"}]

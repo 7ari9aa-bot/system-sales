@@ -23,7 +23,7 @@ from sqlalchemy import event
 
 from app.core.dead_stock_report import DeadStockReportService
 from app.core.sell_through_report import SellThroughReportService
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.service import InventoryService
 from tests.test_profit_report import DAY, NOW, _sale, _variant, _wh
 
 pytestmark = pytest.mark.asyncio

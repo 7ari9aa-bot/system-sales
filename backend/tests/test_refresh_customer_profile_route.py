@@ -6,11 +6,11 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError
-from app.modules.conversations.models import Conversation
-from app.modules.conversations.routers import inbox as route_mod
-from app.modules.conversations.routers.inbox import refresh_customer_profile
-from app.modules.customers.models import CustomerIdentity
-from app.modules.customers.services.customer import CustomerService
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.conversations.routers import inbox as route_mod
+from app.applications.apparel.modules.conversations.routers.inbox import refresh_customer_profile
+from app.applications.apparel.modules.customers.models import CustomerIdentity
+from app.applications.apparel.modules.customers.services.customer import CustomerService
 from tests._pos_helpers import ctx_for
 
 PROFILE = {
@@ -35,7 +35,7 @@ class _IG:
 
 @pytest.fixture
 def ig(monkeypatch):
-    from app.modules.conversations import customer_profile as cp
+    from app.applications.apparel.modules.conversations import customer_profile as cp
 
     fake = _IG()
     monkeypatch.setattr(cp, "instagram_adapter", fake)

@@ -17,11 +17,11 @@ from app.core.errors import (
     RateLimitExceededError,
     ValidationError,
 )
-from app.modules.ai import budget as ai_budget
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import AIGateway, reserve_budget, resolve_model_config
-from app.modules.ai.models import AIBudgetReservation, AIUsage, ModelCall, ModelConfig
-from app.modules.customers import (
+from app.applications.apparel.modules.ai import budget as ai_budget
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.gateway import AIGateway, reserve_budget, resolve_model_config
+from app.applications.apparel.modules.ai.models import AIBudgetReservation, AIUsage, ModelCall, ModelConfig
+from app.applications.apparel.modules.customers import (
     models as _customers_models,  # noqa: F401  (notifications.customer_id FK target)
 )
 

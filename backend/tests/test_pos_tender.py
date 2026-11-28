@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from app.modules.errors import ValidationError
-from app.modules.pos.tender import (
+from app.applications.apparel.modules.pos.tender import (
     TenderLine,
     expected_drawer_cash,
     parse_lines,

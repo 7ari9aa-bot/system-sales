@@ -11,7 +11,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.core.db import bind_tenant
-from app.modules.catalog.apparel.options import DEFAULT_COLOURS, ShopOptionsService
+from app.applications.apparel.modules.catalog.apparel.options import DEFAULT_COLOURS, ShopOptionsService
 from tests._pos_helpers import in_tx, make_tenant
 
 pytestmark = pytest.mark.asyncio

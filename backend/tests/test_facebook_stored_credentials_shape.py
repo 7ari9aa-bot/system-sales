@@ -7,7 +7,7 @@ connected Page answered "Facebook is not connected" (HTTP 409/503) on every scre
 
 import pytest
 
-from app.modules.conversations.gateway.facebook_pages import (
+from app.applications.apparel.modules.conversations.gateway.facebook_pages import (
     FacebookPagesClient,
     page_token_and_id,
 )

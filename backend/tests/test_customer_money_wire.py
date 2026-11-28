@@ -36,9 +36,9 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 
 from app.core.errors import NotFoundError
-from app.modules.customers.router import _customer_summary
-from app.modules.customers.service import Customer360Query
-from app.modules.segments.service import _compile_where, _field_sql
+from app.applications.apparel.modules.customers.router import _customer_summary
+from app.applications.apparel.modules.customers.service import Customer360Query
+from app.applications.apparel.modules.segments.service import _compile_where, _field_sql
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 CUSTOMER = uuid.UUID("33333333-3333-3333-3333-333333333333")

@@ -76,7 +76,7 @@ def test_scope_accepts_workspace_only() -> None:
 
 def test_scope_columns_default_from_context() -> None:
     """The mapped columns must pull their INSERT default from current_scope."""
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
 
     ws, loc = uuid.uuid4(), uuid.uuid4()
     token = set_current_scope(ws, loc)
@@ -166,8 +166,8 @@ async def _make_hierarchy(db, tenant_id):
 
 
 async def test_scoped_insert_stamps_the_row(db, tenant_ctx) -> None:
-    from app.modules.conversations.models import Conversation
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.customers.models import Customer
 
     ws, loc = await _make_hierarchy(db, tenant_ctx.tenant_id)
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Q4")

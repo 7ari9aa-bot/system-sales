@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
 
 adapter = InstagramAdapter()
 

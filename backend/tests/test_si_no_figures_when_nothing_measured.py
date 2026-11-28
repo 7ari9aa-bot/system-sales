@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.agents.sales_intelligence import tools as si
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     NO_FIGURES_NOTE,
     _say_it_without_figures,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AgentTool
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.tools import TOOLS
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AgentTool
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.tools import TOOLS
 from app.modules.settings.service import SettingsService
 from tests.test_si_agent import _seed
 
@@ -106,7 +106,7 @@ def test_the_rewrite_instruction_speaks_to_the_owner_not_to_a_reviewer():
     """Production: the rewrite began 'OK, here is the answer after the correction', talking to the
     reviewer. The instruction now says the owner reads it as written and not to say it is a redo."""
     from app.core.guardrails import screen_inbound
-    from app.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
 
     text = build_rejection_instruction(["30", "17"])
     assert "صاحب المحل هيقرأ" in text

@@ -56,11 +56,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
 from app.main import create_app
-from app.modules.analytics import router as analytics_router
-from app.modules.analytics import service as analytics_service
-from app.modules.analytics.timekit import UnknownTimezoneError
-from app.modules.customers.service import CustomerService
-from app.modules.orders.models import Order, OrderPayment, Refund
+from app.applications.apparel.modules.analytics import router as analytics_router
+from app.applications.apparel.modules.analytics import service as analytics_service
+from app.applications.apparel.modules.analytics.timekit import UnknownTimezoneError
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund
 
 OVERVIEW_PATH = "/api/v1/analytics/overview"
 SUMMARY_PATH = "/api/v1/analytics/revenue/summary"

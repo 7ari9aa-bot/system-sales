@@ -3,7 +3,7 @@ any test file can import it without a cycle)."""
 
 from __future__ import annotations
 
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 
 
 async def sell(

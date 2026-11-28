@@ -14,10 +14,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.messenger_backfill import BackfillResult
-from app.modules.conversations.messenger_backfill_service import MessengerBackfillService
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.conversations.gateway.messenger_backfill import BackfillResult
+from app.applications.apparel.modules.conversations.messenger_backfill_service import MessengerBackfillService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.workers import messenger_backfill_worker as worker
 
 TENANT = uuid.uuid4()

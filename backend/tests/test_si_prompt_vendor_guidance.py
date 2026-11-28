@@ -24,7 +24,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 PATH = VERSIONS / "fe2026111725_si_prompt_vendor_guidance.py"

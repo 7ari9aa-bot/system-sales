@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.modules.ai.agents.sales_intelligence.response import validate_answer
-from app.modules.ai.agents.sales_intelligence.tools import _window_days
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import validate_answer
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _window_days
 
 D = lambda *a: datetime(*a, tzinfo=UTC)  # noqa: E731
 
@@ -55,7 +55,7 @@ def test_the_fact_the_model_reads_carries_the_calendar_day_count():
     ending part-way through today) is 30d, so it can say 'the last 30 days' and pass the gate."""
     from types import SimpleNamespace
 
-    from app.modules.ai.agents.sales_intelligence.tools import _fact_payload
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _fact_payload
 
     fact = SimpleNamespace(
         id="F1",

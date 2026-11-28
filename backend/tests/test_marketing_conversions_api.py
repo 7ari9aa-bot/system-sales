@@ -23,11 +23,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import create_app
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
-from app.modules.marketing.models import Attribution, Conversion
-from app.modules.marketing.service import MarketingService
-from app.modules.orders.models import Order
+from app.applications.apparel.modules.marketing.models import Attribution, Conversion
+from app.applications.apparel.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.orders.models import Order
 
 
 def test_conversion_routes_are_registered() -> None:

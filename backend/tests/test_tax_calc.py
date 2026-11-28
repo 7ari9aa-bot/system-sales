@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.taxation.calc import split_document, split_line
+from app.applications.apparel.modules.taxation.calc import split_document, split_line
 
 D = Decimal
 
@@ -79,7 +79,7 @@ def test_the_invariant_holds_over_a_wide_sweep() -> None:
 
 # ---- spreading an order-level discount ----
 
-from app.modules.taxation.calc import allocate_discount  # noqa: E402
+from app.applications.apparel.modules.taxation.calc import allocate_discount  # noqa: E402
 
 
 def test_the_shares_add_up_to_the_discount_exactly() -> None:

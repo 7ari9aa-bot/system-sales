@@ -8,13 +8,13 @@ import pytest
 import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.imports import apply as apply_mod
 from app.modules.imports.apply import apply_batch
 from app.modules.imports.fields import SHEET_PRODUCTS, SHEET_STOCK, SHEET_VARIANTS
 from app.modules.imports.models import ImportRow, ImportSession
 from app.modules.imports.verdicts import encode_values, values_of
-from app.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.models import Warehouse
 from app.modules.platform.models import Job
 from app.workers import import_runner
 from app.workers.import_runner import PORTS, run_batch

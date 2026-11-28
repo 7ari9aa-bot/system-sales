@@ -44,10 +44,10 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.db import bind_tenant
 from app.core.lease import ConversationBusy, conversation_lease
-from app.modules.ai.models import Agent
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.models import Tenant
 
 pytestmark = [pytest.mark.gate]

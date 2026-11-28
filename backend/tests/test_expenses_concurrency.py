@@ -18,9 +18,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.db import bind_tenant
 from app.core.security import hash_password
 from app.modules.errors import ConflictError
-from app.modules.expenses.service import ExpenseService, NumberingService
+from app.applications.apparel.modules.expenses.service import ExpenseService, NumberingService
 from app.modules.identity.models import Role, Tenant, TenantUser, User
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 
 RACERS = 20
 
@@ -123,7 +123,7 @@ async def test_parallel_void_succeeds_exactly_once_and_never_moves_cash(committe
     factory, tenant_id = committed_tenant
 
     async def setup(s):
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, tenant_id)
         reg = await PosService.create_register(

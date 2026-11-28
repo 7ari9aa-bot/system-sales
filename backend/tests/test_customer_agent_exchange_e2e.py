@@ -19,16 +19,16 @@ import uuid
 import pytest
 from sqlalchemy import select, text
 
-from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
-from app.modules.ai.core.provisioning import provision_canonical_agents
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.models import Customer
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell
 
 
@@ -43,7 +43,7 @@ async def _agent(db, tenant_id) -> Agent:
 
 
 async def _conversation(db, tenant_id, channel: str) -> tuple[uuid.UUID, uuid.UUID]:
-    from app.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.conversations.models import Conversation
 
     customer = Customer(tenant_id=tenant_id, name="عميل الشات")
     db.add(customer)
@@ -348,8 +348,8 @@ async def test_an_unpublished_return_policy_is_said_plainly_and_does_not_hand_ov
 
 
 async def test_a_published_policy_carries_no_empty_note(db, tenant_ctx) -> None:
-    from app.modules.ai.models import KnowledgeItem
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.models import KnowledgeItem
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     tenant_id = tenant_ctx.tenant_id
     spec = get_tool("get_store_info")
@@ -375,7 +375,7 @@ async def test_a_published_policy_carries_no_empty_note(db, tenant_ctx) -> None:
 def test_guidance_text_is_not_a_quotable_fact() -> None:
     """`note` and `hint` talk TO the model. Counted as facts they would turn an empty tool
     result into one that grounds strictly, and let the model quote the guidance itself."""
-    from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
+    from app.applications.apparel.modules.ai.agents.customer.ledger import facts_from_tool_calls
 
     facts = facts_from_tool_calls(
         [

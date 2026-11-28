@@ -16,8 +16,8 @@ import os
 
 import pytest
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.agent_eval import judge
 from tests.agent_eval.cases_channels import CASES as CHANNELS
 from tests.agent_eval.cases_core import CASES as CORE
@@ -174,7 +174,7 @@ def _throttle_model_calls() -> None:
     import asyncio
     import time
 
-    from app.modules.ai import providers
+    from app.applications.apparel.modules.ai import providers
 
     original = providers.httpx.AsyncClient.post
     state = {"last": 0.0}
@@ -204,7 +204,7 @@ async def _seed_live_embedding(db, tenant_id) -> None:
     key = os.environ.get("AGENT_EVAL_EMBEDDING_API_KEY")
     if not key:
         return
-    from app.modules.ai.models import ModelConfig
+    from app.applications.apparel.modules.ai.models import ModelConfig
 
     db.add(
         ModelConfig(

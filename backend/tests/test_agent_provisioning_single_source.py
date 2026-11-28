@@ -28,13 +28,13 @@ import pathlib
 
 from sqlalchemy import select
 
-import app.modules.ai  # noqa: F401 — importing the package registers the hook
+import app.applications.apparel.modules.ai  # noqa: F401 — importing the package registers the hook
 from app.core.tenancy import dispatch_tenant_created_hooks, tenant_created_hooks
-from app.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT, CUSTOMER_TOOLS
-from app.modules.ai.agents.sales_intelligence.agent import SI_SYSTEM_PROMPT
-from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
-from app.modules.ai.core.provisioning import provision_canonical_agents
-from app.modules.ai.models import Agent, AgentTool
+from app.applications.apparel.modules.ai.agents.customer.definition import CUSTOMER_SYSTEM_PROMPT, CUSTOMER_TOOLS
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import SI_SYSTEM_PROMPT
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS
+from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
+from app.applications.apparel.modules.ai.models import Agent, AgentTool
 from app.modules.identity.bootstrap import seed_tenant_defaults
 
 BOOTSTRAP = pathlib.Path(__file__).resolve().parents[1] / "app/modules/identity/bootstrap.py"
@@ -113,7 +113,7 @@ async def test_the_retired_knowledge_tool_is_quarantined_on_an_existing_tenant(
     BEFORE the merge still has its row; reconciliation must switch it off (not
     delete it: run audit keeps resolving), so the model never sees two tools
     over one table, while get_store_info stays on."""
-    from app.modules.ai.core.provisioning import sync_existing_tenant_tools
+    from app.applications.apparel.modules.ai.core.provisioning import sync_existing_tenant_tools
 
     await _provision(db, tenant_ctx.tenant_id)
     agent = (await _agents(db, tenant_ctx.tenant_id))["customer"]

@@ -313,7 +313,7 @@ async def _ai_availability_compliance(
     session: AsyncSession, tenant_id: uuid.UUID, since: datetime
 ) -> tuple[int, int]:
     """(total, met) for AI availability SLO (runs not failed/timeout)."""
-    from app.modules.ai.models import AgentRun
+    from app.applications.apparel.modules.ai.models import AgentRun
 
     result = await session.execute(
         select(

@@ -30,8 +30,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.conversations.gateway import meta_page_events
-from app.modules.conversations.gateway.meta_page_events import (
+from app.applications.apparel.modules.conversations.gateway import meta_page_events
+from app.applications.apparel.modules.conversations.gateway.meta_page_events import (
     FACEBOOK,
     MESSENGER,
     check_page_signature,
@@ -40,7 +40,7 @@ from app.modules.conversations.gateway.meta_page_events import (
     route_page_payload,
     verify_page_request,
 )
-from app.modules.conversations.routers import webhooks as webhook_routes
+from app.applications.apparel.modules.conversations.routers import webhooks as webhook_routes
 
 PAGE_SECRET = "page-app-secret"
 VERIFY_TOKEN = "page-verify-token"

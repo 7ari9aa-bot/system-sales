@@ -15,11 +15,11 @@ import sqlalchemy as sa
 
 import app.core.model_registry  # noqa: F401
 from app.core.errors import ValidationError
-from app.modules.catalog.service import CatalogService
-from app.modules.einvoice.providers.eta.calc import q5
-from app.modules.pos.eta_adapter import NotReady, build_context, eta_settings, split_line
-from app.modules.pos.models import PosReceipt
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.einvoice.providers.eta.calc import q5
+from app.applications.apparel.modules.pos.eta_adapter import NotReady, build_context, eta_settings, split_line
+from app.applications.apparel.modules.pos.models import PosReceipt
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
@@ -233,8 +233,8 @@ class TestWhatItRefusesToGuess:
 
 class TestReturn:
     async def _returned(self, db, tenant_ctx, *, with_original_receipt=True):
-        from app.modules.einvoice.models import EInvoiceDevice
-        from app.modules.einvoice.service import EInvoiceService
+        from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+        from app.applications.apparel.modules.einvoice.service import EInvoiceService
         from tests.test_eta_db_layer import _ctx, _device
 
         tid = tenant_ctx.tenant_id
@@ -270,7 +270,7 @@ class TestReturn:
         assert ctx.lines[0].quantity == Decimal(1)
 
     async def test_a_return_is_valued_at_what_was_paid_not_at_the_shelf_price(self, db, tenant_ctx):
-        from app.modules.einvoice.service import EInvoiceService
+        from app.applications.apparel.modules.einvoice.service import EInvoiceService
         from tests.test_eta_db_layer import _ctx, _device
 
         tid = tenant_ctx.tenant_id
@@ -308,7 +308,7 @@ class TestReturn:
     async def test_a_return_on_a_sale_made_before_the_shop_joined_uses_the_reference_less_type(
         self, db, tenant_ctx
     ):
-        from app.modules.einvoice.service import EInvoiceService
+        from app.applications.apparel.modules.einvoice.service import EInvoiceService
         from tests.test_eta_db_layer import _ctx, _device
 
         tid = tenant_ctx.tenant_id
@@ -339,7 +339,7 @@ class TestReturn:
     ):
         """It happened AFTER the shop joined, so the authority must hear about it the normal way:
         silently re-labelling its return "sold before adoption" would hide a missed receipt."""
-        from app.modules.einvoice.service import EInvoiceService
+        from app.applications.apparel.modules.einvoice.service import EInvoiceService
         from tests.test_eta_db_layer import _ctx, _device
 
         tid = tenant_ctx.tenant_id
@@ -465,8 +465,8 @@ class TestTheMerchantDecides:
         assert ctx.extras["store_profile"]["branch_code"] == "0"
 
     async def test_a_value_set_on_the_till_itself_overrides_the_store_setting(self):
-        from app.modules.einvoice.models import EInvoiceDevice
-        from app.modules.einvoice.providers.eta.context import device_profile
+        from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+        from app.applications.apparel.modules.einvoice.providers.eta.context import device_profile
 
         store = {
             "branch_code": "7",
@@ -482,8 +482,8 @@ class TestTheMerchantDecides:
         assert profile.address.street == "Annex" and profile.address.governate == "Cairo"
 
     async def test_nothing_is_invented_when_the_merchant_has_not_filled_it_in(self):
-        from app.modules.einvoice.models import EInvoiceDevice
-        from app.modules.einvoice.providers.eta.context import device_profile
+        from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+        from app.applications.apparel.modules.einvoice.providers.eta.context import device_profile
 
         profile = device_profile(EInvoiceDevice(device_serial="R1", metadata_info={}), None)
         assert profile.branch_code == "" and profile.activity_code == ""

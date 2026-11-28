@@ -21,13 +21,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.models import Order, OrderStatusHistory, Shipment
-from app.modules.orders.service import _PROCESS_TRANSITIONS, OrderService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.models import Order, OrderStatusHistory, Shipment
+from app.applications.apparel.modules.orders.service import _PROCESS_TRANSITIONS, OrderService
 
 # ------------------------------------------------------------------ helpers ----
 
@@ -251,7 +251,7 @@ async def test_shipment_status_machine_rejects_an_illegal_jump(db: AsyncSession,
         db, tenant_id, order.id, carrier="Myler", tracking_number="MY-2"
     )
 
-    from app.modules.orders.service import SHIPMENT_TRANSITIONS
+    from app.applications.apparel.modules.orders.service import SHIPMENT_TRANSITIONS
 
     assert SHIPMENT_TRANSITIONS["pending"] == {"picked_up"}
     with pytest.raises(ConflictError):

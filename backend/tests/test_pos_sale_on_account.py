@@ -8,10 +8,10 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.customer_accounts.service import CustomerAccountService as Accounts
-from app.modules.orders.models import Order, OrderPayment
-from app.modules.pos.models import PosCashMovement
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.customer_accounts.service import CustomerAccountService as Accounts
+from app.applications.apparel.modules.orders.models import Order, OrderPayment
+from app.applications.apparel.modules.pos.models import PosCashMovement
+from app.applications.apparel.modules.pos.service import PosService
 from app.modules.settings.service import SettingsService
 from tests.test_pos_take_payments import _shop
 
@@ -75,7 +75,7 @@ async def test_a_wholly_credit_sale_is_confirmed_and_the_stock_leaves(db, tenant
     out = await _sell(db, tenant_ctx, register, variant, customer, qty=2)
     order = await db.get(Order, out["order_id"])
     assert order.status == "confirmed"  # not left pending with the goods already gone
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     bal = (
         (
@@ -102,7 +102,7 @@ async def test_the_order_is_confirmed_and_stock_leaves_the_shelf_once(db, tenant
     )
     order = await db.get(Order, out["order_id"])
     assert order.status == "confirmed"
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     bal = (
         (
@@ -154,7 +154,7 @@ async def test_a_refused_sale_does_not_hold_stock(db, tenant_ctx) -> None:
             await _sell(db, tenant_ctx, register, variant, customer, qty=5)
     except ConflictError:
         pass
-    from app.modules.inventory.models import InventoryBalance
+    from app.applications.apparel.modules.inventory.models import InventoryBalance
 
     bal = (
         (
@@ -221,7 +221,7 @@ async def test_a_replayed_sale_charges_the_account_once(db, tenant_ctx) -> None:
     first = await _sell(db, tenant_ctx, register, variant, customer, idempotency_key="till-9")
     assert first["on_account"] == "100.00"
     # the same key posts no second charge (the sale itself is guarded by the HTTP layer's cache)
-    from app.modules.customer_accounts.models import CustomerLedgerEntry
+    from app.applications.apparel.modules.customer_accounts.models import CustomerLedgerEntry
 
     count = (
         await db.execute(

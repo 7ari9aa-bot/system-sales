@@ -13,22 +13,22 @@ from decimal import Decimal as D
 import httpx
 import pytest
 
-from app.modules.einvoice.providers.eta.builder import build_receipt
-from app.modules.einvoice.providers.eta.client import (
+from app.applications.apparel.modules.einvoice.providers.eta.builder import build_receipt
+from app.applications.apparel.modules.einvoice.providers.eta.client import (
     EtaClient,
     EtaCredentials,
     EtaEndpoints,
 )
-from app.modules.einvoice.providers.eta.codes import PaymentMethod
-from app.modules.einvoice.providers.eta.mock_authority import MockAuthority
-from app.modules.einvoice.providers.eta.models import (
+from app.applications.apparel.modules.einvoice.providers.eta.codes import PaymentMethod
+from app.applications.apparel.modules.einvoice.providers.eta.mock_authority import MockAuthority
+from app.applications.apparel.modules.einvoice.providers.eta.models import (
     BranchAddress,
     BuyerProfile,
     EtaLine,
     EtaReceiptInput,
     SellerProfile,
 )
-from app.modules.einvoice.providers.eta.notifications import (
+from app.applications.apparel.modules.einvoice.providers.eta.notifications import (
     DeviceEventType,
     NotificationError,
     ReceiptEventType,
@@ -36,7 +36,7 @@ from app.modules.einvoice.providers.eta.notifications import (
     parse_general_notification,
     parse_receipt_notification,
 )
-from app.modules.einvoice.providers.eta.sender import (
+from app.applications.apparel.modules.einvoice.providers.eta.sender import (
     AMENDMENT_WITH_REFERENCE,
     DocState,
     QueuedDoc,

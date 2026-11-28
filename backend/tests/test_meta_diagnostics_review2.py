@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.modules.customers import meta_channel_diagnostics as diag
-from app.modules.customers.meta_linking import MetaPageConnection
+from app.applications.apparel.modules.customers import meta_channel_diagnostics as diag
+from app.applications.apparel.modules.customers.meta_linking import MetaPageConnection
 
 
 def test_facebook_management_does_not_require_the_messenger_permission() -> None:

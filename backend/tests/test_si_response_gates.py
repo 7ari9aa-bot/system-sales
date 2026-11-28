@@ -12,12 +12,12 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.modules.ai.agents.sales_intelligence.response import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     safe_response,
     validate_answer,
 )
-from app.modules.ai.chat.turns import build_structured_blocks
+from app.applications.apparel.modules.ai.chat.turns import build_structured_blocks
 
 
 def _fact_payload(**overrides) -> dict:
@@ -64,7 +64,7 @@ def test_thousands_separator_is_the_same_number():
 
 
 def test_window_length_rides_the_fact():
-    from app.modules.ai.agents.sales_intelligence.tools import _fact_payload as payload_of
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _fact_payload as payload_of
 
     end = datetime(2026, 10, 16, tzinfo=UTC)
     fact = SimpleNamespace(

@@ -35,8 +35,8 @@ from app.core.circuit_breaker import (
     reset_breakers,
 )
 from app.core.errors import CircuitOpenError, ExternalProviderError
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.gateway import AIGateway
 
 _THRESHOLD = 3
 

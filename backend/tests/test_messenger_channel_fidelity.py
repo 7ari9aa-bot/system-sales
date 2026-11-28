@@ -19,8 +19,8 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
-from app.modules.conversations.gateway.messenger import messenger_adapter
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.messenger import messenger_adapter
 
 CREDS = ProviderCredentials(config={"api_key": "PAGE-TOKEN"})
 

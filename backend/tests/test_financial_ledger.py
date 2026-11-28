@@ -16,10 +16,10 @@ from typing import Any
 import pytest
 
 from app.core.errors import ConflictError, ValidationError
-from app.modules.financial.models import ChartOfAccount
-from app.modules.financial.ports import SandboxPaymentAdapter
-from app.modules.financial.schemas import EntryCreate
-from app.modules.financial.service import FinancialService
+from app.applications.apparel.modules.financial.models import ChartOfAccount
+from app.applications.apparel.modules.financial.ports import SandboxPaymentAdapter
+from app.applications.apparel.modules.financial.schemas import EntryCreate
+from app.applications.apparel.modules.financial.service import FinancialService
 
 TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 

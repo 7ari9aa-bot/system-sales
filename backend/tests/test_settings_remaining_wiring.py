@@ -22,7 +22,7 @@ import uuid
 
 async def test_handoff_enabled_gate_returns_disabled():
     """When handoff_enabled is False, _handover_to_human returns a disabled message."""
-    from app.modules.ai.agents.customer.tools.support import _handover_to_human
+    from app.applications.apparel.modules.ai.agents.customer.tools.support import _handover_to_human
 
     class FakeSettingsService:
         def __init__(self, session, tid):
@@ -52,8 +52,8 @@ async def test_handoff_enabled_gate_returns_disabled():
 
 async def test_analytics_agent_disabled_returns_unsupported():
     """When analytics_agent.enabled is False, run_sales_analysis returns UNSUPPORTED_ANALYSIS."""
-    from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult, run_sales_analysis
-    from app.modules.analytics.contracts import Outcome
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult, run_sales_analysis
+    from app.applications.apparel.modules.analytics.contracts import Outcome
 
     class FakeSettingsService:
         def __init__(self, session, tid):
@@ -101,7 +101,7 @@ def test_auto_close_shifts_job_registered():
 
 def test_handover_to_human_args_schema():
     """HandoverToHumanArgs accepts the four allowed reasons."""
-    from app.modules.ai.agents.customer.tools.support import HandoverToHumanArgs
+    from app.applications.apparel.modules.ai.agents.customer.tools.support import HandoverToHumanArgs
 
     for reason in ("complex_problem", "missing_data", "customer_request", "complaint"):
         args = HandoverToHumanArgs(reason=reason, summary="test summary")

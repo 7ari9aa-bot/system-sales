@@ -50,7 +50,7 @@ def _sign(raw: bytes) -> str:
 def _whatsapp_secret(monkeypatch):
     """Give the WhatsApp adapter a verifiable secret for the signed-body cases."""
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type("S", (), {"whatsapp_app_secret": CHANNEL_SECRET})(),
     )
 
@@ -246,7 +246,7 @@ async def test_one_meta_batch_is_split_and_queued_under_each_phone_tenant(
     db, tenant_ctx, app_sessions_on_test_connection, monkeypatch
 ) -> None:
     """A batched signed webhook must never mix two merchants' messages."""
-    import app.modules.conversations.router as cr
+    import app.applications.apparel.modules.conversations.router as cr
 
     other = Tenant(slug=f"other-{uuid.uuid4().hex[:8]}", name="Other Tenant")
     db.add(other)
@@ -284,15 +284,15 @@ async def test_one_meta_batch_is_split_and_queued_under_each_phone_tenant(
             "201000000002": other.id,
         }.get(phone_id)
 
-    from app.modules.conversations.routers import webhooks as webhook_routes
+    from app.applications.apparel.modules.conversations.routers import webhooks as webhook_routes
 
     adapter = webhook_routes.default_get_adapter("whatsapp")
     monkeypatch.setattr(webhook_routes, "default_get_adapter", lambda _channel: adapter)
     monkeypatch.setattr(
-        "app.modules.conversations.routers.webhooks.IngestService.resolve_tenant", _resolve
+        "app.applications.apparel.modules.conversations.routers.webhooks.IngestService.resolve_tenant", _resolve
     )
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.whatsapp_adapter.check_signature",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.whatsapp_adapter.check_signature",
         lambda _headers, _body: True,
     )
 

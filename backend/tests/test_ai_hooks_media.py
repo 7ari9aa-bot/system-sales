@@ -12,12 +12,12 @@ import uuid
 
 from sqlalchemy import select
 
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, ConversationAgentState
-from app.modules.ai.runtime import AgentRunner, AgentRunResult
-from app.modules.conversations import models as conv_models
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, ConversationAgentState
+from app.applications.apparel.modules.ai.runtime import AgentRunner, AgentRunResult
+from app.applications.apparel.modules.conversations import models as conv_models
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
 
 IMAGE_ID = "11111111-1111-1111-1111-111111111111"

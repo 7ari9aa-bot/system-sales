@@ -16,8 +16,8 @@ import uuid
 
 import pytest
 
-from app.modules.conversations.gateway.ingest import _apply_account_signals
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.gateway.ingest import _apply_account_signals
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
 from app.modules.platform.models import Integration
 
 pytestmark = pytest.mark.asyncio

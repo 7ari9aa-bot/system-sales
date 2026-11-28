@@ -23,9 +23,9 @@ import app.core.storage as storage_mod
 from app.core.circuit_breaker import STORAGE_OBJECTS, get_breaker, reset_breakers
 from app.core.errors import CircuitOpenError
 from app.core.storage import FetchedMedia, ObjectStorage
-from app.modules.conversations.media import MediaService
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.conversations.media import MediaService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
 
 MEDIA_URL = "https://cdn.example.test/photo.jpg"
 PAYLOAD = b"\xff\xd8\xff\xe0not-really-a-jpeg"

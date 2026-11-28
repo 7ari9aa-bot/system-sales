@@ -7,12 +7,12 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import ProductVariant
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.models import ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders.errors import InsufficientStockError
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders.errors import InsufficientStockError
 
 
 async def _warehouse(db: AsyncSession, tenant_id: uuid.UUID) -> Warehouse:
@@ -233,7 +233,7 @@ async def test_opening_stock_is_a_ledger_row_of_its_own_and_not_a_purchase(
     """
     from sqlalchemy import select
 
-    from app.modules.inventory.models import InventoryMovement
+    from app.applications.apparel.modules.inventory.models import InventoryMovement
 
     tenant_id = tenant_ctx.tenant_id
     wh = await _warehouse(db, tenant_id)

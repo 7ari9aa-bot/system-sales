@@ -18,10 +18,10 @@ from sqlalchemy.exc import IntegrityError
 
 import app.core.model_registry  # noqa: F401  (completes Base.metadata so every FK resolves)
 from app.core.db import bind_tenant
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument, EInvoiceNotification
-from app.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
-from app.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
-from app.modules.einvoice.service import EInvoiceService
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument, EInvoiceNotification
+from app.applications.apparel.modules.einvoice.ports import EInvoiceContext, InvoiceLineItem, PartyInfo
+from app.applications.apparel.modules.einvoice.providers.eta.provider import EtaEInvoiceProvider
+from app.applications.apparel.modules.einvoice.service import EInvoiceService
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -146,7 +146,7 @@ class TestEveryStatusTheLayerCanWriteIsLegal:
     the database) while every mock-only test passed."""
 
     async def test_each_mapped_status_inserts(self, db, tenant_ctx):
-        from app.modules.einvoice.providers.eta.notifications import STORED_STATUS
+        from app.applications.apparel.modules.einvoice.providers.eta.notifications import STORED_STATUS
 
         dev = await _device(db, tenant_ctx.tenant_id)
         for i, stored in enumerate(sorted(set(STORED_STATUS.values()))):
@@ -166,7 +166,7 @@ class TestEveryStatusTheLayerCanWriteIsLegal:
         await db.flush()
 
     def test_an_unknown_word_is_an_error_not_a_guess(self):
-        from app.modules.einvoice.providers.eta.notifications import stored_status
+        from app.applications.apparel.modules.einvoice.providers.eta.notifications import stored_status
 
         with pytest.raises(ValueError):
             stored_status("approved")
@@ -293,7 +293,7 @@ class TestIssueThroughTheService:
         bad_line = InvoiceLineItem(
             item_name="x", quantity=Decimal("1"), unit_price=Decimal("5"), tax_rate=Decimal("0.14")
         )  # no registered item code
-        from app.modules.einvoice.providers.eta.provider import EtaValidationError
+        from app.applications.apparel.modules.einvoice.providers.eta.provider import EtaValidationError
 
         with pytest.raises(EtaValidationError):
             await EInvoiceService.issue_einvoice(
@@ -310,7 +310,7 @@ class TestIssueThroughTheService:
         """The old default sent Egypt to the sandbox, which answered 'cleared' for a receipt no
         authority had seen. A new Egyptian till must be an ETA till, and with no profile it must
         refuse loudly."""
-        from app.modules.einvoice.providers.eta.provider import EtaValidationError
+        from app.applications.apparel.modules.einvoice.providers.eta.provider import EtaValidationError
 
         tid = tenant_ctx.tenant_id
         with pytest.raises(EtaValidationError):
@@ -321,7 +321,7 @@ class TestIssueThroughTheService:
         assert n == 0
 
     async def test_provider_registered_for_eta_is_the_new_one(self):
-        from app.modules.einvoice.registry import get_einvoice_provider
+        from app.applications.apparel.modules.einvoice.registry import get_einvoice_provider
 
         assert isinstance(get_einvoice_provider("eta", country_code="EG"), EtaEInvoiceProvider)
         assert isinstance(get_einvoice_provider(country_code="EG"), EtaEInvoiceProvider)

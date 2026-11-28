@@ -20,10 +20,10 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
-from app.modules.ai.approvals import ApprovalService
-from app.modules.ai.models import Agent, AgentRun, AIHandover, ApprovalRequest
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.approvals import ApprovalService
+from app.applications.apparel.modules.ai.models import Agent, AgentRun, AIHandover, ApprovalRequest
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.platform.models import OutboxEvent
 
 AI_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules" / "ai"

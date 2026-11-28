@@ -2,7 +2,7 @@
 
 ``ai_usage`` is a ROLLUP: one row per (tenant, day, bucket). Its uniqueness is
 declared by ``uq_ai_usage_tenant_period_agent UNIQUE (tenant_id, period_date,
-agent_id)``, and ``app/modules/ai/usage.py`` writes it with a single
+agent_id)``, and ``app/applications/apparel/modules/ai/usage.py`` writes it with a single
 ``INSERT ... ON CONFLICT (...) DO UPDATE`` so the row accumulates instead of
 multiplying.
 
@@ -63,9 +63,9 @@ from sqlalchemy import UniqueConstraint as sa_unique
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects import postgresql
 
-from app.modules.ai import usage as usage_module
-from app.modules.ai.models import AIUsage
-from app.modules.ai.usage import record_usage
+from app.applications.apparel.modules.ai import usage as usage_module
+from app.applications.apparel.modules.ai.models import AIUsage
+from app.applications.apparel.modules.ai.usage import record_usage
 from app.workers import message_worker
 
 TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -442,7 +442,7 @@ async def test_agent_less_writes_converge_into_one_row_on_postgres(db, tenant_ct
     """
     from decimal import Decimal as D
 
-    from app.modules.ai.usage import PLATFORM_BUCKET, bucket_row_id
+    from app.applications.apparel.modules.ai.usage import PLATFORM_BUCKET, bucket_row_id
 
     for _ in range(3):
         await record_usage(
@@ -503,7 +503,7 @@ async def test_the_agent_bucket_still_converges_on_the_natural_key(
     """
     from decimal import Decimal as D
 
-    from app.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.models import Agent
 
     # Distinct kinds: uq_agents_tenant_kind allows one agent per (tenant, kind),
     # and two agents is exactly what the per-agent bucket test needs.

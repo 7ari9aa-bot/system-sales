@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations import customer_profile
-from app.modules.conversations.read_signal_service import ReadSignalService
+from app.applications.apparel.modules.conversations import customer_profile
+from app.applications.apparel.modules.conversations.read_signal_service import ReadSignalService
 
 
 class _Identities:

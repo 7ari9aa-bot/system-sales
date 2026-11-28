@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.modules.conversations.gateway import whatsapp_coexistence as wa
+from app.applications.apparel.modules.conversations.gateway import whatsapp_coexistence as wa
 
 
 def _envelope(field: str, value: dict) -> dict:

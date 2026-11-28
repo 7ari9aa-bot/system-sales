@@ -8,7 +8,7 @@ import sqlalchemy as sa
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.errors import ValidationError
 from app.core.storage import FetchedMedia, StoredMedia
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.imports import apply as apply_mod
 from app.modules.imports import normalize as n
 from app.modules.imports.apply import IMAGE_BATCH_LIMIT, SHEET_ORDER, ApplyError

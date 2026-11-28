@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ConflictError, PermissionDeniedError
-from app.modules.conversations.routers import templates as r
+from app.applications.apparel.modules.conversations.routers import templates as r
 
 CONNECTED = {"access_token": "tok", "waba_id": "555"}
 

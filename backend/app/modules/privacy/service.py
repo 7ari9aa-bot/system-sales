@@ -37,7 +37,7 @@ class DeletionService:
         """
 
         from app.core.audit import write_audit_row
-        from app.modules.customers.service import CustomerService
+        from app.applications.apparel.modules.customers.service import CustomerService
 
         customer = await CustomerService.get_for_erasure(session, tenant_id, customer_id)
         if customer.deleted_at is not None:

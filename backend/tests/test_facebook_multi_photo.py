@@ -11,7 +11,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from app.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
 
 CREDS = {"api_key": "tok", "account_id": "111"}
 
@@ -132,8 +132,8 @@ async def test_a_failed_upload_stops_before_any_post_is_made():
 from types import SimpleNamespace  # noqa: E402
 
 from app.core.errors import ConflictError, ValidationError  # noqa: E402
-from app.modules.conversations import facebook_service as fs  # noqa: E402
-from app.modules.conversations.facebook_service import FacebookService  # noqa: E402
+from app.applications.apparel.modules.conversations import facebook_service as fs  # noqa: E402
+from app.applications.apparel.modules.conversations.facebook_service import FacebookService  # noqa: E402
 
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
@@ -229,8 +229,8 @@ async def test_without_storage_the_post_is_refused(monkeypatch):
 
 # ---- the request: pictures ride in the JSON body as base64, so the limit must hold an album ----
 from app.core.middleware import MAX_BODY_BYTES, MAX_FACEBOOK_POST_BYTES  # noqa: E402
-from app.modules.conversations.facebook_service import MAX_PICTURE_BYTES  # noqa: E402
-from app.modules.conversations.routers.facebook_pages import PublishRequest  # noqa: E402
+from app.applications.apparel.modules.conversations.facebook_service import MAX_PICTURE_BYTES  # noqa: E402
+from app.applications.apparel.modules.conversations.routers.facebook_pages import PublishRequest  # noqa: E402
 
 
 def test_the_body_limit_holds_the_largest_album():

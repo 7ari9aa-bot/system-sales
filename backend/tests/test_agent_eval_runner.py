@@ -6,8 +6,8 @@ It says nothing about how a real model behaves; that is what the live evaluation
 
 from __future__ import annotations
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
 from tests.agent_eval.cases_core import CASES
 from tests.agent_eval.runner import run_case
 

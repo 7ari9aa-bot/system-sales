@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
 from tests._pos_helpers import ctx_for, till
 from tests.test_pos_open_day_profile_access import _warehouse
 from tests.test_pos_sale_http import _app

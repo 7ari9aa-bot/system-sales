@@ -20,9 +20,9 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.external.source_of_truth import SourceOfTruthService
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.external.source_of_truth import SourceOfTruthService
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
 from tests.test_shopify_adapter import _adapter, _product
 
@@ -236,7 +236,7 @@ async def test_failed_recheck_demotes_to_reauth_required_and_audits(
         raise DomainValidationError("The provider rejected these credentials.")
 
     monkeypatch.setattr(
-        "app.modules.customers.routers.integrations.verify_channel_credentials", reject
+        "app.applications.apparel.modules.customers.routers.integrations.verify_channel_credentials", reject
     )
 
     async with AsyncClient(
@@ -279,7 +279,7 @@ async def test_successful_recheck_rearms_the_channel_without_credential_writes(
         return VerifiedChannel({"phone_number_id": "201008888888"}, "Shop")
 
     monkeypatch.setattr(
-        "app.modules.customers.routers.integrations.verify_channel_credentials", approve
+        "app.applications.apparel.modules.customers.routers.integrations.verify_channel_credentials", approve
     )
 
     async with AsyncClient(

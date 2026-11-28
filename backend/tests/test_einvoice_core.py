@@ -10,18 +10,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.errors import ConflictError
-from app.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
-from app.modules.einvoice.ports import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice, EInvoiceDocument
+from app.applications.apparel.modules.einvoice.ports import (
     EInvoiceContext,
     InvoiceLineItem,
     PartyInfo,
 )
-from app.modules.einvoice.providers.sandbox import (
+from app.applications.apparel.modules.einvoice.providers.sandbox import (
     INITIAL_PIH_SEED,
     SandboxEInvoiceProvider,
 )
-from app.modules.einvoice.registry import get_einvoice_provider
-from app.modules.einvoice.service import EInvoiceService
+from app.applications.apparel.modules.einvoice.registry import get_einvoice_provider
+from app.applications.apparel.modules.einvoice.service import EInvoiceService
 
 
 def _sample_context(

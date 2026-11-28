@@ -12,8 +12,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService, IdentityMergeService
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
 from app.modules.identity.deps import TenantContext
 from app.modules.privacy.service import DeletionService
 

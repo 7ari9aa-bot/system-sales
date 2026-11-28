@@ -19,7 +19,7 @@ from app.core.db import bind_tenant
 from app.core.security import hash_password
 from app.modules.errors import ConflictError
 from app.modules.identity.models import Role, Tenant, TenantUser, User
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 
 RACERS = 6
@@ -150,8 +150,8 @@ async def _sell(factory, tenant_id, qty_sold: int):
     """One open shift and one sale of `qty_sold` units. Returns the ids the racers need."""
 
     async def setup(s):
-        from app.modules.catalog.service import CatalogService
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.catalog.service import CatalogService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, tenant_id)
         reg = await PosService.create_register(
@@ -314,8 +314,8 @@ async def test_a_losing_return_leaves_neither_money_nor_shelf_behind(committed_t
 
 async def _second_variant(factory, tenant_id) -> uuid.UUID:
     async def make(s):
-        from app.modules.catalog.service import CatalogService
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.catalog.service import CatalogService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, tenant_id)
         product = await CatalogService.create_product(

@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.db import get_sessionmaker
-from app.modules.ai.core.provisioning import backfill_all_tenants
+from app.applications.apparel.modules.ai.core.provisioning import backfill_all_tenants
 
 
 async def main() -> None:

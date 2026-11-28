@@ -24,7 +24,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.modules.customers.models  # noqa: F401
+import app.applications.apparel.modules.customers.models  # noqa: F401
 
 # Import all models so SQLAlchemy's metadata is complete (the Notification
 # model has a FK to customers.id; without this import the table is missing).

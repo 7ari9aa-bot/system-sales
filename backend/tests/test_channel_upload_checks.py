@@ -10,16 +10,16 @@ import inspect
 
 import pytest
 
-from app.modules.conversations.gateway.messenger_media import (
+from app.applications.apparel.modules.conversations.gateway.messenger_media import (
     MessengerLimitError,
 )
-from app.modules.conversations.gateway.messenger_media import (
+from app.applications.apparel.modules.conversations.gateway.messenger_media import (
     check_upload as messenger_upload,
 )
-from app.modules.conversations.gateway.telegram_media import (
+from app.applications.apparel.modules.conversations.gateway.telegram_media import (
     TelegramLimitError,
 )
-from app.modules.conversations.gateway.telegram_media import (
+from app.applications.apparel.modules.conversations.gateway.telegram_media import (
     check_upload as telegram_upload,
 )
 
@@ -168,7 +168,7 @@ def test_telegram_limits_are_5_mb_for_a_photo_and_20_for_the_rest():
 
 def test_what_upload_accepts_the_send_accepts():
     """An upload that passes must not then be refused when sent: the two share one rule set."""
-    from app.modules.conversations.gateway.telegram_media import check_file
+    from app.applications.apparel.modules.conversations.gateway.telegram_media import check_file
 
     for mime, data, name in (
         ("image/png", PNG, None),
@@ -186,7 +186,7 @@ def test_what_upload_accepts_the_send_accepts():
 
 def test_the_upload_route_uses_each_channels_own_check():
     """The route must call the channel's check, not WhatsApp's rules, for these two channels."""
-    from app.modules.conversations.routers import inbox
+    from app.applications.apparel.modules.conversations.routers import inbox
 
     src = inspect.getsource(inbox.upload_media)
     assert "messenger_check_upload" in src and "telegram_check_upload" in src

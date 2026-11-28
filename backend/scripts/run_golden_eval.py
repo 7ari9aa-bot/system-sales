@@ -32,14 +32,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from _bootstrap import load_settings, session_factory  # noqa: E402
 
 from app.core.db import bind_tenant  # noqa: E402
-from app.modules.analytics.evaluation.golden import evaluate_scenario  # noqa: E402
-from app.modules.analytics.evaluation.synthetic import (  # noqa: E402
+from app.applications.apparel.modules.analytics.evaluation.golden import evaluate_scenario  # noqa: E402
+from app.applications.apparel.modules.analytics.evaluation.synthetic import (  # noqa: E402
     Scenario,
     SyntheticStore,
     generate_store,
 )
-from app.modules.customers.models import Customer  # noqa: E402
-from app.modules.orders.models import Order, OrderPayment, Refund, Shipment  # noqa: E402
+from app.applications.apparel.modules.customers.models import Customer  # noqa: E402
+from app.applications.apparel.modules.orders.models import Order, OrderPayment, Refund, Shipment  # noqa: E402
 
 
 async def seed_store(

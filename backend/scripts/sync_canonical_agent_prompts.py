@@ -71,7 +71,7 @@ def first_differing_line(old: str | None, new: str | None) -> str:
 
 def canonical_definitions() -> dict[str, object]:
     """Every registered definition that declares itself canonical."""
-    from app.modules.ai.core.registry import AgentRegistry, discover_agents
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry, discover_agents
 
     discover_agents()
     return {
@@ -95,8 +95,8 @@ async def reconcile(*, apply: bool, publish: bool, only_kind: str | None) -> int
     from sqlalchemy import text as sa_text
 
     from app.core.db import bind_tenant, get_sessionmaker
-    from app.modules.ai.models import Agent
-    from app.modules.ai.versions import AIAgentVersionService
+    from app.applications.apparel.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.versions import AIAgentVersionService
 
     definitions = canonical_definitions()
     kinds = [only_kind] if only_kind else sorted(definitions)

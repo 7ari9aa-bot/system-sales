@@ -12,10 +12,10 @@ from decimal import Decimal
 
 import pytest
 
-import app.modules.purchasing.models  # noqa: F401 - registers the suppliers table
-from app.modules.catalog.models import Product, ProductVariant
-from app.modules.inventory.models import InventoryLot
-from app.modules.inventory.services.expiry import expiry_report
+import app.applications.apparel.modules.purchasing.models  # noqa: F401 - registers the suppliers table
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.inventory.models import InventoryLot
+from app.applications.apparel.modules.inventory.services.expiry import expiry_report
 from app.modules.settings.service import SettingsService
 
 pytestmark = pytest.mark.asyncio
@@ -172,12 +172,12 @@ async def test_the_query_is_scoped_to_the_shop_in_the_statement_itself(
 
 
 async def test_each_batch_reports_the_units_it_still_holds(db, tenant_ctx) -> None:
-    from app.modules.inventory.services.valuation import ValuationService
+    from app.applications.apparel.modules.inventory.services.valuation import ValuationService
 
     tid = tenant_ctx.tenant_id
     await _on(db, tid)
     var = await _variant(db, tid)
-    from app.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.models import Warehouse
 
     wh = Warehouse(tenant_id=tid, name="M", code="WH-Q", is_active=True)
     db.add(wh)
@@ -201,8 +201,8 @@ async def test_each_batch_reports_the_units_it_still_holds(db, tenant_ctx) -> No
 
 
 async def test_the_report_totals_the_units_at_risk(db, tenant_ctx) -> None:
-    from app.modules.inventory.models import Warehouse
-    from app.modules.inventory.services.valuation import ValuationService
+    from app.applications.apparel.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.services.valuation import ValuationService
 
     tid = tenant_ctx.tenant_id
     await _on(db, tid)

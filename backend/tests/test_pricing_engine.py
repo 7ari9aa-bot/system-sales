@@ -22,7 +22,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.pricing.service import PricingService, _round_to
+from app.applications.apparel.modules.pricing.service import PricingService, _round_to
 
 
 class _Rule:

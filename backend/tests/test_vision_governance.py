@@ -13,9 +13,9 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AIBudgetReservation, AIProviderPolicy, ModelCall
-from app.modules.ai.providers import MultimodalContent
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AIBudgetReservation, AIProviderPolicy, ModelCall
+from app.applications.apparel.modules.ai.providers import MultimodalContent
 
 
 class _StubVisionSettings:
@@ -38,7 +38,7 @@ def _embed_ok_response():
 
 
 async def test_embed_vision_reserves_records_and_calls_provider(db, tenant_ctx, monkeypatch):
-    monkeypatch.setattr("app.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
+    monkeypatch.setattr("app.applications.apparel.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
     seen: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -85,7 +85,7 @@ async def test_embed_vision_reserves_records_and_calls_provider(db, tenant_ctx, 
 
 
 async def test_embed_vision_blocked_by_egress_policy(db, tenant_ctx, monkeypatch):
-    monkeypatch.setattr("app.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
+    monkeypatch.setattr("app.applications.apparel.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
     db.add(
         AIProviderPolicy(
             tenant_id=tenant_ctx.tenant_id,
@@ -116,7 +116,7 @@ async def test_embed_vision_blocked_by_egress_policy(db, tenant_ctx, monkeypatch
 
 
 async def test_rerank_vision_records_and_scores(db, tenant_ctx, monkeypatch):
-    monkeypatch.setattr("app.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
+    monkeypatch.setattr("app.applications.apparel.modules.ai.gateway.get_settings", lambda: _StubVisionSettings())
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -149,7 +149,7 @@ async def test_rerank_vision_records_and_scores(db, tenant_ctx, monkeypatch):
 
 
 async def test_retrieve_candidates_rides_the_governed_path(db, tenant_ctx, monkeypatch):
-    from app.modules.ai.agents.customer.vision import retrieval
+    from app.applications.apparel.modules.ai.agents.customer.vision import retrieval
 
     seen: dict = {}
 
@@ -159,7 +159,7 @@ async def test_retrieve_candidates_rides_the_governed_path(db, tenant_ctx, monke
             seen["tenant_id"] = tenant_id
             return [[0.0, 0.0, 0.0]]
 
-    monkeypatch.setattr("app.modules.ai.gateway.AIGateway", _StubGateway)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.gateway.AIGateway", _StubGateway)
 
     candidates = await retrieval.retrieve_candidates(
         db, tenant_ctx.tenant_id, image_url="https://c.test/q.png"

@@ -14,8 +14,8 @@ from sqlalchemy import text
 
 from app.core.profit_report import ProfitReportService
 from app.core.sell_through_report import SellThroughReportService, share_of
-from app.modules.catalog.models import Product
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.catalog.models import Product
+from app.applications.apparel.modules.inventory.service import InventoryService
 from tests.test_profit_report import DAY, NOW, _return, _sale, _variant, _wh
 
 pytestmark = pytest.mark.asyncio
@@ -307,7 +307,7 @@ async def test_a_material_keeps_only_that_fabric(db, tenant_ctx) -> None:
 
 
 async def test_a_brand_keeps_only_that_brand(db, tenant_ctx) -> None:
-    from app.modules.catalog.models import Brand
+    from app.applications.apparel.modules.catalog.models import Brand
 
     tid = tenant_ctx.tenant_id
     await _tagged(db, tenant_ctx)

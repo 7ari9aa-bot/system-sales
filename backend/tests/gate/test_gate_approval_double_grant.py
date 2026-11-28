@@ -47,10 +47,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from app.core.db import bind_tenant
 from app.core.errors import ValidationError
 from app.core.security import hash_password
-from app.modules.ai.approvals import ApprovalService, payload_fingerprint
-from app.modules.ai.models import ApprovalRequest
-from app.modules.conversations.models import Conversation
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.approvals import ApprovalService, payload_fingerprint
+from app.applications.apparel.modules.ai.models import ApprovalRequest
+from app.applications.apparel.modules.conversations.models import Conversation
+from app.applications.apparel.modules.customers.models import Customer
 from app.modules.identity.models import Tenant, User
 
 pytestmark = [pytest.mark.gate]

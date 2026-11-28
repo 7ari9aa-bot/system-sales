@@ -8,14 +8,14 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.customers.models import (
+from app.applications.apparel.modules.customers.models import (
     CustomerEvent,
     CustomerIdentity,
     Note,
     Tag,
     customer_tags,
 )
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.modules.errors import NotFoundError
 
 
@@ -176,10 +176,10 @@ async def test_identity_merge_full_flow(db, tenant_ctx):
     from sqlalchemy import select
 
     from app.core.events.writer import add_outbox_event
-    from app.modules.conversations.models import Conversation
-    from app.modules.conversations.service import ConversationService
-    from app.modules.customers.models import Customer, IdentityMergeEvent
-    from app.modules.customers.service import CustomerService, IdentityMergeService
+    from app.applications.apparel.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.customers.models import Customer, IdentityMergeEvent
+    from app.applications.apparel.modules.customers.service import CustomerService, IdentityMergeService
     from app.modules.platform.models import AuditLog
 
     # two customers, each with an identity + a conversation each
@@ -267,7 +267,7 @@ async def test_a_tombstoned_phone_never_adopts_a_new_channel_identity(db: AsyncS
     """§143: contact resolution skips dead rows, so an erased customer's phone
     cannot quietly become the handle for a new live record."""
     from app.core.errors import ConflictError
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     tenant_id = tenant_ctx.tenant_id
     phone = "+201000000009"

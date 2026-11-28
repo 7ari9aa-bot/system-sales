@@ -14,7 +14,7 @@ import pytest
 from fakeredis.aioredis import FakeRedis
 
 from app.core.errors import ValidationError
-from app.modules.customers import meta_oauth as mo
+from app.applications.apparel.modules.customers import meta_oauth as mo
 
 TENANT = uuid.uuid4()
 USER = str(uuid.uuid4())
@@ -275,7 +275,7 @@ def _graph(pages, calls):
         if "/oauth/access_token" in url:
             return httpx.Response(200, json={"access_token": USER_TOKEN})
         if "/me/permissions" in url:
-            from app.modules.customers.meta_scopes import FACEBOOK_SCOPES
+            from app.applications.apparel.modules.customers.meta_scopes import FACEBOOK_SCOPES
 
             names = [s for s in FACEBOOK_SCOPES.split(",") if s]
             return httpx.Response(

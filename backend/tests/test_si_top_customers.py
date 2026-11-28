@@ -15,14 +15,14 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_find_customer,
     _si_shop,
     _si_top_customers,
 )
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order
 
 pytestmark = pytest.mark.usefixtures("db")
 
@@ -141,7 +141,7 @@ async def test_saying_nobody_ordered_in_the_window_passes_the_number_gate(db, te
     """Measured live: the model wrote "in the last 30 days no customer ordered", which was true,
     the gate refused the 30 (an empty result had no facts), and after a 35 to 66 s rewrite the
     owner got the stock "no clear result" reply instead of the right ranking."""
-    from app.modules.ai.agents.sales_intelligence.response import (
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
         allowed_numbers_from_facts,
         validate_answer,
     )
@@ -248,7 +248,7 @@ def test_the_ranking_query_is_tenant_scoped_in_the_sql_itself():
     """RLS is the second lock, not the first. Seen when mutating the read: dropping the shop filter
     left every behavioural test green, because the database wall alone still held. The query must
     bind the caller's shop on the table it filters by, and match the shop on the one it joins."""
-    from app.modules.ai.agents.sales_intelligence.tools import _TOP_CUSTOMERS_SQL
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _TOP_CUSTOMERS_SQL
 
     assert "o.tenant_id = :tenant_id" in _TOP_CUSTOMERS_SQL
     assert "c.tenant_id = o.tenant_id" in _TOP_CUSTOMERS_SQL

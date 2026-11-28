@@ -20,11 +20,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, Memory
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.ai.runtime import AgentRunner, _memory_line
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, Memory
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.runtime import AgentRunner, _memory_line
+from app.applications.apparel.modules.customers.models import Customer
 
 
 def _mem(**overrides) -> Memory:
@@ -92,7 +92,7 @@ async def test_memories_inject_as_a_user_message_before_the_customer_turn(
     async def fake_search(session, tid, query, *, customer_id=None, limit=5):
         return [(_mem(customer_id=customer_id), 0.1)]
 
-    monkeypatch.setattr("app.modules.ai.knowledge.search_memory", fake_search)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.knowledge.search_memory", fake_search)
 
     await AgentRunner(gateway=AIGateway()).run(
         db,

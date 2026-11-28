@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.plain_words import plain_words
-from app.modules.ai.agents.sales_intelligence.response import safe_response
+from app.applications.apparel.modules.ai.agents.sales_intelligence.plain_words import plain_words
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import safe_response
 
 LATIN_WORD = re.compile(r"[A-Za-z]{2,}")
 

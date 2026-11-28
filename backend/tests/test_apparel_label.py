@@ -11,8 +11,8 @@ import re
 
 import pytest
 
-from app.modules.catalog.apparel.barcode import bars, internal_ean13
-from app.modules.catalog.apparel.label import (
+from app.applications.apparel.modules.catalog.apparel.barcode import bars, internal_ean13
+from app.applications.apparel.modules.catalog.apparel.label import (
     MODULE_MM,
     QUIET_MODULES,
     SIZES,

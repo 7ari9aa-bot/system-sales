@@ -32,12 +32,12 @@ from sqlalchemy import Integer, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.schemas import DOMAIN_EVENT_TYPES, EVENT_TYPES, deserialize
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import service as orders_service
-from app.modules.orders.models import Order
-from app.modules.orders.service import _SHIPPING_EDITABLE_STATUSES, OrderService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import service as orders_service
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.orders.service import _SHIPPING_EDITABLE_STATUSES, OrderService
 from app.modules.platform.models import AuditLog, OutboxEvent
 from tests.test_order_idempotency import SessionStore, _build_app
 

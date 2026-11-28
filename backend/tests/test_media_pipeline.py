@@ -34,19 +34,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.core.storage as storage_mod
-import app.modules.conversations.media as media_mod
+import app.applications.apparel.modules.conversations.media as media_mod
 from app.core.errors import NotFoundError, ValidationError
 from app.core.media_scanner import MediaScannerError
 from app.core.media_scanner import scan as scan_bytes
 from app.core.storage import MAX_MEDIA_BYTES, FetchedMedia, ObjectStorage, StoredMedia
-from app.modules.conversations.media import (
+from app.applications.apparel.modules.conversations.media import (
     MediaPolicyError,
     MediaService,
     check_media_policy,
     normalize_mime,
 )
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
 
 MEDIA_URL = "https://cdn.example.test/photo.jpg"
 PAYLOAD = b"\xff\xd8\xff\xe0not-really-a-jpeg"

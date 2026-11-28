@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.modules.analytics import retention
+from app.applications.apparel.modules.analytics import retention
 from app.workers.retention_worker import _RETENTABLE, RetentionWorker
 
 TENANT_ID = "11111111-1111-1111-1111-111111111111"

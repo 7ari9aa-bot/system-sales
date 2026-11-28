@@ -18,8 +18,8 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.conversations.gateway import facebook_pages as fp
-from app.modules.conversations.gateway import facebook_video as fv
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_video as fv
 
 FIX = Path(__file__).parent / "fixtures"
 CREDS = {"api_key": "page-token", "account_id": "111"}
@@ -177,7 +177,7 @@ async def test_a_video_meta_refuses_reports_metas_own_reason():
 
 
 async def test_the_service_validates_the_file_and_reports_a_bad_one_as_validation(monkeypatch):
-    from app.modules.conversations.facebook_service import FacebookService
+    from app.applications.apparel.modules.conversations.facebook_service import FacebookService
 
     monkeypatch.setattr(
         FacebookService, "_with_stored_file", staticmethod(lambda *a, **k: _raise_unused())

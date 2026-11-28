@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from app.core import ops_alerts
-from app.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 
 URL = "https://hooks.example.com/services/T000/B000/XXXX"
 

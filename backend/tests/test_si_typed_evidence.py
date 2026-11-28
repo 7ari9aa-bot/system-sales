@@ -24,23 +24,23 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.ai.agents.sales_intelligence.agent import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import (
     AnalysisStoredOut,
     _facts_to_contracts,
 )
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_analyze_customers,
     _si_analyze_fulfillment,
     _si_analyze_seasonality,
     _si_breakdown,
     _typed_facts,
 )
-from app.modules.analytics.capabilities import (
+from app.applications.apparel.modules.analytics.capabilities import (
     CapabilityContext,
     EvidenceStore,
     register_derived_fact,
 )
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
     DataQualityStatus,
@@ -48,10 +48,10 @@ from app.modules.analytics.contracts import (
     MaturityStatus,
     MetricFact,
 )
-from app.modules.analytics.evidence import build_pack, validate_pack_inputs
-from app.modules.analytics.persistence import load_analysis, save_analysis
-from app.modules.customers.models import Customer
-from app.modules.orders.models import Order, Shipment
+from app.applications.apparel.modules.analytics.evidence import build_pack, validate_pack_inputs
+from app.applications.apparel.modules.analytics.persistence import load_analysis, save_analysis
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.orders.models import Order, Shipment
 
 # Same shape as the placeholder parser in analytics/numbers.py.
 _PLACEHOLDER_ID_RE = re.compile(r"[A-Za-z0-9_]+")
@@ -317,7 +317,7 @@ async def test_merged_facts_keep_their_filters_through_the_pack(db, tenant_ctx) 
 
 
 def _pack_stub() -> object:
-    from app.modules.analytics.contracts import EvidencePack
+    from app.applications.apparel.modules.analytics.contracts import EvidencePack
 
     store = EvidenceStore()
     fid = store.add_fact(_fact("delivered_revenue", "1200.00", _period()))
@@ -453,9 +453,9 @@ async def test_fulfillment_excludes_soft_deleted_orders(db, tenant_ctx) -> None:
 async def test_top_products_reports_units_revenue_and_options(db, tenant_ctx) -> None:
     """The analyst knows WHAT sold, in WHICH size and color, for HOW much —
     from the store's order-item snapshots, never from its own invention."""
-    from app.modules.ai.agents.sales_intelligence.tools import _si_top_products
-    from app.modules.catalog.models import Product, ProductVariant
-    from app.modules.orders.models import OrderItem
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_top_products
+    from app.applications.apparel.modules.catalog.models import Product, ProductVariant
+    from app.applications.apparel.modules.orders.models import OrderItem
 
     tenant_id = tenant_ctx.tenant_id
     customer = Customer(tenant_id=tenant_id, name="Buyer")
@@ -544,8 +544,8 @@ async def test_top_products_reports_units_revenue_and_options(db, tenant_ctx) ->
 async def test_customer_activity_lists_contacted_customers(db, tenant_ctx) -> None:
     """Customers who reached the store — through any channel or the customer
     agent — surface with their conversation volume, as typed facts."""
-    from app.modules.ai.agents.sales_intelligence.tools import _si_customer_activity
-    from app.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_customer_activity
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
 
     tenant_id = tenant_ctx.tenant_id
     talker = Customer(tenant_id=tenant_id, name="عميل بتكلم")
@@ -604,9 +604,9 @@ async def test_channel_activity_breaks_down_by_platform(db, tenant_ctx) -> None:
     as facts per channel so the answer can quote them. Message counts group by
     the MESSAGE's own channel column; rows without one (legacy, or direct
     inserts) fall back to the conversation's channel."""
-    from app.modules.ai.agents.sales_intelligence.tools import _si_channel_activity
-    from app.modules.conversations.models import Conversation, Message
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_channel_activity
+    from app.applications.apparel.modules.conversations.models import Conversation, Message
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     tenant_id = tenant_ctx.tenant_id
     customer = Customer(tenant_id=tenant_id, name="Multi Channel")
@@ -684,8 +684,8 @@ async def test_channel_activity_breaks_down_by_platform(db, tenant_ctx) -> None:
 async def test_si_social_comments_reads_ingested_comments(db, tenant_ctx) -> None:
     """The analyst reads the store's PUBLIC comments per platform and per post
     — hidden/removed excluded, and every volume registered as a fact."""
-    from app.modules.ai.agents.sales_intelligence.tools import _si_social_comments
-    from app.modules.conversations.models import SocialComment
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_social_comments
+    from app.applications.apparel.modules.conversations.models import SocialComment
 
     tenant_id = tenant_ctx.tenant_id
     now = datetime.now(UTC)
@@ -758,8 +758,8 @@ async def test_si_social_comments_withholds_injected_bodies(db, tenant_ctx) -> N
     """A public comment is written by ANYONE on the internet and rides the
     model context verbatim — an injection attempt must never reach the
     analyst as text (its VOLUME still counts; only the body is withheld)."""
-    from app.modules.ai.agents.sales_intelligence.tools import _si_social_comments
-    from app.modules.conversations.models import SocialComment
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _si_social_comments
+    from app.applications.apparel.modules.conversations.models import SocialComment
 
     tenant_id = tenant_ctx.tenant_id
     now = datetime.now(UTC)
@@ -814,7 +814,7 @@ def _window_includes_today(monkeypatch):
     the window and the tests pass or fail depending on nothing but the day they run. Resolve the
     window as of tomorrow instead, so rows written now are inside it, whatever day it is.
     """
-    from app.modules.ai.agents.sales_intelligence import tools as si_tools
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as si_tools
 
     original = si_tools._resolve_window
 

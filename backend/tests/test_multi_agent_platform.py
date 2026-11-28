@@ -15,15 +15,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.modules.ai.core.registry import (
+from app.applications.apparel.modules.ai.core.registry import (
     AgentCapability,
     AgentDefinition,
     AgentRegistry,
     discover_agents,
 )
-from app.modules.ai.models import AgentTool
-from app.modules.ai.runtime import AgentRunner
-from app.modules.ai.schemas import AgentUpdateRequest
+from app.applications.apparel.modules.ai.models import AgentTool
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.schemas import AgentUpdateRequest
 
 
 def test_registry_registration_and_queries() -> None:
@@ -167,9 +167,9 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
     """
     from pydantic import BaseModel
 
-    from app.modules.ai.models import Agent, AgentRun
-    from app.modules.ai.providers import ToolCallRequest
-    from app.modules.ai.tools import ToolSpec, register_tool
+    from app.applications.apparel.modules.ai.models import Agent, AgentRun
+    from app.applications.apparel.modules.ai.providers import ToolCallRequest
+    from app.applications.apparel.modules.ai.tools import ToolSpec, register_tool
 
     try:
         # Step 1: Register custom Agent #3
@@ -308,7 +308,7 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
         assert "not authorized for agent kind 'inventory_ops'" in outcome_denied["error"]
     finally:
         AgentRegistry._definitions.pop("inventory_ops", None)
-        from app.modules.ai.tools import TOOLS
+        from app.applications.apparel.modules.ai.tools import TOOLS
 
         TOOLS.pop("inv_check_reorder_level", None)
 
@@ -316,7 +316,7 @@ async def test_agent_3_extensibility_e2e_lifecycle() -> None:
 @pytest.mark.asyncio
 async def test_two_way_tool_reconciliation_quarantines_unauthorized_tools() -> None:
     """§5 Tool Reconciliation: missing tools are created, unauthorized tools in DB are disabled."""
-    from app.modules.ai.core.provisioning import _sync_agent_tools
+    from app.applications.apparel.modules.ai.core.provisioning import _sync_agent_tools
 
     tenant_id = uuid.uuid4()
     agent_id = uuid.uuid4()
@@ -348,7 +348,7 @@ async def test_reconciliation_never_reactivates_a_disabled_tool() -> None:
     """12.5: an existing row with is_active=False is the merchant's (or the
     quarantine's) decision — reconciliation creates MISSING tools and never
     flips an existing one back on behind their back."""
-    from app.modules.ai.core.provisioning import _sync_agent_tools
+    from app.applications.apparel.modules.ai.core.provisioning import _sync_agent_tools
 
     tenant_id = uuid.uuid4()
     agent_id = uuid.uuid4()
@@ -373,8 +373,8 @@ async def test_reconciliation_never_reactivates_a_disabled_tool() -> None:
 async def test_handover_atomic_claim_and_resolve_lifecycle() -> None:
     """§29-30 Handover claim atomicity and resolve conversation status sync."""
     from app.core.errors import ConflictError
-    from app.modules.ai.models import AIHandover
-    from app.modules.ai.router import claim_handover, resolve_handover
+    from app.applications.apparel.modules.ai.models import AIHandover
+    from app.applications.apparel.modules.ai.router import claim_handover, resolve_handover
 
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -422,7 +422,7 @@ async def test_handover_atomic_claim_and_resolve_lifecycle() -> None:
 async def test_ai_approval_rbac_gate() -> None:
     """§33 Approval RBAC: require_ai_approve gates decision endpoint."""
     from app.core.errors import PermissionDeniedError
-    from app.modules.ai.router import require_ai_approve
+    from app.applications.apparel.modules.ai.router import require_ai_approve
 
     gate = require_ai_approve()
 
@@ -458,8 +458,8 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
     """A canary must move the deployment row, not just a status string."""
     from sqlalchemy import select
 
-    from app.modules.ai.evaluation import AIEvaluationService
-    from app.modules.ai.models import Agent, AgentVersion, AIEvaluation, Deployment
+    from app.applications.apparel.modules.ai.evaluation import AIEvaluationService
+    from app.applications.apparel.modules.ai.models import Agent, AgentVersion, AIEvaluation, Deployment
 
     tenant_id = tenant_ctx.tenant_id
     agent = Agent(
@@ -561,7 +561,7 @@ async def test_canary_rollout_updates_the_real_deployment_state(db, tenant_ctx) 
 async def test_customer_tools_enforce_canonical_sellability() -> None:
     """§22 Customer Product Sellability: draft products rejected across all customer tools."""
     from app.core.errors import NotFoundError
-    from app.modules.ai.tools import _get_product_details, _get_product_photos
+    from app.applications.apparel.modules.ai.tools import _get_product_details, _get_product_photos
 
     tenant_id = uuid.uuid4()
     product_id = uuid.uuid4()
@@ -592,7 +592,7 @@ def test_worker_process_discovers_registry() -> None:
         "-c",
         (
             "import app.workers.run\n"
-            "from app.modules.ai.core.registry import AgentRegistry\n"
+            "from app.applications.apparel.modules.ai.core.registry import AgentRegistry\n"
             "assert 'customer' in AgentRegistry.kinds(), 'customer missing in worker'\n"
             "assert 'sales_intelligence' in AgentRegistry.kinds(), 'sales_intelligence missing'\n"
             "assert not AgentRegistry.is_tool_authorized('customer', 'create_order')\n"
@@ -656,7 +656,7 @@ async def test_semantic_idempotency_message_discriminator() -> None:
 
     from unittest.mock import patch
 
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     spec = get_tool("handover_to_human")
     assert spec is not None
@@ -735,11 +735,11 @@ async def test_tenant_creation_lifecycle_hook_dispatches() -> None:
 def test_allowed_numbers_and_full_evidence_validation() -> None:
     """SI Answer Validation: Recursively extracts allowed numbers from facts, comparisons,
     dimensions, drivers, and findings, rejecting hallucinated numbers."""
-    from app.modules.ai.agents.sales_intelligence.response import (
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
         allowed_numbers_from_facts,
         validate_answer,
     )
-    from app.modules.analytics.contracts import Finding, Relationship
+    from app.applications.apparel.modules.analytics.contracts import Finding, Relationship
 
     evidence = {
         "facts": [
@@ -802,11 +802,11 @@ def test_evidence_reconstruction_and_store_from() -> None:
     from datetime import UTC, datetime
     from decimal import Decimal
 
-    from app.modules.ai.agents.sales_intelligence.agent import (
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import (
         _rebuild_evidence,
         _store_from,
     )
-    from app.modules.analytics.contracts import (
+    from app.applications.apparel.modules.analytics.contracts import (
         AnalysisPeriod,
         MaturityPolicy,
         MaturityStatus,
@@ -942,9 +942,9 @@ def test_evidence_reconstruction_and_store_from() -> None:
 
 def test_agent_version_and_model_pinning_contracts() -> None:
     """Agent version and model pinning across AgentRunResult and trace._run_summary."""
-    from app.modules.ai.models import AgentRun
-    from app.modules.ai.runtime import AgentRunResult
-    from app.modules.ai.trace import _run_summary
+    from app.applications.apparel.modules.ai.models import AgentRun
+    from app.applications.apparel.modules.ai.runtime import AgentRunResult
+    from app.applications.apparel.modules.ai.trace import _run_summary
 
     # Check AgentRunResult carries pinned metadata
     result = AgentRunResult(
@@ -975,7 +975,7 @@ def test_agent_version_and_model_pinning_contracts() -> None:
 @pytest.mark.asyncio
 async def test_ai_evaluation_service_unified_lifecycle() -> None:
     """AIEvaluationService: End-to-end submit, list, and update_status lifecycle."""
-    from app.modules.ai.evaluation import AIEvaluationService
+    from app.applications.apparel.modules.ai.evaluation import AIEvaluationService
 
     mock_session = AsyncMock()
     mock_session.add = MagicMock()

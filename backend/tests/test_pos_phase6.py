@@ -30,7 +30,7 @@ def test_phase6_routes_are_mounted() -> None:
 
 
 def test_profile_wire_accepts_item_groups() -> None:
-    from app.modules.pos.router import CreateProfileRequest
+    from app.applications.apparel.modules.pos.router import CreateProfileRequest
 
     body = CreateProfileRequest(
         name="مقسمة",
@@ -45,13 +45,13 @@ def test_profile_wire_accepts_item_groups() -> None:
 
 
 async def _warehouse(db, tenant_ctx):
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     return await InventoryService.get_default_warehouse(db, tenant_ctx.tenant_id)
 
 
 async def _register(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     return await PosService.create_register(
@@ -64,8 +64,8 @@ async def _register(db, tenant_ctx):
 
 
 async def _sellable_variant(db, tenant_ctx, *, category_id=None, price="25.00", stock=5):
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = await _warehouse(db, tenant_ctx)
     product = await CatalogService.create_product(
@@ -91,7 +91,7 @@ async def _sellable_variant(db, tenant_ctx, *, category_id=None, price="25.00", 
 
 
 async def _customer(db, tenant_ctx):
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     return await CustomerService.create_from_import(
         db, tenant_ctx.tenant_id, name="زبون", source="pos"
@@ -99,10 +99,10 @@ async def _customer(db, tenant_ctx):
 
 
 async def test_profile_scopes_scan_and_browse(db, tenant_ctx):
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
     from app.modules.errors import ValidationError
-    from app.modules.pos.profiles import PosProfileService
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.profiles import PosProfileService
+    from app.applications.apparel.modules.pos.service import PosService
 
     warehouse = await _warehouse(db, tenant_ctx)
     inside = await CatalogService.create_category(db, tenant_ctx.tenant_id, name="داخل النطاق")
@@ -155,7 +155,7 @@ async def test_profile_scopes_scan_and_browse(db, tenant_ctx):
 
 
 async def test_receipts_carry_derived_return_state(db, tenant_ctx):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -204,7 +204,7 @@ async def test_receipt_email_queues_an_event_and_refuses_when_unconfigured(
     from app.core.events.schemas import DOMAIN_EVENT_TYPES
     from app.modules.errors import ValidationError
     from app.modules.platform.models import OutboxEvent
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(db, tenant_ctx.tenant_id, register.id)
@@ -262,8 +262,8 @@ async def test_receipt_email_queues_an_event_and_refuses_when_unconfigured(
 
 
 async def test_daily_projection_is_idempotent(db, tenant_ctx):
-    from app.modules.pos.models import PosDailySales
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.models import PosDailySales
+    from app.applications.apparel.modules.pos.service import PosService
 
     register = await _register(db, tenant_ctx)
     pos_session = await PosService.open_session(
@@ -288,7 +288,7 @@ async def test_daily_projection_is_idempotent(db, tenant_ctx):
     await PosService.close_session(db, tenant_ctx.tenant_id, pos_session.id)
 
     # The same definition the close event uses: the merchant's day (no zone set here -> UTC).
-    from app.modules.analytics.timekit import merchant_day
+    from app.applications.apparel.modules.analytics.timekit import merchant_day
 
     business_date = merchant_day(
         datetime.now(UTC), await PosService._shop_timezone(db, tenant_ctx.tenant_id)

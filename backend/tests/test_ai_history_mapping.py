@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.runtime import AgentRunner
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
 
 TENANT_ID = uuid.UUID("00000000-0000-0000-0000-0000000000a3")
 CONVERSATION_ID = uuid.UUID("00000000-0000-0000-0000-0000000003a3")
@@ -246,7 +246,7 @@ async def test_the_fetched_history_deduplicates_the_current_message(db, tenant_c
 
 async def _conversation_with_image(db, tenant_ctx, *, scan_status: str):
     """One inbound message carrying one image attachment at `scan_status`."""
-    from app.modules.conversations.models import Attachment
+    from app.applications.apparel.modules.conversations.models import Attachment
 
     customer = await CustomerService.get_or_create_by_identity(
         db, tenant_ctx.tenant_id, "webchat", f"wc-{uuid.uuid4().hex[:10]}", name="A3-img"

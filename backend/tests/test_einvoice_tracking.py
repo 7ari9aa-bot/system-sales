@@ -9,11 +9,11 @@ from types import SimpleNamespace
 import pytest
 
 import app.core.model_registry  # noqa: F401
-from app.modules.einvoice.providers.eta.sender import (
+from app.applications.apparel.modules.einvoice.providers.eta.sender import (
     AMENDMENT_WITH_REFERENCE,
     AMENDMENT_WITHOUT_REFERENCE,
 )
-from app.modules.einvoice.tracking import attention_of, summarize_documents
+from app.applications.apparel.modules.einvoice.tracking import attention_of, summarize_documents
 
 NOW = datetime(2026, 11, 21, 10, 0, tzinfo=UTC)
 
@@ -131,7 +131,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from app.core.db import bind_tenant  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.modules.einvoice.service import EInvoiceService  # noqa: E402
+from app.applications.apparel.modules.einvoice.service import EInvoiceService  # noqa: E402
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx  # noqa: E402
 from tests.test_eta_db_layer import _ctx, _device, _other_tenant  # noqa: E402
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.routers.inbox import _present_order
+from app.applications.apparel.modules.conversations.routers.inbox import _present_order
 
 
 def _m(raw, *, content_type="order", direction="inbound", payload="use-raw"):

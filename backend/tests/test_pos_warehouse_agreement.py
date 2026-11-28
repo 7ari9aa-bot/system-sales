@@ -13,8 +13,8 @@ import uuid
 import pytest
 
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.pos.profiles import PosProfileService
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.profiles import PosProfileService
+from app.applications.apparel.modules.pos.service import PosService
 from tests.test_pos_returns import _warehouse as _default_warehouse
 
 pytestmark = pytest.mark.asyncio
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.asyncio
 
 async def _warehouse(db, tenant_ctx):
     """A NEW warehouse each call (the shared helper always returns the one default)."""
-    from app.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.models import Warehouse
 
     await _default_warehouse(db, tenant_ctx)  # make sure the tenant has its default first
     wh = Warehouse(

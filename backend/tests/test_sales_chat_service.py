@@ -14,8 +14,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.modules.ai.chat import service as chat_service
-from app.modules.ai.models import AIChatMessage, AIChatThread
+from app.applications.apparel.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.models import AIChatMessage, AIChatThread
 
 TENANT = uuid.uuid4()
 USER = uuid.uuid4()
@@ -258,16 +258,16 @@ def test_thread_model_table_name_is_stable():
 
 from datetime import UTC, datetime  # noqa: E402 — turn tests live below the fold
 
-from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult  # noqa: E402
-from app.modules.ai.chat.schemas import MessageOut  # noqa: E402
-from app.modules.ai.chat.turns import (  # noqa: E402
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult  # noqa: E402
+from app.applications.apparel.modules.ai.chat.schemas import MessageOut  # noqa: E402
+from app.applications.apparel.modules.ai.chat.turns import (  # noqa: E402
     HISTORY_MESSAGE_LIMIT,
     _bounded_history,
     _maybe_compact,
     build_structured_blocks,
     run_chat_turn,
 )
-from app.modules.analytics.contracts import (  # noqa: E402
+from app.applications.apparel.modules.analytics.contracts import (  # noqa: E402
     DataQuality,
     DataQualityStatus,
     Finding,
@@ -357,7 +357,7 @@ async def test_run_chat_turn_persists_answer_and_blocks(monkeypatch):
         return _analysis_result()
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
     )
 
     assistant = await run_chat_turn(session, _Ctx(), thread)
@@ -414,7 +414,7 @@ async def test_run_chat_turn_rebinds_tenant_after_each_commit(monkeypatch):
         return _analysis_result()
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
     )
     await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
 
@@ -435,7 +435,7 @@ async def test_run_chat_turn_failure_lands_failed_row(monkeypatch):
     async def boom(session, tenant_id, *, agent_id, question, runner=None, history=None):
         raise RuntimeError("gateway down")
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom)
     with pytest.raises(ConflictError):
         await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
     (assistant,) = session.added
@@ -464,7 +464,7 @@ async def test_run_chat_turn_retry_overwrites_failed_row(monkeypatch):
         ]
     )
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis",
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis",
         lambda *a, **k: _async_result(_analysis_result()),
     )
     assistant = await run_chat_turn(session, _Ctx(), _Thread(agent_id=uuid.uuid4()))
@@ -609,7 +609,7 @@ async def test_a_poisoned_transaction_still_lands_the_failed_row(monkeypatch):
         raise RuntimeError("statement timeout")
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom_and_poison
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", boom_and_poison
     )
     with pytest.raises(ConflictError):
         await run_chat_turn(session, _Ctx(), thread)
@@ -653,7 +653,7 @@ async def test_a_failed_completion_write_still_lands_the_failed_row(monkeypatch)
 
     session.commit = flaky_commit
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
     )
     with pytest.raises(ConflictError):
         await run_chat_turn(session, _Ctx(), thread)
@@ -685,7 +685,7 @@ async def test_run_chat_turn_history_excludes_the_current_question(monkeypatch):
         return _analysis_result()
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fine_analysis
     )
     await run_chat_turn(session, _Ctx(), thread)
 
@@ -725,7 +725,7 @@ async def _permissions_seen_by_the_analysis(monkeypatch, ctx):
         return _analysis_result()
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
     )
     await run_chat_turn(_one_turn_session(), ctx, _Thread(agent_id=uuid.uuid4()))
     return seen
@@ -780,7 +780,7 @@ def _spy_on_the_analysis(monkeypatch):
         return _analysis_result()
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
     )
     return called
 
@@ -792,7 +792,7 @@ def _memory_double(monkeypatch, reply="حفظت: «x»."):
         seen.append((service.user_id, service.tenant_id, command))
         return reply
 
-    monkeypatch.setattr("app.modules.ai.owner_memory_chat.run_memory_command", fake_run)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.owner_memory_chat.run_memory_command", fake_run)
     return seen
 
 
@@ -847,7 +847,7 @@ async def test_a_failing_memory_command_fails_the_turn_and_never_falls_back_to_t
     async def boom(service, command):
         raise RuntimeError("database went away")
 
-    monkeypatch.setattr("app.modules.ai.owner_memory_chat.run_memory_command", boom)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.owner_memory_chat.run_memory_command", boom)
     with pytest.raises(ConflictError):
         await run_chat_turn(
             _session_for("افتكر إن المورد حسين"), _Ctx(), _Thread(agent_id=uuid.uuid4())

@@ -41,8 +41,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit_row
 from app.core.config import get_settings
 from app.core.profit_report import ProfitCtx
-from app.modules.catalog.apparel.matrix import color_column, size_column
-from app.modules.catalog.models import Product, ProductVariant
+from app.applications.apparel.modules.catalog.apparel.matrix import color_column, size_column
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.modules.errors import ConflictError, ValidationError
 
 _CENT = Decimal("0.01")

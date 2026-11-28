@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
-from app.modules.customers.meta_whatsapp_signup import _register_error
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.customers.meta_whatsapp_signup import _register_error
 
 
 def _failed(**error) -> dict:

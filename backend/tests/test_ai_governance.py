@@ -3,7 +3,7 @@
 Two properties are pinned here without a database, because both are invisible
 to the DB-backed suite:
 
-1. §43 data-egress precedence in :func:`app.modules.ai.policy.decide` — the
+1. §43 data-egress precedence in :func:`app.applications.apparel.modules.ai.policy.decide` — the
    fail-open default, and that an explicit deny beats any allow. ``decide`` is a
    pure function over an in-memory ``AIProviderPolicy``, so no session is needed.
 2. The §39 migration declares exactly ONE ANN index per embedding table. The
@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from app.modules.ai.models import AIProviderPolicy
-from app.modules.ai.policy import decide
+from app.applications.apparel.modules.ai.models import AIProviderPolicy
+from app.applications.apparel.modules.ai.policy import decide
 
 VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions"
 ANN_MIGRATION = VERSIONS_DIR / "b8c9d0e1f2a3_ai_embedding_ann_indexes.py"

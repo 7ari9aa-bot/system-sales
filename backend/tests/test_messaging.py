@@ -8,10 +8,10 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.webchat import webchat_adapter
-from app.modules.conversations.models import Conversation, Message
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.webchat import webchat_adapter
+from app.applications.apparel.modules.conversations.models import Conversation, Message
+from app.applications.apparel.modules.conversations.service import ConversationService
 from app.modules.platform.models import Integration
 
 
@@ -97,7 +97,7 @@ async def test_webchat_ingest_idempotent_on_client_message_id(db, tenant_ctx):
 
 
 async def test_conversation_service_flow(db, tenant_ctx):
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Walk-in")
     db.add(customer)
@@ -141,7 +141,7 @@ async def test_conversation_service_flow(db, tenant_ctx):
 
 
 async def test_conversation_tenant_isolation(db, tenant_ctx):
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_ctx.tenant_id, name="Isolated")
     db.add(customer)

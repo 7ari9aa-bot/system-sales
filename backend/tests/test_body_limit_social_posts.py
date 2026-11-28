@@ -35,8 +35,8 @@ async def _status(method: str, path: str, size: int) -> int:
 
 def test_the_limit_holds_the_largest_post_the_publish_screen_allows():
     # 10 pictures of 8 MB, each sent as base64 (4/3 of its size) inside one JSON body.
-    from app.modules.conversations.gateway.instagram import InstagramAdapter
-    from app.modules.conversations.social_service import MAX_PICTURE_BYTES
+    from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+    from app.applications.apparel.modules.conversations.social_service import MAX_PICTURE_BYTES
 
     largest = InstagramAdapter.CAROUSEL_MAX * (-(-MAX_PICTURE_BYTES // 3) * 4 + 20) + 200
     assert largest <= MAX_SOCIAL_POST_BYTES

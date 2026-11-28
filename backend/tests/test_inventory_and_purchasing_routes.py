@@ -7,11 +7,11 @@ from decimal import Decimal
 
 import pytest
 
-import app.modules.purchasing.models  # noqa: F401
-from app.modules.catalog.models import Product, ProductVariant
+import app.applications.apparel.modules.purchasing.models  # noqa: F401
+from app.applications.apparel.modules.catalog.models import Product, ProductVariant
 from app.modules.identity.deps import TenantContext
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.router import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.router import (
     InspectionCompleteRequest,
     InspectionCreateRequest,
     InspectionResultRequest,
@@ -34,7 +34,7 @@ from app.modules.inventory.router import (
     record_inspection_result,
     set_replenishment_policy,
 )
-from app.modules.purchasing.router import (
+from app.applications.apparel.modules.purchasing.router import (
     GoodsReceiptIn,
     GoodsReceiptLineIn,
     PoIn,
@@ -44,7 +44,7 @@ from app.modules.purchasing.router import (
     list_goods_receipts_for_po,
     post_goods_receipt,
 )
-from app.modules.purchasing.service import SupplierService
+from app.applications.apparel.modules.purchasing.service import SupplierService
 
 
 def _ctx(db, tenant_ctx) -> TenantContext:
@@ -228,7 +228,7 @@ async def test_purchasing_goods_receipt_routes(db, tenant_ctx):
     po_id = uuid.UUID(po.id)
 
     # Fetch PO line id
-    from app.modules.purchasing.service import PurchaseService
+    from app.applications.apparel.modules.purchasing.service import PurchaseService
 
     po_lines = await PurchaseService._lines_in(db, tid, po_id)
     po_line_id = po_lines[0].id
@@ -267,7 +267,7 @@ async def test_purchasing_goods_receipt_routes(db, tenant_ctx):
 @pytest.mark.asyncio
 async def test_apparel_insights_route(db, tenant_ctx):
     ctx = _ctx(db, tenant_ctx)
-    from app.modules.inventory.router import get_apparel_insights
+    from app.applications.apparel.modules.inventory.router import get_apparel_insights
 
     res = await get_apparel_insights(ctx, days=30)
     assert "top_selling_variants" in res

@@ -16,9 +16,9 @@ from sqlalchemy import case, func, select
 
 from app.core.errors import ValidationError
 from app.modules.errors import ConflictError, NotFoundError
-from app.modules.inventory.models import InventoryMovement
-from app.modules.inventory.service import InventoryService
-from app.modules.inventory.services import StocktakeService
+from app.applications.apparel.modules.inventory.models import InventoryMovement
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.services import StocktakeService
 from tests.test_inventory_stock_view import _variant
 
 pytestmark = pytest.mark.asyncio

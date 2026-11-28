@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import Settings
 from app.core.errors import RateLimitExceededError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import in_tx, make_tenant, purge_test_tenant
 from tests.test_pos_receipt_email_limits import _ask, _sale
 from tests.test_pos_record_sale_concurrency import _shelf

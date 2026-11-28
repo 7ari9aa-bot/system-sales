@@ -18,7 +18,7 @@ from tests.test_pos_phase6 import _sellable_variant
 
 
 async def _swap(db, tenant_ctx, *, ceiling, pct=None, override=False):
-    from app.modules.pos.service import PosService
+    from app.applications.apparel.modules.pos.service import PosService
 
     register, _ = await _till(db, tenant_ctx, ceiling=ceiling)
     old = await _sellable_variant(db, tenant_ctx, price="100.00")

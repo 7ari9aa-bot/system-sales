@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.templates import (
+from app.applications.apparel.modules.conversations.templates import (
     ALLOWED_TRANSITIONS,
     EDITABLE_STATUSES,
     KNOWN_PROVIDERS,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.catalog.apparel.matrix import (
+from app.applications.apparel.modules.catalog.apparel.matrix import (
     COLOR_AXIS,
     MAX_COMBINATIONS,
     SIZE_AXIS,

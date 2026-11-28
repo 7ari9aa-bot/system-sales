@@ -14,10 +14,10 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.modules.inventory.models import InventoryBalance
-from app.modules.orders.models import OrderPayment
-from app.modules.pos.models import PosCashMovement, PosSession
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.inventory.models import InventoryBalance
+from app.applications.apparel.modules.orders.models import OrderPayment
+from app.applications.apparel.modules.pos.models import PosCashMovement, PosSession
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import in_tx, make_tenant, purge_test_tenant
 
 pytestmark = pytest.mark.asyncio
@@ -46,8 +46,8 @@ async def _shelf(factory, t, stock: int):
     `stock` units."""
 
     async def setup(s):
-        from app.modules.catalog.service import CatalogService
-        from app.modules.inventory.service import InventoryService
+        from app.applications.apparel.modules.catalog.service import CatalogService
+        from app.applications.apparel.modules.inventory.service import InventoryService
 
         wh = await InventoryService.get_default_warehouse(s, t)
         reg = await PosService.create_register(
@@ -189,7 +189,7 @@ async def test_a_close_racing_six_sales_never_misses_an_invoice(shop) -> None:
     they queue: whatever committed before the close is inside its balance, and anything that
     queued behind the close finds the day CLOSED and is refused instead of landing after it.
     """
-    from app.modules.orders.models import Order
+    from app.applications.apparel.modules.orders.models import Order
 
     factory, t, user = shop
     register_id, variant_id = await _shelf(factory, t, stock=20)

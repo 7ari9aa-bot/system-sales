@@ -14,7 +14,7 @@ media is untrusted, so callers MUST use the two steps deliberately —
 `fetch` + `store` are separate for exactly that reason: screening has to happen
 BEFORE anything is written to the bucket. There is deliberately no one-call
 `fetch-and-store` helper, because such a helper looks safe and is not — the
-screened path lives in `app.modules.conversations.media.MediaService`.
+screened path lives in `app.applications.apparel.modules.conversations.media.MediaService`.
 
 The third verb is `delete_objects`, and it is here because §52 says retention is
 executed, not displayed: media is customer PII with a horizon, and a row-level

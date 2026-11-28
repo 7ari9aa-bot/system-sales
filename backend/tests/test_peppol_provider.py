@@ -8,18 +8,18 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.einvoice.models import EInvoiceDevice
-from app.modules.einvoice.ports import (
+from app.applications.apparel.modules.einvoice.models import EInvoiceDevice
+from app.applications.apparel.modules.einvoice.ports import (
     EInvoiceContext,
     InvoiceLineItem,
     PartyInfo,
 )
-from app.modules.einvoice.providers.peppol_ae.pint import (
+from app.applications.apparel.modules.einvoice.providers.peppol_ae.pint import (
     CUSTOMIZATION_ID,
     PROFILE_ID,
     build_pint_ae_xml,
 )
-from app.modules.einvoice.providers.peppol_ae.provider import PeppolAeEInvoiceProvider
+from app.applications.apparel.modules.einvoice.providers.peppol_ae.provider import PeppolAeEInvoiceProvider
 
 
 def _sample_uae_context() -> EInvoiceContext:

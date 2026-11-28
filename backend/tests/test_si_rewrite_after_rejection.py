@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
-from app.modules.ai.agents.sales_intelligence.coverage import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import run_sales_analysis
+from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import (
     build_rejection_instruction,
     free_numbers_in,
 )
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import AgentRun
-from app.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import AgentRun
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
 from app.modules.settings.service import SettingsService
 from tests.test_si_agent import _seed
 
@@ -187,7 +187,7 @@ async def test_a_rewrite_blocked_by_the_output_guardrail_still_books_its_tokens(
 
 async def test_a_rejection_that_is_not_about_a_number_is_not_rewritten(db, tenant_ctx, monkeypatch):
     # the gate also rejects a hypothesis that reached HIGH confidence: rewording cannot fix that
-    from app.modules.ai.agents.sales_intelligence import agent as agent_module
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import agent as agent_module
 
     calls = _model(monkeypatch, [CLEAN, CLEAN])
     monkeypatch.setattr(
@@ -213,7 +213,7 @@ def test_without_a_useful_list_the_instruction_is_exactly_what_it_was():
 
 
 def test_only_short_plain_numerals_reach_the_prompt_and_a_huge_set_sends_none():
-    from app.modules.ai.agents.sales_intelligence.coverage import _allowed_for_the_prompt
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import _allowed_for_the_prompt
 
     got = _allowed_for_the_prompt({"1112.98", "3", "90", "fec5f9c9", "20261116161313", ""})
     assert got == ["3", "90", "1112.98"]
@@ -226,7 +226,7 @@ async def test_the_rewrite_call_carries_the_allowed_figures(monkeypatch):
     import uuid
     from types import SimpleNamespace
 
-    from app.modules.ai.agents.sales_intelligence import coverage
+    from app.applications.apparel.modules.ai.agents.sales_intelligence import coverage
 
     agent = SimpleNamespace(
         id=uuid.uuid4(),
@@ -266,7 +266,7 @@ def test_the_instruction_says_to_delete_the_sentence_not_to_reword_it():
     """Measured live: a 52 s, 2,574 token rewrite whose reasoning spent its time deciding whether
     dates, product codes and a year were allowed, because it was told to replace the figure and to
     write no other number. Removing the sentence leaves nothing to deliberate."""
-    from app.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
 
     text = build_rejection_instruction(["17", "30"], ["0", "5", "200"])
     assert "امسح من الإجابة أي جملة فيها الأرقام دي" in text
@@ -281,6 +281,6 @@ def test_the_instruction_says_to_delete_the_sentence_not_to_reword_it():
 
 def test_the_instruction_passes_the_shared_inbound_guard():
     from app.core.guardrails import screen_inbound
-    from app.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import build_rejection_instruction
 
     assert screen_inbound(build_rejection_instruction(["17"], ["0", "5"])).decision == "allow"

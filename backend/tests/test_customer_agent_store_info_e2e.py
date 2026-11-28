@@ -12,12 +12,12 @@ import uuid
 
 from sqlalchemy import select
 
-from app.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
-from app.modules.ai.core.provisioning import provision_canonical_agents
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.models import Agent, KnowledgeItem
-from app.modules.ai.providers import ChatCompletionResult, ToolCallRequest
-from app.modules.ai.runtime import AgentRunner
+from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, run_customer_turn
+from app.applications.apparel.modules.ai.core.provisioning import provision_canonical_agents
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.models import Agent, KnowledgeItem
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult, ToolCallRequest
+from app.applications.apparel.modules.ai.runtime import AgentRunner
 
 
 async def _customer_agent(db, tenant_id) -> Agent:
@@ -31,8 +31,8 @@ async def _customer_agent(db, tenant_id) -> Agent:
 
 
 async def _conversation(db, tenant_id) -> uuid.UUID:
-    from app.modules.conversations.models import Conversation
-    from app.modules.customers.models import Customer
+    from app.applications.apparel.modules.conversations.models import Conversation
+    from app.applications.apparel.modules.customers.models import Customer
 
     customer = Customer(tenant_id=tenant_id, name="E2E Customer")
     db.add(customer)

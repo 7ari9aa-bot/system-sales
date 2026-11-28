@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
-from app.modules.conversations.gateway.ingest import _record_template_resync
+from app.applications.apparel.modules.conversations.gateway.ingest import _record_template_resync
 from app.modules.platform.diagnostics import channel_problems
 
 TENANT = uuid.uuid4()

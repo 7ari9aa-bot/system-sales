@@ -16,8 +16,8 @@ import uuid
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
-from app.modules.conversations.models import MessageTemplate
-from app.modules.conversations.templates import TemplateService
+from app.applications.apparel.modules.conversations.models import MessageTemplate
+from app.applications.apparel.modules.conversations.templates import TemplateService
 from app.modules.platform.models import Integration
 
 logger = logging.getLogger(__name__)

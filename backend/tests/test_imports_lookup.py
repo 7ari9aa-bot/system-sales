@@ -6,12 +6,12 @@ import uuid
 
 import app.core.model_registry  # noqa: F401  (loads every table so foreign keys resolve)
 from app.core.db import bind_tenant
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.identity.models import Tenant
 from app.modules.imports import lookup
 from app.modules.imports.validation import Existing
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
 from app.modules.settings.service import SettingsService
 
 

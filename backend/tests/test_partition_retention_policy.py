@@ -30,7 +30,7 @@ from datetime import date
 import pytest
 
 from app.core import partitioning
-from app.modules.analytics import retention
+from app.applications.apparel.modules.analytics import retention
 
 NOW = date(2026, 9, 15)  # a fixed "today" — a plan must never read the clock twice
 

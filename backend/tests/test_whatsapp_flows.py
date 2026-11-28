@@ -11,9 +11,9 @@ import httpx
 import pytest
 
 from app.core.errors import ExternalProviderError, ValidationError
-from app.modules.conversations.gateway import whatsapp_flows as flows
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
+from app.applications.apparel.modules.conversations.gateway import whatsapp_flows as flows
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.gateway.whatsapp_interactive import build_interactive, preview_text
 
 CREDS = {"access_token": "tok", "waba_id": "waba-1"}
 

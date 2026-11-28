@@ -34,14 +34,14 @@ from starlette.requests import Request
 
 from app.core.errors import DomainError, PermissionDeniedError, build_error_body
 from app.core.security import create_access_token, hash_password
-from app.modules.conversations.router import (
+from app.applications.apparel.modules.conversations.router import (
     router as conversations_router,
 )
-from app.modules.conversations.router import (
+from app.applications.apparel.modules.conversations.router import (
     send_message,
     stream_conversations,
 )
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.service import ConversationService
 from app.modules.identity.deps import AuthedUser, TenantContext, get_tenant_ctx
 from app.modules.identity.models import Tenant, User
 
@@ -240,8 +240,8 @@ def _stub_message_services(monkeypatch) -> None:
     async def _all_channels(_ctx):
         return None
 
-    monkeypatch.setattr("app.modules.conversations.routers.inbox._allowed_channels", _all_channels)
-    monkeypatch.setattr("app.modules.conversations.routers.inbox._sendable_channels", _all_channels)
+    monkeypatch.setattr("app.applications.apparel.modules.conversations.routers.inbox._allowed_channels", _all_channels)
+    monkeypatch.setattr("app.applications.apparel.modules.conversations.routers.inbox._sendable_channels", _all_channels)
 
 
 def test_send_message_declares_the_write_permission_gate() -> None:

@@ -13,15 +13,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import (
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import (
     InventoryService,
     ReplenishmentService,
 )
-from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine
-from app.modules.purchasing.service import PurchaseService, SupplierService
+from app.applications.apparel.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine
+from app.applications.apparel.modules.purchasing.service import PurchaseService, SupplierService
 from app.modules.settings.registry import Scope
 from app.modules.settings.service import SettingsService
 

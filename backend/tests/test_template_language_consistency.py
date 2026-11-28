@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.base import OutboundMessage
-from app.modules.conversations.gateway.whatsapp import WhatsAppAdapter
-from app.modules.conversations.policy import MessagingPolicyService, template_language
+from app.applications.apparel.modules.conversations.gateway.base import OutboundMessage
+from app.applications.apparel.modules.conversations.gateway.whatsapp import WhatsAppAdapter
+from app.applications.apparel.modules.conversations.policy import MessagingPolicyService, template_language
 
 
 @pytest.mark.parametrize(
@@ -105,7 +105,7 @@ class _StopHere(Exception):
 async def test_sending_asks_the_policy_about_the_language_it_will_send(
     monkeypatch, vars_, expected
 ):
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     seen = {}
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.modules.orders.models import Order
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.orders.models import Order
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_helpers import ctx_for, start_day, till
 from tests.test_pos_sale_http import _post
 

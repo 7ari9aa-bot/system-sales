@@ -48,22 +48,22 @@ from app.core.errors import RateLimitExceededError, ValidationError
 from app.core.events.bus import Event
 from app.core.events.schemas import EventEnvelope, deserialize_event
 from app.core.lease import ConversationBusy
-from app.modules.ai.gateway import (
+from app.applications.apparel.modules.ai.gateway import (
     AIBudgetFallbackRequested,
     reserve_budget,
     settle_reservation,
 )
-from app.modules.ai.usage import PLATFORM_BUCKET, record_usage
-from app.modules.conversations.gateway.base import (
+from app.applications.apparel.modules.ai.usage import PLATFORM_BUCKET, record_usage
+from app.applications.apparel.modules.conversations.gateway.base import (
     ChannelAdapter,
     OutboundMessage,
     ProviderCredentials,
 )
-from app.modules.conversations.gateway.registry import get_adapter
-from app.modules.conversations.models import Attachment, Conversation, Message
-from app.modules.conversations.policy import MessagingPolicyService
-from app.modules.conversations.voice import STTProvider, VoiceService, stt_cost_estimate
-from app.modules.customers.models import CustomerIdentity
+from app.applications.apparel.modules.conversations.gateway.registry import get_adapter
+from app.applications.apparel.modules.conversations.models import Attachment, Conversation, Message
+from app.applications.apparel.modules.conversations.policy import MessagingPolicyService
+from app.applications.apparel.modules.conversations.voice import STTProvider, VoiceService, stt_cost_estimate
+from app.applications.apparel.modules.customers.models import CustomerIdentity
 from app.modules.platform.models import DeliveryAttempt, Integration, ProcessedEvent
 from app.workers.base import (
     DeferredError,
@@ -309,7 +309,7 @@ class MessageWorker(StreamWorker):
                         # the retry budget is spent; say so on the row itself.
                         from sqlalchemy import update as sa_update
 
-                        from app.modules.conversations.models import Message
+                        from app.applications.apparel.modules.conversations.models import Message
 
                         await session.execute(
                             sa_update(Message)
@@ -321,7 +321,7 @@ class MessageWorker(StreamWorker):
                             )
                             .values(status="failed", error=note[:500])
                         )
-                    from app.modules.ai.handover import request_human_takeover
+                    from app.applications.apparel.modules.ai.handover import request_human_takeover
 
                     await request_human_takeover(
                         session,
@@ -350,7 +350,7 @@ class MessageWorker(StreamWorker):
         turn_message_id = _event_message_id(envelope)
         claimed = False
         try:
-            from app.modules.ai.hooks import maybe_auto_reply
+            from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
 
             # Phase 1: Atomic durable processing claim (§127)
             # Checks for finished or active processing; reclaims stale in_progress claims (>5m);
@@ -778,7 +778,7 @@ class MessageWorker(StreamWorker):
             # A file an agent uploaded: the row holds our object key (a signed
             # link would expire), so a fresh link is made now for the provider
             # to download from, and its kind and name are passed along.
-            from app.modules.conversations.outbound_media_service import OutboundMediaService
+            from app.applications.apparel.modules.conversations.outbound_media_service import OutboundMediaService
 
             try:
                 media_url = OutboundMediaService.link_for_provider(media_url[len("s3://") :])

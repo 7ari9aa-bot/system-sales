@@ -32,8 +32,8 @@ from app.modules.identity.deps import (
     TenantContext,
     get_tenant_ctx,
 )
-from app.modules.inventory.models import InventoryMovement
-from app.modules.inventory.router import router as inventory_router
+from app.applications.apparel.modules.inventory.models import InventoryMovement
+from app.applications.apparel.modules.inventory.router import router as inventory_router
 
 
 def _permission_codes(routes, path: str, method: str) -> set[str]:
@@ -79,9 +79,9 @@ async def _post_movement(app, payload: dict):
 async def stocked(db: AsyncSession, tenant_ctx):
     """A variant with 10 on hand, recorded the way the module records it: one
     `in`/purchase ledger row, so "nothing was written" is a count of 1."""
-    from app.modules.catalog.service import CatalogService
-    from app.modules.inventory.models import Warehouse
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.inventory.models import Warehouse
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     warehouse = Warehouse(
         tenant_id=tenant_ctx.tenant_id,
@@ -165,7 +165,7 @@ async def test_the_movement_route_refuses_a_member_without_the_permission(
 async def test_the_movement_route_accepts_a_member_who_has_it(
     db: AsyncSession, tenant_ctx, stocked
 ) -> None:
-    from app.modules.inventory.service import InventoryService
+    from app.applications.apparel.modules.inventory.service import InventoryService
 
     variant, warehouse = stocked
     app = _app_for(db, tenant_ctx.tenant_id, permissions={"inventory:write"})

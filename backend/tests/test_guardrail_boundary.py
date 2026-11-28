@@ -18,8 +18,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.guardrails import AI_SENDER_TYPES, default_guardrail
-from app.modules.conversations.policy import OutboundBlockedError
-from app.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.policy import OutboundBlockedError
+from app.applications.apparel.modules.conversations.service import ConversationService
 
 PII_BODY = "your card 4111 1111 1111 1111 was charged"
 API_KEY_BODY = "use sk-abcdefghijklmnopqrstuvwxyz012345 to authenticate"
@@ -68,7 +68,7 @@ def test_only_ai_authored_content_is_in_scope() -> None:
 
 def test_the_ai_module_still_exposes_the_same_chain() -> None:
     """Existing importers must keep working after the move to app/core."""
-    from app.modules.ai import guardrails as via_ai
+    from app.applications.apparel.modules.ai import guardrails as via_ai
 
     assert via_ai.default_guardrail is default_guardrail
     assert via_ai.AI_SENDER_TYPES is AI_SENDER_TYPES
@@ -79,7 +79,7 @@ def test_the_ai_module_still_exposes_the_same_chain() -> None:
 
 async def _conversation(db: AsyncSession, tenant_id):
     """webchat is unregulated, so the §30 channel window cannot mask the result."""
-    from app.modules.customers.service import CustomerService
+    from app.applications.apparel.modules.customers.service import CustomerService
 
     customer = await CustomerService.get_or_create_by_identity(
         db,
@@ -143,7 +143,7 @@ async def test_the_blocked_message_is_not_persisted(db: AsyncSession, tenant_ctx
     """Refusing after the insert would leave a half-sent message behind."""
     from sqlalchemy import func, select
 
-    from app.modules.conversations.models import Message
+    from app.applications.apparel.modules.conversations.models import Message
 
     conversation = await _conversation(db, tenant_ctx.tenant_id)
 

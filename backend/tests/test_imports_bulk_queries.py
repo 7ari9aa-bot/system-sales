@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 import sqlalchemy as sa
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.imports.fields import SHEET_VARIANTS
 from app.workers.import_runner import run_batch
 from tests.test_imports_run import _job, _row, _session

@@ -83,7 +83,7 @@ async def _post_zip(ctx, payload: bytes):
 
 
 async def _variant(db, tenant_ctx, sku: str):
-    from app.modules.catalog.service import CatalogService
+    from app.applications.apparel.modules.catalog.service import CatalogService
 
     product = await CatalogService.create_product(
         db, tenant_ctx.tenant_id, title=f"منتج {sku}", slug=f"p-{sku.lower()}"

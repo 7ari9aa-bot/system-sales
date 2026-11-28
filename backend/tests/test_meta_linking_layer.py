@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.customers.meta_linking import (
+from app.applications.apparel.modules.customers.meta_linking import (
     CAPABILITY_FIELDS,
     CAPABILITY_SCOPES,
     EVENT_REGISTRY,

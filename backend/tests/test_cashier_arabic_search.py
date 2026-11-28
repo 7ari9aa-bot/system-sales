@@ -15,10 +15,10 @@ import uuid
 import pytest
 
 from app.core.sql import arabic_regex, normalize_digits
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.service import InventoryService
-from app.modules.pos.service import PosService
-from app.modules.pos.stock_view import StockViewService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.stock_view import StockViewService
 from tests.test_pos_receipt_search import _number, _sale_on_a_closed_shift
 from tests.test_pos_returns import _register, _warehouse
 
@@ -105,7 +105,7 @@ async def test_the_sales_grid_finds_a_product_typed_with_a_different_spelling(db
 
 @pytest.mark.asyncio
 async def test_the_sales_grid_finds_a_variant_by_its_barcode_fragment(db, tenant_ctx):
-    from app.modules.catalog.models import ProductIdentifier
+    from app.applications.apparel.modules.catalog.models import ProductIdentifier
 
     shift = await _open_shift(db, tenant_ctx)
     variant = await _product(db, tenant_ctx, "قميص")

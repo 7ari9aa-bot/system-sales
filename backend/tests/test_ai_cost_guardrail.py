@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.modules.ai.gateway import estimate_cost
+from app.applications.apparel.modules.ai.gateway import estimate_cost
 
 # --- §42 cost precision ----------------------------------------------------
 
@@ -75,7 +75,7 @@ def test_costs_accumulate_without_drifting() -> None:
 def test_the_run_result_carries_the_guardrail_verdict() -> None:
     """The verdict is on the result, and content is withheld when it is not
     'allow' — so a caller that forgets to inspect it still cannot send."""
-    from app.modules.ai.runtime import AgentRunResult
+    from app.applications.apparel.modules.ai.runtime import AgentRunResult
 
     result = AgentRunResult(content=None, guardrail_decision="handover", guardrail_reason="x")
     assert result.guardrail_decision == "handover"
@@ -87,10 +87,10 @@ def test_the_run_result_carries_the_guardrail_verdict() -> None:
 async def test_the_runner_withholds_content_the_guardrail_rejects(db, tenant_ctx, monkeypatch):
     """DB-backed: an actual run whose output trips the guardrail must return no
     content, whichever caller invoked it."""
-    from app.modules.ai.gateway import AIGateway
-    from app.modules.ai.models import Agent
-    from app.modules.ai.providers import ChatCompletionResult
-    from app.modules.ai.runtime import AgentRunner
+    from app.applications.apparel.modules.ai.gateway import AIGateway
+    from app.applications.apparel.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+    from app.applications.apparel.modules.ai.runtime import AgentRunner
 
     # Use one of the attempts the default guardrail actually catches
     # (_INJECTION_PATTERNS in app/core/guardrails.py) — a near-miss would make

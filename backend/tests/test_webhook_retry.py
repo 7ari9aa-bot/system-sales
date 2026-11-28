@@ -30,9 +30,9 @@ from sqlalchemy import func, select
 
 from app.core.errors import PermissionDeniedError, ValidationError
 from app.core.events.writer import add_outbox_event
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.whatsapp import whatsapp_adapter
-from app.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.whatsapp import whatsapp_adapter
+from app.applications.apparel.modules.conversations.models import Message
 from app.modules.identity.deps import AuthedUser, TenantContext
 from app.modules.platform.models import OutboxEvent, WebhookEvent
 from app.modules.platform.router import admin_retry_webhook_event

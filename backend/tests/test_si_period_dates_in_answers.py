@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.sales_intelligence.response import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.response import (
     allowed_numbers_from_facts,
     period_dates_from_evidence,
     validate_answer,
@@ -102,8 +102,8 @@ async def test_the_corrective_regeneration_accepts_an_answer_naming_its_period(m
     import uuid
     from types import SimpleNamespace
 
-    from app.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
-    from app.modules.ai.gateway import AIGateway, ChatCompletionResult
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.coverage import regenerate_on_coverage_gap
+    from app.applications.apparel.modules.ai.gateway import AIGateway, ChatCompletionResult
 
     agent = SimpleNamespace(
         id=uuid.uuid4(),

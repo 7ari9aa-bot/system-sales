@@ -28,7 +28,7 @@ def test_option_routes_are_mounted() -> None:
 
 
 def test_image_intake_publishes_variant_binding() -> None:
-    from app.modules.catalog.router import AddImageRequest
+    from app.applications.apparel.modules.catalog.router import AddImageRequest
 
     assert "variant_id" in AddImageRequest.model_fields
     field = AddImageRequest.model_fields["variant_id"]

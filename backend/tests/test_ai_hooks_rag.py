@@ -1,7 +1,7 @@
 """Auto-reply RAG hook tests (W0.1).
 
 `maybe_auto_reply` used to import a non-existent
-`app.modules.ai.knowledge.retrieve_relevant`; the catch-all swallowed the
+`app.applications.apparel.modules.ai.knowledge.retrieve_relevant`; the catch-all swallowed the
 ImportError and EVERY auto-reply silently ran with knowledge_context=None.
 These tests drive the real hook with `search_knowledge` stubbed: the
 knowledge block must reach the model call, and a retrieval failure must
@@ -14,14 +14,14 @@ import logging
 
 from sqlalchemy import select
 
-from app.modules.ai import knowledge as ai_knowledge
-from app.modules.ai.gateway import AIGateway
-from app.modules.ai.hooks import maybe_auto_reply
-from app.modules.ai.models import Agent, KnowledgeItem
-from app.modules.ai.providers import ChatCompletionResult
-from app.modules.conversations.models import Message
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.models import Customer
+from app.applications.apparel.modules.ai import knowledge as ai_knowledge
+from app.applications.apparel.modules.ai.gateway import AIGateway
+from app.applications.apparel.modules.ai.hooks import maybe_auto_reply
+from app.applications.apparel.modules.ai.models import Agent, KnowledgeItem
+from app.applications.apparel.modules.ai.providers import ChatCompletionResult
+from app.applications.apparel.modules.conversations.models import Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.models import Customer
 
 REPLY = "Yes, the blue widget is in stock."
 SNIPPET = "The blue widget is in stock and ships in 2 days."
@@ -121,7 +121,7 @@ async def test_auto_reply_survives_retrieval_failure_with_warning(
     monkeypatch.setattr(ai_knowledge, "search_knowledge", failing_search)
     calls = _patch_chat(monkeypatch)
 
-    with caplog.at_level(logging.WARNING, logger="app.modules.ai.hooks"):
+    with caplog.at_level(logging.WARNING, logger="app.applications.apparel.modules.ai.hooks"):
         await maybe_auto_reply(db, tenant_id, conversation.id)
 
     # The reply still went out...

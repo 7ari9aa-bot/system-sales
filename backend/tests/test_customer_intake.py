@@ -8,7 +8,7 @@ acknowledged without being interpreted.
 
 from __future__ import annotations
 
-from app.modules.ai.agents.customer.intake import build_turn
+from app.applications.apparel.modules.ai.agents.customer.intake import build_turn
 
 
 def test_text_only_turn():

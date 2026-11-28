@@ -10,8 +10,8 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from app.modules.customers.meta_oauth import _build_authorize_url
-from app.modules.customers.meta_scopes import (
+from app.applications.apparel.modules.customers.meta_oauth import _build_authorize_url
+from app.applications.apparel.modules.customers.meta_scopes import (
     FACEBOOK_PAGE_SCOPES,
     FACEBOOK_SCOPES,
     MESSENGER_SCOPES,

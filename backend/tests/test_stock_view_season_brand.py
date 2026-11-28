@@ -10,8 +10,8 @@ import uuid
 
 import pytest
 
-from app.modules.catalog.models import Brand
-from app.modules.pos.stock_view import StockViewService
+from app.applications.apparel.modules.catalog.models import Brand
+from app.applications.apparel.modules.pos.stock_view import StockViewService
 from tests.test_inventory_stock_view import _variant
 
 pytestmark = pytest.mark.asyncio
@@ -124,7 +124,7 @@ async def test_another_shops_stock_never_matches(db, tenant_ctx) -> None:
 
 async def test_the_route_passes_season_and_brand_to_the_read(db, tenant_ctx) -> None:
     """The live route, not just the service: a filter the route drops would do nothing."""
-    from app.modules.pos.router import list_stock
+    from app.applications.apparel.modules.pos.router import list_stock
     from tests._pos_helpers import ctx_for
 
     shop = await _shop(db, tenant_ctx)

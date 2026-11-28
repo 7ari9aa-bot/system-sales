@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.analytics.evaluation.golden import evaluate_scenario
-from app.modules.analytics.evaluation.synthetic import Scenario, generate_store
+from app.applications.apparel.modules.analytics.evaluation.golden import evaluate_scenario
+from app.applications.apparel.modules.analytics.evaluation.synthetic import Scenario, generate_store
 
 # The seeding lives in the operator harness (scripts/run_golden_eval.py) so
 # the eval script and this matrix plant data through one code path.

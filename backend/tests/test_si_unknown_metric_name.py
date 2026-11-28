@@ -12,14 +12,14 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence.tools import (
+from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import (
     _si_breakdown,
     _si_compare_periods,
     _si_explain_metric,
     _si_get_metric,
 )
-from app.modules.analytics.compiler import computable_metric_names
-from app.modules.analytics.semantic import all_metrics
+from app.applications.apparel.modules.analytics.compiler import computable_metric_names
+from app.applications.apparel.modules.analytics.semantic import all_metrics
 
 CALLS = {
     "get_metric": lambda db, t: _si_get_metric(db, t, metric_name="revenue"),
@@ -91,8 +91,8 @@ async def test_an_unsupported_combination_reaches_the_model_as_a_readable_refusa
     # collected_revenue cannot be split by channel. The compiler says so with a bare
     # UnsupportedFilter, which the runner turns into "tool failed unexpectedly"; the registered
     # tool must turn it into a DomainError whose message the model is shown.
-    from app.modules.ai.agents.sales_intelligence.tools import register_si_tools
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import register_si_tools
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     register_si_tools()
     spec = get_tool("si_metric")
@@ -111,8 +111,8 @@ async def test_an_unsupported_combination_reaches_the_model_as_a_readable_refusa
 
 
 async def test_every_registered_si_tool_explains_unsupported_requests():
-    from app.modules.ai.agents.sales_intelligence.tools import SI_TOOLS, register_si_tools
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import SI_TOOLS, register_si_tools
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     register_si_tools()
     unwrapped = [
@@ -124,7 +124,7 @@ async def test_every_registered_si_tool_explains_unsupported_requests():
 async def test_the_wrapper_does_not_swallow_a_real_failure():
     # Only UnsupportedFilter is a "you asked for something unsupported" outcome. A genuine bug
     # must stay an unexpected failure so it is logged and fixed, not shown as advice.
-    from app.modules.ai.agents.sales_intelligence.tools import _explain_unsupported
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import _explain_unsupported
 
     async def broken(session, tenant_id, **kwargs):
         raise RuntimeError("boom")
@@ -139,8 +139,8 @@ async def test_the_registered_si_metric_refuses_an_unknown_metric_in_every_compu
 ):
     """What the MODEL calls is `si_metric`, so the refusal must hold through the registered tool,
     not just through the handlers behind it."""
-    from app.modules.ai.agents.sales_intelligence.tools import register_si_tools
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import register_si_tools
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     register_si_tools()
     with pytest.raises(ValidationError) as caught:
@@ -154,8 +154,8 @@ async def test_the_registered_si_metric_refuses_an_unknown_metric_in_every_compu
 
 
 async def test_the_registered_si_metric_explains_a_composite_metric(db, tenant_ctx):
-    from app.modules.ai.agents.sales_intelligence.tools import register_si_tools
-    from app.modules.ai.tools import get_tool
+    from app.applications.apparel.modules.ai.agents.sales_intelligence.tools import register_si_tools
+    from app.applications.apparel.modules.ai.tools import get_tool
 
     register_si_tools()
     out = await get_tool("si_metric").handler(

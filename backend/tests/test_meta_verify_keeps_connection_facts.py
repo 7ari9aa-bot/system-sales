@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES
-from app.modules.customers.routers.integrations import _integration_output
+from app.applications.apparel.modules.customers.meta_scopes import FACEBOOK_PAGE_SCOPES
+from app.applications.apparel.modules.customers.routers.integrations import _integration_output
 from app.modules.platform.integration_verifier import VerifiedChannel
 from app.modules.platform.models import Integration
 from app.modules.platform.service import IntegrationCredentialsService
@@ -48,7 +48,7 @@ async def _verify(monkeypatch, row: Integration):
 
     monkeypatch.setattr(IntegrationCredentialsService, "decrypt", staticmethod(decrypt))
     monkeypatch.setattr(
-        "app.modules.customers.routers.integrations.verify_channel_credentials", verify
+        "app.applications.apparel.modules.customers.routers.integrations.verify_channel_credentials", verify
     )
     response, _session = await _call(
         "POST",

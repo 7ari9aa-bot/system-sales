@@ -43,17 +43,17 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.service import CatalogService
-from app.modules.customers import service as customers_module
-from app.modules.customers.models import Customer
-from app.modules.customers.service import CustomerService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import money as orders_money
-from app.modules.orders import service as orders_service
-from app.modules.orders.models import OrderPayment, Refund
-from app.modules.orders.service import OrderService
-from app.modules.segments.service import SegmentService
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers import service as customers_module
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.customers.service import CustomerService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import money as orders_money
+from app.applications.apparel.modules.orders import service as orders_service
+from app.applications.apparel.modules.orders.models import OrderPayment, Refund
+from app.applications.apparel.modules.orders.service import OrderService
+from app.applications.apparel.modules.segments.service import SegmentService
 
 SERVICE_SOURCE = pathlib.Path(orders_service.__file__).read_text(encoding="utf-8")
 SERVICE_TREE = ast.parse(SERVICE_SOURCE)
@@ -222,7 +222,7 @@ def test_the_write_reaches_customers_without_a_new_module_edge() -> None:
         node
         for node in ast.walk(SERVICE_TREE)
         if isinstance(node, ast.ImportFrom)
-        and (node.module or "").startswith("app.modules.customers")
+        and (node.module or "").startswith("app.applications.apparel.modules.customers")
     ]
     assert len(edges) <= 1, f"{len(edges)} customers imports in orders/service.py"
 

@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.modules.analytics.contracts import (
+from app.applications.apparel.modules.analytics.contracts import (
     AnalysisPeriod,
     DataQuality,
     DataQualityStatus,
@@ -23,7 +23,7 @@ from app.modules.analytics.contracts import (
     MaturityStatus,
     Relationship,
 )
-from app.modules.analytics.persistence import load_analysis, save_analysis
+from app.applications.apparel.modules.analytics.persistence import load_analysis, save_analysis
 
 
 def _pack() -> EvidencePack:
@@ -37,7 +37,7 @@ def _pack() -> EvidencePack:
         maturity_status=MaturityStatus.MATURE,
         data_as_of=now,
     )
-    from app.modules.analytics.contracts import MetricFact
+    from app.applications.apparel.modules.analytics.contracts import MetricFact
 
     return EvidencePack(
         question="إيه حصل للمبيعات؟",
@@ -107,7 +107,7 @@ async def test_missing_analysis_returns_none(db, tenant_ctx):
 
 async def test_analysis_events_staged_through_the_outbox(db, tenant_ctx):
     """§12.3 — real runtime events, staged in the same transaction."""
-    from app.modules.analytics.events import emit_analysis_event
+    from app.applications.apparel.modules.analytics.events import emit_analysis_event
     from app.modules.platform.models import OutboxEvent
 
     analysis_id = uuid.uuid4()

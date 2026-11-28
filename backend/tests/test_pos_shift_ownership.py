@@ -20,7 +20,7 @@ import pytest
 
 from app.core.security import hash_password
 from app.modules.errors import PermissionDeniedError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests._pos_sell import sell as pos_sell
 from tests.test_pos_returns import _customer, _register, _sellable_variant
 
@@ -137,7 +137,7 @@ async def _category(db, tenant_ctx):
 
 
 async def _expense(db, tenant_ctx, shift, cat, *, by, **kw):
-    from app.modules.expenses.service import ExpenseService
+    from app.applications.apparel.modules.expenses.service import ExpenseService
 
     return await ExpenseService.create(
         db,
@@ -165,13 +165,13 @@ async def _stranger_ctx(db, tenant_ctx, stranger, role_code):
 
 async def _grant(ctx, method="POST", path="/pos/test"):
     """What the real dependency makes of this caller (a manager is a grant, a cashier is not)."""
-    from app.modules.pos.override import resolve_override
+    from app.applications.apparel.modules.pos.override import resolve_override
 
     return await resolve_override(ctx)
 
 
 async def test_on_the_routes_a_cashier_is_refused_and_a_manager_is_not(db, tenant_ctx):
-    from app.modules.pos.router import close_session
+    from app.applications.apparel.modules.pos.router import close_session
 
     shift, _h, stranger, _variant, _customer = await _owned_shift(db, tenant_ctx)
     staff = await _stranger_ctx(db, tenant_ctx, stranger, "staff")

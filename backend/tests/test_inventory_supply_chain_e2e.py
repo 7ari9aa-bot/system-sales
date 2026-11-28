@@ -24,15 +24,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import ProductVariant
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.models import ProductVariant
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, ValidationError
-from app.modules.inventory.models import InventoryBalance, InventoryMovement, Warehouse
-from app.modules.inventory.reconciliation import InventoryReconciliationService
-from app.modules.inventory.service import InventoryService
-from app.modules.inventory.services.stocktakes import StocktakeService
-from app.modules.purchasing.models import PurchaseOrderLine
-from app.modules.purchasing.service import (
+from app.applications.apparel.modules.inventory.models import InventoryBalance, InventoryMovement, Warehouse
+from app.applications.apparel.modules.inventory.reconciliation import InventoryReconciliationService
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.services.stocktakes import StocktakeService
+from app.applications.apparel.modules.purchasing.models import PurchaseOrderLine
+from app.applications.apparel.modules.purchasing.service import (
     CostService,
     GoodsReceiptService,
     PurchaseService,
@@ -231,7 +231,7 @@ async def test_supply_chain_end_to_end(db: AsyncSession, tenant_ctx):
     stocktake = await StocktakeService.open(db, tid, wh.id, user_id=uid)
 
     # Count: Alpha is 95 (found 2 missing), Beta is 50 (correct)
-    from app.modules.inventory.models import StocktakeLine
+    from app.applications.apparel.modules.inventory.models import StocktakeLine
 
     st_lines = list(
         (

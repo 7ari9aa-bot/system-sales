@@ -11,8 +11,8 @@ import httpx
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.conversations.social_service import SocialService
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.social_service import SocialService
 
 CREDS = {"api_key": "tok", "account_id": "ig-1"}
 

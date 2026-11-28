@@ -13,9 +13,9 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ValidationError
-from app.modules.ai.agents.sales_intelligence import tools as T
-from app.modules.ai.agents.sales_intelligence.permissions import asking_with
-from app.modules.ai.tools import get_tool
+from app.applications.apparel.modules.ai.agents.sales_intelligence import tools as T
+from app.applications.apparel.modules.ai.agents.sales_intelligence.permissions import asking_with
+from app.applications.apparel.modules.ai.tools import get_tool
 from tests.test_si_finance_tools import (
     _category,
     _delivered_sale,

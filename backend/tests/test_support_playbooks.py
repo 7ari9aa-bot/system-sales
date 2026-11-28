@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.agents.customer.tools import _find_support_playbook
-from app.modules.ai.models import SupportPlaybook
+from app.applications.apparel.modules.ai.agents.customer.tools import _find_support_playbook
+from app.applications.apparel.modules.ai.models import SupportPlaybook
 from tests.test_customer_agent_store_info_e2e import (
     _calls,
     _customer_agent,

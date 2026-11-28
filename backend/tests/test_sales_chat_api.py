@@ -17,9 +17,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.main import create_app
-from app.modules.ai.agents.sales_intelligence.agent import AnalysisResult
-from app.modules.ai.models import AIChatThread
-from app.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
+from app.applications.apparel.modules.ai.agents.sales_intelligence.agent import AnalysisResult
+from app.applications.apparel.modules.ai.models import AIChatThread
+from app.applications.apparel.modules.analytics.contracts import DataQuality, DataQualityStatus, Outcome
 from app.modules.identity.deps import AuthedUser, get_tenant_ctx
 
 _SESSIONS: list = []
@@ -160,9 +160,9 @@ def _turn_session_is_the_scripted_session(monkeypatch):
     async def _session(tenant_id):
         yield _SESSIONS[-1]
 
-    monkeypatch.setattr("app.modules.ai.routers.sales.turn_session", _session)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.routers.sales.turn_session", _session)
     monkeypatch.setattr(
-        "app.modules.ai.routers.sales.bind_tenant", lambda session, tenant_id: _noop()
+        "app.applications.apparel.modules.ai.routers.sales.bind_tenant", lambda session, tenant_id: _noop()
     )
     return holder
 
@@ -196,7 +196,7 @@ def _patch_analysis(monkeypatch, *, explode=False, result=None):
         calls["count"] += 1
         return result or _analysis_result()
 
-    monkeypatch.setattr("app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
+    monkeypatch.setattr("app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake)
     return calls
 
 

@@ -17,7 +17,7 @@ import uuid
 from sqlalchemy import select
 
 from app.core.errors import NotFoundError
-from app.modules.ai.chat import service as chat_service
+from app.applications.apparel.modules.ai.chat import service as chat_service
 from app.modules.voice.domain.models import VoiceSessionRow
 
 DEFAULT_TITLE = "محادثة صوتية"

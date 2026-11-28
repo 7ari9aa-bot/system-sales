@@ -13,7 +13,7 @@ import asyncio
 import pytest
 
 from app.core.errors import ExternalProviderError
-from app.modules.customers import meta_oauth as oauth
+from app.applications.apparel.modules.customers import meta_oauth as oauth
 
 
 def test_the_budget_is_well_under_the_sum_of_the_per_call_limits():

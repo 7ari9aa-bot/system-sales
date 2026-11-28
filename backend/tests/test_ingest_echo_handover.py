@@ -13,10 +13,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.ai import handover as handover_mod
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.service import ConversationService
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.ai import handover as handover_mod
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.customers.service import CustomerService
 
 TENANT = uuid.uuid4()
 OWN_APP = "111222333"

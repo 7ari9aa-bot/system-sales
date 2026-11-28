@@ -19,7 +19,7 @@ yet cover, and measurement confirmed each of them on the current code:
 * a request that fails validation answered 422 with FastAPI's default
   ``{"detail": [...]}`` — no envelope, no code, no request id;
 * an unmatched route answered 404 with ``{"detail": "Not Found"}`` (and
-  ``app/modules/analytics/router.py`` raises the same legacy shape as an
+  ``app/applications/apparel/modules/analytics/router.py`` raises the same legacy shape as an
   ``HTTPException``);
 * an unhandled crash answered 500 with the ``text/plain`` body
   ``Internal Server Error``, carrying no correlation id at all;
@@ -356,7 +356,7 @@ async def test_unmatched_route_404_uses_the_contract() -> None:
 async def test_http_exception_422_from_a_route_uses_the_contract() -> None:
     """A route that raises ``HTTPException`` must not answer in the legacy body.
 
-    ``app/modules/analytics/router.py`` deliberately raises 422 with a FastAPI
+    ``app/applications/apparel/modules/analytics/router.py`` deliberately raises 422 with a FastAPI
     ``{loc, msg}`` list so a client reads it like any other 422 — the envelope
     now agrees with that, and the list survives underneath ``detail``.
     """

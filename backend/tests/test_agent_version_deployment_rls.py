@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import bind_tenant
-from app.modules.ai.models import Agent, AgentVersion, Deployment
+from app.applications.apparel.modules.ai.models import Agent, AgentVersion, Deployment
 
 pytestmark = pytest.mark.usefixtures("db")
 

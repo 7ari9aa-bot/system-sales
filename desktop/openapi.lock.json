@@ -1,7 +1,7 @@
 {
   "measured": {
     "operations": 725,
-    "sha256": "cbf819b751ac3bd19c9efd838278d2a0a78bfac3483b26b6a4f4415f7fdce21c",
+    "sha256": "4aa83a65acefcf2dfe68e3939de19e9c0eeadcf165ffb9b11e2a1bbfbe3cef0b",
     "typed_operations": 408
   },
   "spec": {
@@ -216,7 +216,7 @@
           "properties": {
             "items": {
               "items": {
-                "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
+                "$ref": "#/components/schemas/app__applications__apparel__modules__financial__schemas__AccountOut"
               },
               "title": "Items",
               "type": "array"
@@ -412,7 +412,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -1678,7 +1677,6 @@
         "AnomalyResult": {
           "properties": {
             "baseline": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Baseline",
               "type": "string"
             },
@@ -1691,7 +1689,6 @@
               "type": "boolean"
             },
             "observed": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Observed",
               "type": "string"
             },
@@ -2556,7 +2553,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -2642,7 +2638,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -2671,7 +2666,6 @@
               "title": "Actor Id"
             },
             "available_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Available Amount",
               "type": "string"
             },
@@ -2710,7 +2704,6 @@
               "type": "string"
             },
             "reserved_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Reserved Amount",
               "type": "string"
             },
@@ -2727,12 +2720,10 @@
               "title": "Reset At"
             },
             "spent_amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Spent Amount",
               "type": "string"
             },
             "total_limit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Limit",
               "type": "string"
             },
@@ -3656,7 +3647,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3778,7 +3768,6 @@
             "max_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -3872,7 +3861,6 @@
         "CashMovementOut": {
           "properties": {
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -3932,7 +3920,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -4539,14 +4526,12 @@
         "Comparison": {
           "properties": {
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
             "delta_pct": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5193,7 +5178,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5229,7 +5213,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5245,7 +5228,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -5293,7 +5275,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7603,7 +7584,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -7616,7 +7596,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7632,7 +7611,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -7847,7 +7825,6 @@
               "type": "string"
             },
             "delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Delta",
               "type": "string"
             },
@@ -8140,7 +8117,6 @@
         "DriverResult": {
           "properties": {
             "aov_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Aov Contribution",
               "type": "string"
             },
@@ -8150,12 +8126,10 @@
               "type": "string"
             },
             "orders_contribution": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Orders Contribution",
               "type": "string"
             },
             "total_delta": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Delta",
               "type": "string"
             }
@@ -8592,7 +8566,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,15}0*$)\\d{0,10}\\.\\d{0,4}0*$)",
                   "type": "string"
                 }
               ],
@@ -10380,7 +10353,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11346,7 +11318,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -11384,7 +11355,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12360,7 +12330,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -12441,7 +12410,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -13104,7 +13072,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14151,7 +14118,6 @@
               "type": "string"
             },
             "value": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Value",
               "type": "string"
             }
@@ -14482,7 +14448,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -14589,7 +14554,6 @@
             "reserved_budget": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -15011,7 +14975,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,12}|(?=[\\d.]{1,15}0*$)\\d{0,12}\\.\\d{0,2}0*$)",
                   "type": "string"
                 }
               ],
@@ -15978,7 +15941,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17101,7 +17063,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -17137,7 +17098,6 @@
               "type": "string"
             },
             "unit_price": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Unit Price",
               "type": "string"
             },
@@ -18300,7 +18260,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -18910,7 +18869,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -21926,7 +21884,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -23092,7 +23049,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -23848,7 +23804,6 @@
               "type": "string"
             },
             "rate": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Rate",
               "type": "string"
             }
@@ -26115,7 +26070,7 @@
             },
             "entries": {
               "items": {
-                "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
+                "$ref": "#/components/schemas/app__applications__apparel__modules__financial__schemas__EntryOut"
               },
               "title": "Entries",
               "type": "array"
@@ -26151,12 +26106,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             },
@@ -26495,17 +26448,14 @@
               "type": "string"
             },
             "net_balance": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Net Balance",
               "type": "string"
             },
             "total_credit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credit",
               "type": "string"
             },
             "total_debit": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debit",
               "type": "string"
             }
@@ -26550,12 +26500,10 @@
               "type": "string"
             },
             "total_credits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Credits",
               "type": "string"
             },
             "total_debits": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Total Debits",
               "type": "string"
             }
@@ -26868,7 +26816,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26907,7 +26854,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -26986,7 +26932,6 @@
                   "type": "number"
                 },
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 }
               ],
@@ -27859,7 +27804,6 @@
               "type": "string"
             },
             "grand_total": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Grand Total",
               "type": "string"
             },
@@ -27877,7 +27821,6 @@
               "type": "string"
             },
             "subtotal": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Subtotal",
               "type": "string"
             }
@@ -28837,28 +28780,11 @@
           "title": "_Body",
           "type": "object"
         },
-        "app__modules__activity__router__SummaryOut": {
-          "properties": {
-            "counts": {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "title": "Counts",
-              "type": "object"
-            }
-          },
-          "required": [
-            "counts"
-          ],
-          "title": "SummaryOut",
-          "type": "object"
-        },
-        "app__modules__customer_accounts__router__AccountOut": {
+        "app__applications__apparel__modules__customer_accounts__router__AccountOut": {
           "properties": {
             "available_credit": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28868,19 +28794,16 @@
               "title": "Available Credit"
             },
             "balance": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance",
               "type": "string"
             },
             "credit_held": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Credit Held",
               "type": "string"
             },
             "credit_limit": {
               "anyOf": [
                 {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
                 },
                 {
@@ -28906,7 +28829,6 @@
               "title": "Note"
             },
             "owes": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Owes",
               "type": "string"
             }
@@ -28923,15 +28845,13 @@
           "title": "AccountOut",
           "type": "object"
         },
-        "app__modules__customer_accounts__router__EntryOut": {
+        "app__applications__apparel__modules__customer_accounts__router__EntryOut": {
           "properties": {
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
             "balance_after": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Balance After",
               "type": "string"
             },
@@ -29002,7 +28922,7 @@
           "title": "EntryOut",
           "type": "object"
         },
-        "app__modules__einvoice__router__SummaryOut": {
+        "app__applications__apparel__modules__einvoice__router__SummaryOut": {
           "properties": {
             "accepted": {
               "title": "Accepted",
@@ -29060,7 +28980,7 @@
           "title": "SummaryOut",
           "type": "object"
         },
-        "app__modules__financial__schemas__AccountOut": {
+        "app__applications__apparel__modules__financial__schemas__AccountOut": {
           "properties": {
             "account_id": {
               "format": "uuid",
@@ -29111,7 +29031,7 @@
           "title": "AccountOut",
           "type": "object"
         },
-        "app__modules__financial__schemas__EntryOut": {
+        "app__applications__apparel__modules__financial__schemas__EntryOut": {
           "properties": {
             "account_code": {
               "anyOf": [
@@ -29130,7 +29050,6 @@
               "type": "string"
             },
             "amount": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "title": "Amount",
               "type": "string"
             },
@@ -29164,67 +29083,7 @@
           "title": "EntryOut",
           "type": "object"
         },
-        "app__modules__identity__schemas__LocationOut": {
-          "properties": {
-            "code": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Code"
-            },
-            "hours": {
-              "anyOf": [
-                {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Hours"
-            },
-            "id": {
-              "format": "uuid",
-              "title": "Id",
-              "type": "string"
-            },
-            "is_active": {
-              "title": "Is Active",
-              "type": "boolean"
-            },
-            "name": {
-              "title": "Name",
-              "type": "string"
-            },
-            "tenant_id": {
-              "format": "uuid",
-              "title": "Tenant Id",
-              "type": "string"
-            },
-            "workspace_id": {
-              "format": "uuid",
-              "title": "Workspace Id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "tenant_id",
-            "workspace_id",
-            "name",
-            "code",
-            "is_active"
-          ],
-          "title": "LocationOut",
-          "type": "object"
-        },
-        "app__modules__inventory__router__LocationOut": {
+        "app__applications__apparel__modules__inventory__router__LocationOut": {
           "properties": {
             "capacity": {
               "anyOf": [
@@ -29298,7 +29157,7 @@
           "title": "LocationOut",
           "type": "object"
         },
-        "app__modules__orders__routers__orders__ReturnRequest": {
+        "app__applications__apparel__modules__orders__routers__orders__ReturnRequest": {
           "properties": {
             "reason": {
               "default": "customer_return",
@@ -29310,7 +29169,7 @@
           "title": "ReturnRequest",
           "type": "object"
         },
-        "app__modules__pos__router__CloseSessionRequest": {
+        "app__applications__apparel__modules__pos__router__CloseSessionRequest": {
           "additionalProperties": false,
           "description": "The close. ``counted_cash`` is required when the till takes payments and refused when not.\n\nA shop that takes card, wallet or transfer counts those too: ``counted_methods`` carries what\nwas actually in each terminal, and the close stores one reconciliation row per method. The\nserver refuses a missing method when the shop asked to settle methods at close.",
           "properties": {
@@ -29356,7 +29215,7 @@
           "title": "CloseSessionRequest",
           "type": "object"
         },
-        "app__modules__pos__router__ReturnRequest": {
+        "app__applications__apparel__modules__pos__router__ReturnRequest": {
           "description": "A line-level return of a POS sale (ERPNext's POS return document) AND its refund.\n\nThe money goes back across the tenders the sale actually collected: cash first, then the rest\nin the order they were taken. ``refund`` overrides that with explicit per-method amounts (give\nthe notes back even though the card was charged); ``refund_method`` refunds the whole return on\none method. Send neither to use the shop's policy.",
           "properties": {
             "lines": {
@@ -29429,6 +29288,82 @@
             "lines"
           ],
           "title": "ReturnRequest",
+          "type": "object"
+        },
+        "app__modules__activity__router__SummaryOut": {
+          "properties": {
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Counts",
+              "type": "object"
+            }
+          },
+          "required": [
+            "counts"
+          ],
+          "title": "SummaryOut",
+          "type": "object"
+        },
+        "app__modules__identity__schemas__LocationOut": {
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "hours": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hours"
+            },
+            "id": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            },
+            "is_active": {
+              "title": "Is Active",
+              "type": "boolean"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "tenant_id": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "workspace_id": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "tenant_id",
+            "workspace_id",
+            "name",
+            "code",
+            "is_active"
+          ],
+          "title": "LocationOut",
           "type": "object"
         },
         "app__modules__voice__routers__sessions__CloseSessionRequest": {
@@ -44064,7 +43999,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__EntryOut"
                   }
                 }
               },
@@ -44171,7 +44106,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__AccountOut"
                   }
                 }
               },
@@ -44286,7 +44221,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__AccountOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__AccountOut"
                   }
                 }
               },
@@ -44403,7 +44338,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__EntryOut"
                   }
                 }
               },
@@ -44537,7 +44472,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__EntryOut"
                   }
                 }
               },
@@ -44671,7 +44606,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__EntryOut"
                   }
                 }
               },
@@ -44791,7 +44726,7 @@
                 "application/json": {
                   "schema": {
                     "items": {
-                      "$ref": "#/components/schemas/app__modules__customer_accounts__router__EntryOut"
+                      "$ref": "#/components/schemas/app__applications__apparel__modules__customer_accounts__router__EntryOut"
                     },
                     "title": "Response Statement Api V1 Customer Accounts  Customer Id  Statement Get",
                     "type": "array"
@@ -48697,7 +48632,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__einvoice__router__SummaryOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__einvoice__router__SummaryOut"
                   }
                 }
               },
@@ -53579,7 +53514,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__financial__schemas__AccountOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__financial__schemas__AccountOut"
                   }
                 }
               },
@@ -54030,7 +53965,7 @@
                 "application/json": {
                   "schema": {
                     "items": {
-                      "$ref": "#/components/schemas/app__modules__financial__schemas__EntryOut"
+                      "$ref": "#/components/schemas/app__applications__apparel__modules__financial__schemas__EntryOut"
                     },
                     "title": "Response List Transaction Entries Api V1 Financial Transactions  Transaction Id  Entries Get",
                     "type": "array"
@@ -64984,7 +64919,7 @@
                 "application/json": {
                   "schema": {
                     "items": {
-                      "$ref": "#/components/schemas/app__modules__inventory__router__LocationOut"
+                      "$ref": "#/components/schemas/app__applications__apparel__modules__inventory__router__LocationOut"
                     },
                     "title": "Response List Warehouse Locations Api V1 Inventory Warehouses  Warehouse Id  Locations Get",
                     "type": "array"
@@ -65102,7 +65037,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__modules__inventory__router__LocationOut"
+                    "$ref": "#/components/schemas/app__applications__apparel__modules__inventory__router__LocationOut"
                   }
                 }
               },
@@ -71087,7 +71022,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__orders__routers__orders__ReturnRequest"
+                  "$ref": "#/components/schemas/app__applications__apparel__modules__orders__routers__orders__ReturnRequest"
                 }
               }
             },
@@ -81606,7 +81541,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/app__modules__pos__router__CloseSessionRequest"
+                      "$ref": "#/components/schemas/app__applications__apparel__modules__pos__router__CloseSessionRequest"
                     },
                     {
                       "type": "null"
@@ -82966,7 +82901,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__modules__pos__router__ReturnRequest"
+                  "$ref": "#/components/schemas/app__applications__apparel__modules__pos__router__ReturnRequest"
                 }
               }
             },

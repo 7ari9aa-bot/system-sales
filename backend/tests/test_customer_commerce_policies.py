@@ -13,14 +13,14 @@ from pydantic import ValidationError as PydanticValidationError
 
 from app.core.db import bind_tenant
 from app.core.errors import ValidationError
-from app.modules.ai import knowledge, policies
-from app.modules.ai.agents.customer.grounding import check_grounding
-from app.modules.ai.agents.customer.ledger import facts_from_tool_calls
-from app.modules.ai.agents.customer.tools.store import GetStoreInfoArgs
-from app.modules.ai.models import KnowledgeItem
-from app.modules.ai.tools import get_tool, tool_to_openai_schema
+from app.applications.apparel.modules.ai import knowledge, policies
+from app.applications.apparel.modules.ai.agents.customer.grounding import check_grounding
+from app.applications.apparel.modules.ai.agents.customer.ledger import facts_from_tool_calls
+from app.applications.apparel.modules.ai.agents.customer.tools.store import GetStoreInfoArgs
+from app.applications.apparel.modules.ai.models import KnowledgeItem
+from app.applications.apparel.modules.ai.tools import get_tool, tool_to_openai_schema
 from app.modules.identity.models import Tenant
-from app.modules.orders.deposit_service import DepositService
+from app.applications.apparel.modules.orders.deposit_service import DepositService
 
 
 @pytest.fixture

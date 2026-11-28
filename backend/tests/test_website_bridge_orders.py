@@ -20,12 +20,12 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, select
 
 from app.core.errors import DomainError
-from app.modules.catalog.service import CatalogService
-from app.modules.customers.services.customer import CustomerService
-from app.modules.inventory.models import Warehouse
-from app.modules.inventory.service import InventoryService
-from app.modules.orders import website_orders as bridge
-from app.modules.orders.models import Order, OrderItem
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.customers.services.customer import CustomerService
+from app.applications.apparel.modules.inventory.models import Warehouse
+from app.applications.apparel.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.orders import website_orders as bridge
+from app.applications.apparel.modules.orders.models import Order, OrderItem
 
 
 async def _stocked_variant(db, tenant_id, *, price="100.00", on_hand=10):

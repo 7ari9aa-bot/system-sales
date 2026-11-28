@@ -9,7 +9,7 @@ plain numeric id.
 import httpx
 import pytest
 
-from app.modules.conversations.gateway import facebook_pages as fp
+from app.applications.apparel.modules.conversations.gateway import facebook_pages as fp
 
 CREDS = {"api_key": "tok", "account_id": "111"}
 
@@ -86,7 +86,7 @@ async def test_a_bad_mention_never_leaves_our_server():
 from types import SimpleNamespace  # noqa: E402
 
 from app.core.errors import ValidationError  # noqa: E402
-from app.modules.conversations.facebook_service import FacebookService  # noqa: E402
+from app.applications.apparel.modules.conversations.facebook_service import FacebookService  # noqa: E402
 
 
 def _c(ref, *, page=False):

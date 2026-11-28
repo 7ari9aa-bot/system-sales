@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
-from app.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
+from app.applications.apparel.modules.ai.agents.sales_intelligence.prompts import SI_SYSTEM_PROMPT
 
 VERSIONS = Path(__file__).resolve().parents[1] / "migrations" / "versions"
 PATH = VERSIONS / "fe2026111210_si_prompt_short_plain_answers.py"
@@ -59,7 +59,7 @@ def test_the_migration_sits_on_the_current_head_and_ships_the_code_prompt() -> N
 
 
 def test_the_prompt_keeps_the_sales_means_money_rule_and_names_real_metrics() -> None:
-    from app.modules.analytics import compiler
+    from app.applications.apparel.modules.analytics import compiler
 
     assert "Start with delivered_revenue" in SI_SYSTEM_PROMPT
     computable = compiler.computable_metric_names()

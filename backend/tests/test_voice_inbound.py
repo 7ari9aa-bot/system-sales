@@ -27,17 +27,17 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from app.modules.ai.models import AIUsage, BudgetPolicy
-from app.modules.ai.runtime import AgentRunner, _customer_user_content, _omni_audio_content_part
-from app.modules.conversations.media import (
+from app.applications.apparel.modules.ai.models import AIUsage, BudgetPolicy
+from app.applications.apparel.modules.ai.runtime import AgentRunner, _customer_user_content, _omni_audio_content_part
+from app.applications.apparel.modules.conversations.media import (
     FetchedMedia,
     MediaService,
     StoredMedia,
 )
-from app.modules.conversations.models import Attachment, Message
-from app.modules.conversations.service import ConversationService
-from app.modules.conversations.voice import omni_audio_format
-from app.modules.customers.service import CustomerService
+from app.applications.apparel.modules.conversations.models import Attachment, Message
+from app.applications.apparel.modules.conversations.service import ConversationService
+from app.applications.apparel.modules.conversations.voice import omni_audio_format
+from app.applications.apparel.modules.customers.service import CustomerService
 from app.workers.message_worker import transcribe_inbound_voice
 
 VOICE_URL = "https://cdn.example.test/voice1.ogg"
@@ -152,7 +152,7 @@ async def _attachment_of(db, tenant_id, message_id) -> Attachment:
 
 
 async def test_only_scanned_audio_is_eligible_for_direct_omni(db, tenant_ctx, monkeypatch):
-    import app.modules.ai.runtime as runtime_module
+    import app.applications.apparel.modules.ai.runtime as runtime_module
 
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation(db, tenant_id)
@@ -419,7 +419,7 @@ async def test_message_worker_uses_one_voice_understanding_path(
     import app.core.config as config
     import app.workers.message_worker as mw
     from app.core.events.schemas import EventEnvelope
-    from app.modules.ai import hooks as ai_hooks
+    from app.applications.apparel.modules.ai import hooks as ai_hooks
 
     tenant_id = tenant_ctx.tenant_id
     conversation = await _conversation(db, tenant_id)
@@ -467,7 +467,7 @@ def test_runtime_module_resolves_omni_audio_format() -> None:
     remained — every voice turn on the direct path raised NameError and the
     ruff F821 that should have caught it was buried under a repo-wide red
     lint gate. The symbol must resolve in the module that calls it."""
-    import app.modules.ai.runtime as runtime_module
+    import app.applications.apparel.modules.ai.runtime as runtime_module
 
     assert callable(runtime_module.omni_audio_format)
     assert runtime_module.omni_audio_format("audio/ogg") == "ogg"
@@ -476,8 +476,8 @@ def test_runtime_module_resolves_omni_audio_format() -> None:
 def test_voice_context_line_yields_when_audio_rides() -> None:
     """The 'please type it' line contradicts the audio bytes the model is
     about to hear — it fires only when the audio will NOT reach the model."""
-    from app.modules.ai.agents.customer.intake import InboundTurn
-    from app.modules.ai.agents.customer.turn import _context_lines
+    from app.applications.apparel.modules.ai.agents.customer.intake import InboundTurn
+    from app.applications.apparel.modules.ai.agents.customer.turn import _context_lines
 
     turn = InboundTurn(text=None, has_voice=True, voice_transcript=None)
     # Audio rides: no contradictory line — the model hears the customer.
@@ -501,9 +501,9 @@ async def test_hook_tells_the_coordinator_whether_audio_rides(
 ) -> None:
     """The hook owns the attachment scan statuses and the settings flag, so it
     — not the coordinator — decides whether the voice context line applies."""
-    from app.modules.ai import hooks as ai_hooks
-    from app.modules.ai.agents.customer.turn import TurnInput, TurnOutcome
-    from app.modules.ai.models import Agent
+    from app.applications.apparel.modules.ai import hooks as ai_hooks
+    from app.applications.apparel.modules.ai.agents.customer.turn import TurnInput, TurnOutcome
+    from app.applications.apparel.modules.ai.models import Agent
 
     tenant_id = tenant_ctx.tenant_id
     db.add(Agent(tenant_id=tenant_id, name="Customer", kind="customer", model="fast"))

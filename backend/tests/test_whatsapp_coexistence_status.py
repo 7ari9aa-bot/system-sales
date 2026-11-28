@@ -13,9 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from app.modules.conversations import whatsapp_sync as sync
-from app.modules.conversations.models import WhatsAppSyncRun
-from app.modules.conversations.routers.inbox import _message_source, _present_messages
+from app.applications.apparel.modules.conversations import whatsapp_sync as sync
+from app.applications.apparel.modules.conversations.models import WhatsAppSyncRun
+from app.applications.apparel.modules.conversations.routers.inbox import _message_source, _present_messages
 
 NOW = datetime(2026, 11, 24, 12, 0, tzinfo=UTC)
 
@@ -258,7 +258,7 @@ def test_a_settled_run_never_asks_for_attention() -> None:
 
 async def test_reconciling_closes_the_run_without_asking_meta(monkeypatch) -> None:
     """The reconcile path must not own an HTTP client: a second POST burns the only request."""
-    from app.modules.conversations import whatsapp_sync
+    from app.applications.apparel.modules.conversations import whatsapp_sync
 
     run = _stuck()
     seen: dict = {}
@@ -291,7 +291,7 @@ async def test_reconciling_closes_the_run_without_asking_meta(monkeypatch) -> No
 
 
 async def test_reconciling_a_settled_run_changes_nothing() -> None:
-    from app.modules.conversations import whatsapp_sync
+    from app.applications.apparel.modules.conversations import whatsapp_sync
 
     run = _stuck(state="in_progress", request_id="req-1")
 

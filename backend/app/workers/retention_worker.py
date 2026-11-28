@@ -37,7 +37,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.core.db import SessionLocal, bind_tenant
-from app.modules.analytics.retention import (
+from app.applications.apparel.modules.analytics.retention import (
     REASON_NOT_A_ROW_STORE,
     ROW_LEVEL_DATA_CLASSES,
     purge_row_store,

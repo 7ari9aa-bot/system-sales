@@ -8,10 +8,10 @@ reload, even for a comment the Page had liked.
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from app.modules.conversations.facebook_service import _page_liked
-from app.modules.conversations.gateway.facebook_pages import COMMENT_FIELDS
-from app.modules.conversations.models import SocialComment
-from app.modules.conversations.routers.social import _comment_out
+from app.applications.apparel.modules.conversations.facebook_service import _page_liked
+from app.applications.apparel.modules.conversations.gateway.facebook_pages import COMMENT_FIELDS
+from app.applications.apparel.modules.conversations.models import SocialComment
+from app.applications.apparel.modules.conversations.routers.social import _comment_out
 
 
 def test_the_comment_request_asks_meta_for_user_likes() -> None:

@@ -53,7 +53,7 @@ async def window_for(
     not a Cairo shop's. The zone is the tenant's own (``tenants.timezone``), resolved through the
     same chain analytics uses.
     """
-    from app.modules.analytics.timekit import merchant_day_window, resolve_timezone
+    from app.applications.apparel.modules.analytics.timekit import merchant_day_window, resolve_timezone
     from app.modules.identity.models import Tenant
 
     if date_from and date_to and date_to < date_from:

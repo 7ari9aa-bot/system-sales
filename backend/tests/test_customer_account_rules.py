@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.customer_accounts.rules import (
+from app.applications.apparel.modules.customer_accounts.rules import (
     AccountRuleError,
     apply_deposit,
     balance,

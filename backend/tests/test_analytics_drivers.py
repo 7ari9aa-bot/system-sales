@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.analytics.drivers import dimension_revenue_deltas, orders_vs_aov
+from app.applications.apparel.modules.analytics.drivers import dimension_revenue_deltas, orders_vs_aov
 
 D = Decimal
 

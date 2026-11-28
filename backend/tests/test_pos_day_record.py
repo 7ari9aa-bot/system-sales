@@ -12,9 +12,9 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.orders.models import OrderPayment, Refund
-from app.modules.pos.models import PosCashMovement, PosSessionReconciliation
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.orders.models import OrderPayment, Refund
+from app.applications.apparel.modules.pos.models import PosCashMovement, PosSessionReconciliation
+from app.applications.apparel.modules.pos.service import PosService
 from tests.test_pos_returns import _register, _sellable_variant
 
 pytestmark = pytest.mark.asyncio

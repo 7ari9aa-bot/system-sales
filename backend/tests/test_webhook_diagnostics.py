@@ -28,7 +28,7 @@ def issues(monkeypatch):
 @pytest.fixture(autouse=True)
 def _secret(monkeypatch):
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.get_settings",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.get_settings",
         lambda: type("S", (), {"whatsapp_app_secret": SECRET})(),
     )
 
@@ -80,7 +80,7 @@ async def test_unparsable_body_is_named_and_still_a_422(client, issues):
 
 async def test_failed_verification_handshake_is_named_and_still_a_403(client, issues, monkeypatch):
     monkeypatch.setattr(
-        "app.modules.conversations.gateway.whatsapp.WhatsAppAdapter.verify_request",
+        "app.applications.apparel.modules.conversations.gateway.whatsapp.WhatsAppAdapter.verify_request",
         lambda self, params: None,
         raising=False,
     )

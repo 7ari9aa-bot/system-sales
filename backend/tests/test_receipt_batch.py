@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-import app.modules.purchasing.models  # noqa: F401 - registers the suppliers table
+import app.applications.apparel.modules.purchasing.models  # noqa: F401 - registers the suppliers table
 from app.core.errors import ValidationError
-from app.modules.catalog.service import CatalogService
-from app.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
-from app.modules.purchasing.service import (
+from app.applications.apparel.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.inventory.models import InventoryCostLayer, InventoryLot, Warehouse
+from app.applications.apparel.modules.purchasing.service import (
     GoodsReceiptService,
     PurchaseService,
     SupplierService,
@@ -225,7 +225,7 @@ async def test_an_expiry_date_with_no_time_zone_is_read_as_utc(db, tenant_ctx) -
 
 def test_clean_batch_gives_a_date_with_no_zone_the_utc_zone() -> None:
     """Pure check: the session's time zone must never decide what day a batch expires."""
-    from app.modules.purchasing.service import _clean_batch
+    from app.applications.apparel.modules.purchasing.service import _clean_batch
 
     _, naive = _clean_batch({"lot_code": "X", "lot_expires_at": "2027-06-01T00:00:00"}, 1)
     _, aware = _clean_batch({"lot_code": "X", "lot_expires_at": "2027-06-01T00:00:00+00:00"}, 1)
@@ -234,7 +234,7 @@ def test_clean_batch_gives_a_date_with_no_zone_the_utc_zone() -> None:
 
 
 def test_clean_batch_rejects_text_that_is_not_a_date() -> None:
-    from app.modules.purchasing.service import _clean_batch
+    from app.applications.apparel.modules.purchasing.service import _clean_batch
 
     with pytest.raises(ValidationError, match="not a valid date"):
         _clean_batch({"lot_code": "X", "lot_expires_at": "next spring"}, 1)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from app.modules.errors import PermissionDeniedError
-from app.modules.pos.service import PosService
+from app.applications.apparel.modules.pos.service import PosService
 from tests.test_pos_open_day_profile_access import _register_on_profile
 from tests.test_pos_returns import _sellable_variant
 from tests.test_pos_shift_ownership import _user

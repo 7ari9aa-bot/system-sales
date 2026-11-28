@@ -13,8 +13,8 @@ import inspect
 
 import pytest
 
-from app.modules.conversations.gateway import ingest
-from app.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway import ingest
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
 
 REQUIRED = (
     "resolve_tenant",

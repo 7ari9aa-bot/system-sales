@@ -13,14 +13,14 @@ import uuid
 import pytest
 from sqlalchemy import select, update
 
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError
-from app.modules.inventory.models import (
+from app.applications.apparel.modules.inventory.models import (
     InventoryBalance,
     InventoryMovement,
 )
-from app.modules.inventory.reconciliation import InventoryReconciliationService
-from app.modules.inventory.service import InventoryService
+from app.applications.apparel.modules.inventory.reconciliation import InventoryReconciliationService
+from app.applications.apparel.modules.inventory.service import InventoryService
 
 
 async def _variant_and_balance(db, tenant_ctx):

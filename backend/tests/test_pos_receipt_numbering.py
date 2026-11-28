@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import InsufficientStockError
-from app.modules.pos.models import PosReceipt
+from app.applications.apparel.modules.pos.models import PosReceipt
 from tests._pos_helpers import sell, start_day, till
 
 pytestmark = pytest.mark.asyncio

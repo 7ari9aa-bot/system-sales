@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.orders.deposit import (
+from app.applications.apparel.modules.orders.deposit import (
     BASE_GRAND_TOTAL,
     BASE_ITEMS_AFTER_DISCOUNTS,
     TYPE_FIXED,

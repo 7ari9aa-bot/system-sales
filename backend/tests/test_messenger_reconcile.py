@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.conversations.messenger_reconcile import reconcile_page
+from app.applications.apparel.modules.conversations.messenger_reconcile import reconcile_page
 
 
 class _Resp:
@@ -147,7 +147,7 @@ def test_instagram_reconcile_is_reported_unsupported_not_run_against_messenger()
     """The route must answer 'not supported yet' for Instagram, never walk a Page for it."""
     import inspect
 
-    from app.modules.customers.routers import integrations
+    from app.applications.apparel.modules.customers.routers import integrations
 
     source = inspect.getsource(integrations.messenger_reconcile)
     branch = source.split('if integration.provider == "instagram":', 1)[1]

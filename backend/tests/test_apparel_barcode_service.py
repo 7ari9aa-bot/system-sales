@@ -7,12 +7,12 @@ import uuid
 import pytest
 from sqlalchemy import func, select
 
-from app.modules.catalog.apparel.barcode import is_internal, is_valid_ean13
-from app.modules.catalog.apparel.barcode_service import MAX_BATCH
-from app.modules.catalog.apparel.barcode_service import BarcodeService as B
-from app.modules.catalog.apparel.service import ApparelMatrixService as M
-from app.modules.catalog.models import ProductIdentifier
-from app.modules.catalog.service import CatalogService
+from app.applications.apparel.modules.catalog.apparel.barcode import is_internal, is_valid_ean13
+from app.applications.apparel.modules.catalog.apparel.barcode_service import MAX_BATCH
+from app.applications.apparel.modules.catalog.apparel.barcode_service import BarcodeService as B
+from app.applications.apparel.modules.catalog.apparel.service import ApparelMatrixService as M
+from app.applications.apparel.modules.catalog.models import ProductIdentifier
+from app.applications.apparel.modules.catalog.service import CatalogService
 from app.modules.errors import ConflictError, NotFoundError, ValidationError
 
 pytestmark = pytest.mark.asyncio
@@ -94,7 +94,7 @@ async def test_two_garments_labelled_one_after_the_other_never_share_a_number(
 
 
 async def test_the_sequence_does_not_restart_in_a_new_year(db, tenant_ctx) -> None:
-    from app.modules.expenses.models import DocumentCounter
+    from app.applications.apparel.modules.expenses.models import DocumentCounter
 
     t = tenant_ctx.tenant_id
     await B.assign_missing(db, t, await _garment(db, tenant_ctx))
@@ -164,7 +164,7 @@ async def test_a_repeated_id_in_the_request_is_labelled_once(db, tenant_ctx) -> 
 async def test_a_clash_with_an_existing_identical_code_is_a_conflict_not_a_silent_skip(
     db, tenant_ctx
 ) -> None:
-    from app.modules.catalog.apparel.barcode import internal_ean13
+    from app.applications.apparel.modules.catalog.apparel.barcode import internal_ean13
 
     t = tenant_ctx.tenant_id
     a, b, _ = await _garment(db, tenant_ctx)

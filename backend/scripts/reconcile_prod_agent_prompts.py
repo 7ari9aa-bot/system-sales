@@ -77,7 +77,7 @@ def _fail(message: str) -> None:
 
 def canonical_definitions() -> dict[str, object]:
     """Every registered definition that declares itself canonical."""
-    from app.modules.ai.core.registry import AgentRegistry, discover_agents
+    from app.applications.apparel.modules.ai.core.registry import AgentRegistry, discover_agents
 
     discover_agents()
     return {

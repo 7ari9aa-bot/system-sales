@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.conversations.gateway.ingest import IngestService
-from app.modules.conversations.gateway.messenger import MessengerAdapter
+from app.applications.apparel.modules.conversations.gateway.ingest import IngestService
+from app.applications.apparel.modules.conversations.gateway.messenger import MessengerAdapter
 
 TENANT = uuid.uuid4()
 OTHER_TENANT = uuid.uuid4()
@@ -132,7 +132,7 @@ async def test_a_mid_we_do_not_hold_is_ignored_and_creates_nothing(monkeypatch):
     async def add_message(session_, tenant_id, **kwargs):  # pragma: no cover - must not run
         created.append(kwargs)
 
-    from app.modules.conversations.service import ConversationService
+    from app.applications.apparel.modules.conversations.service import ConversationService
 
     monkeypatch.setattr(ConversationService, "add_message", add_message)
 

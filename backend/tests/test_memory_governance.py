@@ -17,10 +17,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from app.modules.ai import gateway as ai_gateway
-from app.modules.ai.knowledge import add_memory, search_memory
-from app.modules.ai.models import Memory
-from app.modules.ai.providers import EmbeddingProvider
+from app.applications.apparel.modules.ai import gateway as ai_gateway
+from app.applications.apparel.modules.ai.knowledge import add_memory, search_memory
+from app.applications.apparel.modules.ai.models import Memory
+from app.applications.apparel.modules.ai.providers import EmbeddingProvider
 
 VECTOR_DIM = 1536
 

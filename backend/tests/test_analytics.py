@@ -12,10 +12,10 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.customers.models import Customer
-from app.modules.marketing import analytics
-from app.modules.marketing.service import MarketingService
-from app.modules.orders.models import Order, OrderPayment
+from app.applications.apparel.modules.customers.models import Customer
+from app.applications.apparel.modules.marketing import analytics
+from app.applications.apparel.modules.marketing.service import MarketingService
+from app.applications.apparel.modules.orders.models import Order, OrderPayment
 
 
 @pytest.fixture

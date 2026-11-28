@@ -15,10 +15,10 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.modules.conversations import read_signal_service as svc
-from app.modules.conversations.gateway.base import ExternalProviderError, ProviderCredentials
-from app.modules.conversations.gateway.instagram import InstagramAdapter
-from app.modules.conversations.read_signal_service import ReadSignalService
+from app.applications.apparel.modules.conversations import read_signal_service as svc
+from app.applications.apparel.modules.conversations.gateway.base import ExternalProviderError, ProviderCredentials
+from app.applications.apparel.modules.conversations.gateway.instagram import InstagramAdapter
+from app.applications.apparel.modules.conversations.read_signal_service import ReadSignalService
 
 CREDS = ProviderCredentials(config={"api_key": "tok", "account_id": "1784"})
 

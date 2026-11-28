@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.modules.ai.runtime import compute_tool_idempotency_key
+from app.applications.apparel.modules.ai.runtime import compute_tool_idempotency_key
 
 CONVERSATION = uuid.uuid4()
 MESSAGE = uuid.uuid4()

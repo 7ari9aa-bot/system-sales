@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.ai.owner_memory import OwnerMemoryService
-from app.modules.ai.owner_memory_chat import run_memory_command
-from app.modules.ai.owner_memory_command import MemoryCommand
+from app.applications.apparel.modules.ai.owner_memory import OwnerMemoryService
+from app.applications.apparel.modules.ai.owner_memory_chat import run_memory_command
+from app.applications.apparel.modules.ai.owner_memory_command import MemoryCommand
 
 
 def _svc(db, ctx) -> OwnerMemoryService:
@@ -54,7 +54,7 @@ async def test_a_note_that_is_too_long_is_refused_not_cut(db, tenant_ctx):
 
 
 async def test_a_full_memory_tells_the_owner_to_clear_some(db, tenant_ctx):
-    from app.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES
+    from app.applications.apparel.modules.ai.owner_memory import MAX_ACTIVE_MEMORIES
 
     svc = _svc(db, tenant_ctx)
     for i in range(MAX_ACTIVE_MEMORIES):

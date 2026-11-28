@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import sqlalchemy as sa
 
-from app.modules.ai.chat.turns import run_chat_turn
-from app.modules.ai.models import Agent, AIChatMessage, AIChatThread, OwnerMemory
+from app.applications.apparel.modules.ai.chat.turns import run_chat_turn
+from app.applications.apparel.modules.ai.models import Agent, AIChatMessage, AIChatThread, OwnerMemory
 
 
 async def _thread_with_question(db, tenant_ctx, text: str):
@@ -74,7 +74,7 @@ def _no_model(monkeypatch):
         raise AssertionError("the model must not be called for a memory command")
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", should_not_run
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", should_not_run
     )
     return called
 
@@ -182,7 +182,7 @@ async def test_an_ordinary_question_through_the_real_turn_still_reaches_the_mode
         return _analysis_result(saved_evidence_id=None, run_id=None, analysis_id=None)
 
     monkeypatch.setattr(
-        "app.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
+        "app.applications.apparel.modules.ai.agents.sales_intelligence.agent.run_sales_analysis", fake_analysis
     )
     thread = await _thread_with_question(db, tenant_ctx, "تفتكر إيه اللي اتباع؟")
     await run_chat_turn(db, _ctx(tenant_ctx), thread)
