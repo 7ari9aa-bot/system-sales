@@ -18,6 +18,9 @@ from dataclasses import dataclass
 
 from app.core.events.schemas import EVENT_TYPES
 
+#: A consumer receives the delivered ENVELOPE, never the bare payload: the
+#: envelope is what carries the tenant, the aggregate and the event id a handler
+#: needs to be idempotent and to write an attributable audit row.
 Handler = Callable[[dict], Awaitable[None]]
 
 
@@ -74,6 +77,24 @@ def registered_events() -> tuple[str, ...]:
     return tuple(sorted(_CONSUMERS))
 
 
+def envelope(event_name: str, payload: dict) -> dict:
+    """Wrap a payload in the envelope shape consumers are handed.
+
+    The relay already publishes a full envelope; this is the shape for a caller
+    that only has the event name and its payload (a replay, a test, a manual
+    re-drive). Ids present in the payload are lifted to the envelope so a
+    consumer can attribute what it writes.
+    """
+    return {
+        "type": event_name,
+        "payload": payload,
+        "tenant_id": payload.get("tenant_id"),
+        "workspace_id": payload.get("workspace_id"),
+        "aggregate_id": payload.get("aggregate_id") or payload.get("id"),
+        "event_id": payload.get("event_id") or payload.get("outbox_id"),
+    }
+
+
 async def dispatch(event_name: str, payload: dict) -> int:
     """Hand one event to every consumer of it. Returns how many ran.
 
@@ -88,8 +109,9 @@ async def dispatch(event_name: str, payload: dict) -> int:
     handlers = consumers_for(event_name)
     if not handlers:
         raise NoConsumer(event_name)
+    delivered = envelope(event_name, payload)
     for handler in handlers:
-        await handler(payload)
+        await handler(delivered)
     return len(handlers)
 
 
@@ -102,6 +124,7 @@ __all__ = [
     "consumers_for",
     "consumes",
     "dispatch",
+    "envelope",
     "parse",
     "registered_events",
 ]
