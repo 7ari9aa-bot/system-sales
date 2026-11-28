@@ -56,8 +56,7 @@ def _keys(path: str) -> set[str]:
 def test_a_gated_module_asks_about_the_application_it_serves(path: str) -> None:
     expected, why = GATED[path]
     assert _keys(path) == {expected}, (
-        f"{path} should ask about {expected!r} ({why}), "
-        f"but asks about {sorted(_keys(path))}"
+        f"{path} should ask about {expected!r} ({why}), but asks about {sorted(_keys(path))}"
     )
 
 
