@@ -23,7 +23,13 @@ import pytest
 from app.core.errors import ValidationError
 from app.modules.ai.assistant.contracts import LIVE_VOICE
 from app.modules.voice.application import assistant_turn
-from app.modules.voice.application.transcript_sync import CompletedTurn, OpenedTurn
+from app.modules.voice.application.spoken_turns import TurnLedger
+from app.modules.voice.application.transcript_sync import (
+    DELIVERED,
+    SUPERSEDED_TURN,
+    CompletedTurn,
+    OpenedTurn,
+)
 
 TENANT = uuid.uuid4()
 AGENT = uuid.uuid4()
@@ -64,6 +70,7 @@ def wired(monkeypatch):
         "completed": [],
         "threads": [],
         "counted": [],
+        "outcomes": [],
     }
 
     async def fake_ensure_thread(session, ctx, session_id):
@@ -96,10 +103,15 @@ def wired(monkeypatch):
         user_message_id,
         assistant_message_id,
         transcript_status="final",
+        outcome=DELIVERED,
     ):
+        # The double has to mirror the real signature: a double that quietly drops a keyword
+        # cannot fail when the real call starts passing one, and the drop is what let
+        # ``outcome=`` reach this test as a TypeError instead of a red assertion.
         seen["completed"].append(
             (voice_session_id, thread_id, user_message_id, assistant_message_id)
         )
+        seen["outcomes"].append(outcome)
         return CompletedTurn(turn_id=uuid.uuid4(), sequence_number=1, created=True)
 
     async def fake_run_chat_turn(session, ctx, thread):
@@ -199,3 +211,31 @@ async def test_a_replayed_key_returns_the_existing_answer_instead_of_a_second_ca
     assert wired["runtime"] == []
     assert wired["completed"] == []
     assert wired["counted"] == []
+
+
+async def test_an_answer_that_arrives_after_a_newer_question_is_recorded_superseded(wired):
+    """The model answered, but a newer question began while it ran.
+
+    The turn is still joined to both messages (the words are in the row), and it is
+    recorded as SUPERSEDED rather than delivered. What the caller gets back is empty:
+    every delivery path speaks ``content``, so an empty one is the only answer that
+    cannot be heard over the question they are now waiting on.
+    """
+    ledger = TurnLedger()
+    turn = ledger.begin(VOICE_SESSION)
+    ledger.begin(VOICE_SESSION)  # the caller asked something else mid-turn
+
+    result = await assistant_turn.run_voice_turn(
+        _Session(),
+        _ctx(),
+        session_id=VOICE_SESSION,
+        text="الأوردر وصل؟",
+        turn=turn,
+        ledger=ledger,
+    )
+
+    assert wired["outcomes"] == [SUPERSEDED_TURN]
+    assert wired["completed"], "a superseded turn is still linked to both messages"
+    assert result.superseded is True
+    assert result.content == ""
+    assert result.status == assistant_turn.transcript_sync.CANCELLED
