@@ -53,6 +53,14 @@ class ApplicationManifest:
 #: Old key -> current key. Read-only compatibility: nothing new may be written
 #: under an old key, and every entry here is removed once the data migration has
 #: run everywhere.
+#:
+#: Production ran `migrations/sql/rename_retail_core_to_apparel.sql` on
+#: 2026-11-28: zero legacy keys remain in plan_application_inclusions,
+#: subscription_items and workspace_app_installations, and 1610 inclusions now
+#: read `apparel*`. The bridge stays until every environment has migrated (a dev
+#: database restored from an older backup would still carry the old keys), and
+#: `tests/test_rename_retail_core_migration.py` proves the rename and its
+#: rollback on a real Postgres before it is ever pointed at production again.
 LEGACY_KEYS: dict[str, str] = {
     "retail.core": "apparel",
     "retail.purchasing": "apparel.purchasing",
